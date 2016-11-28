@@ -10,7 +10,7 @@
        Fabian Bach <fabian.bach@t-online.de> (only parts of this file)
        Marco Sekulla <marco.sekulla@kit.edu> (only parts of this file)
        Bijan Chokoufe Nejad <bijan.chokoufe@desy.de> (only parts of this file)
-       Soyoung Shim <soyoung.shim@desy.de>
+       So Young Shim <soyoung.shim@desy.de>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by

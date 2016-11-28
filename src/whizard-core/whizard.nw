@@ -371,7 +371,6 @@ module rt_data
   use lexers
   use parser
   use models
-  use jets
   use subevents
   use pdg_arrays
   use variables, only: var_list_t
@@ -3655,17 +3654,22 @@ particles, and the number of components.
   procedure :: init => process_configuration_init
 <<Process configurations: procedures>>=
   subroutine process_configuration_init &
-       (config, prc_name, n_in, n_components, global)
+       (config, prc_name, n_in, n_components, global, nlo_proc)
     class(process_configuration_t), intent(out) :: config
     type(string_t), intent(in) :: prc_name
     integer, intent(in) :: n_in
     integer, intent(in) :: n_components
     type(rt_data_t), intent(in) :: global
+    logical, intent(in), optional :: nlo_proc
     type(model_t), pointer :: model
     logical :: nlo_process
     model => global%model
     config%id = prc_name
-    nlo_process = global%nlo_fixed_order
+    if (present (nlo_proc)) then
+       nlo_process = nlo_proc
+    else
+       nlo_process = global%nlo_fixed_order
+    end if
     allocate (config%entry)
     if (global%var_list%is_known (var_str ("process_num_id"))) then
        config%num_id = &
@@ -13842,20 +13846,6 @@ or arrays which would make the expansion ambiguous.
     call msg_debug (D_CORE, "cmd_process_execute")
     var_list => cmd%local%get_var_list_ptr ()
 
-    nlo_fixed_order = cmd%local%nlo_fixed_order
-    powheg_use_damping = &
-       var_list%get_lval (var_str ('?powheg_use_damping'))
-    gks_multiplicity = var_list%get_ival (var_str ('gks_multiplicity'))
-    gks_active = gks_multiplicity > 2
-    born_me_method = var_list%get_sval (var_str ("$born_me_method"))
-    real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
-    soft_mismatch_me_method = var_list%get_sval (var_str ("$soft_mismatch_me_method"))
-    loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
-    correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
-    call check_nlo_options (cmd%local)
-    if (any (cmd%local%selected_nlo_parts))  &
-       call override_local_me_method (born_me_method)
-
     n_in = size (cmd%pn_pdg_in)
     allocate (prt_in (n_in), prt_spec_in (n_in))
     do i = 1, n_in
@@ -13868,8 +13858,26 @@ or arrays which would make the expansion ambiguous.
          (prt_expr_out, cmd%pn_out, var_list, cmd%local%model)
     call prt_expr_out%expand ()
     call scan_components ()
+
+    nlo_fixed_order = cmd%local%nlo_fixed_order
+    gks_multiplicity = var_list%get_ival (var_str ('gks_multiplicity'))
+    gks_active = gks_multiplicity > 2
+    call check_for_nlo_corrections ()
+
+    born_me_method = var_list%get_sval (var_str ("$born_me_method"))
+    powheg_use_damping = &
+         var_list%get_lval (var_str ('?powheg_use_damping'))
+    if (nlo_fixed_order) then
+       real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
+       loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
+       correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
+       call check_nlo_options (cmd%local)
+    end if
+    if (any (cmd%local%selected_nlo_parts))  &
+       call override_local_me_method (born_me_method)
+
     call determine_needed_components ()
-    call prc_config%init (cmd%id, n_in, n_components_init, cmd%local)
+    call prc_config%init (cmd%id, n_in, n_components_init, cmd%local, nlo_fixed_order)
 
     alpha_power = var_list%get_ival (var_str ("alpha_power"))
     alphas_power = var_list%get_ival (var_str ("alphas_power"))
@@ -13919,11 +13927,24 @@ or arrays which would make the expansion ambiguous.
 
 @ %def check_threshold_consistency
 <<Commands: cmd process execute procedures>>=
+  subroutine check_for_nlo_corrections ()
+    if (nlo_fixed_order .or. gks_active) &
+       call setup_radiation_generator ()
+    if (nlo_fixed_order) then
+       call radiation_generator%find_splittings ()
+       nlo_fixed_order = radiation_generator%contains_emissions ()
+       if (.not. nlo_fixed_order) call msg_warning &
+            (arr = [var_str ("No NLO corrections found for process ") // cmd%id // var_str("."), &
+            var_str ("Proceed with usual leading-order integration and simulation")])
+    end if
+  end subroutine check_for_nlo_corrections
+
+@ %def check_for_nlo_corrections
+@
+<<Commands: cmd process execute procedures>>=
   subroutine determine_needed_components ()
     type(string_t) :: fks_method
     logical :: threshold
-    if (nlo_fixed_order .or. gks_active) &
-         call setup_radiation_generator ()
 
     if (powheg_use_damping) then
        call radiation_generator%get_emitter_indices (emitters)
@@ -14056,7 +14077,8 @@ or arrays which would make the expansion ambiguous.
                   cmd%local%model, var_list, BORN, &
                   can_be_integrated = selected_nlo_parts (BORN))
 
-             call radiation_generator%generate (prt_in_nlo, prt_out_nlo)
+             call radiation_generator%generate_real_particle_strings &
+                  (prt_in_nlo, prt_out_nlo)
              call override_local_me_method (real_tree_me_method)
              i_comp = n_components + i
              call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
@@ -24926,7 +24948,6 @@ The actual main program:
 program main
 
 <<Use strings>>
-  use unit_tests
   use system_dependencies
   use diagnostics
   use ifiles
@@ -26835,7 +26856,6 @@ This is for developers only, but needs a well-defined interface.
     use iso_varying_string, string_t => varying_string !NODEP!
     use system_dependencies
     use diagnostics
-    use unit_tests
     use ifiles
     use os_interface
     use whizard

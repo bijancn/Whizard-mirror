@@ -1,6 +1,8 @@
 stages:
   - build
   - deploy
+  - weekly
+  - weekly-applications
 
 variables:
   NAGFOR_OPTIONS: "-O1 -w=all -gline -C=all -nan -f2008"
@@ -16,6 +18,7 @@ variables:
     - cd build
   except:
     - production
+    - triggers
     - /^.*xfail.*$/
   artifacts:
     expire_in: 3 weeks
@@ -28,6 +31,7 @@ variables:
     - build/omega/tests/test-suite.log
     - build/vamp/tests/test-suite.log
     - build/tests/unit_tests/test-suite.log
+    - build/tests/unit_tests/err-output/*
     - build/tests/functional_tests/test-suite.log
 
 .docker_template: &docker_definition
@@ -36,40 +40,16 @@ variables:
   tags:
     - docker
 
-.extra_template: &extra_definition
-  <<: *default_definition
-  only:
-    - master
-    - /^testing.*$/
+# SMALL TEST SUITE (BRANCHES)
 
-.distcheck_template: &distcheck_definition
+gfortran-4.8.5:
   <<: *default_definition
-  only:
-    - master
-    - /^testing.*$/
-  artifacts:
-    expire_in: 3 weeks
-    when: always
-    paths:
-    - build/configure.log
-    - build/make.log
-    - build/make-install.log
-    - "build/whizard*.tar.gz"
-    - build/make-distcheck.log
-  after_script:
-  - find . -type f -exec chmod 644 {} +
-  - find . -type d -exec chmod 755 {} +
-  - rm whizard*/ -rf
-
-distcheck.static.gfortran-4.9.4:
-  <<: *distcheck_definition
-  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-4.9.4
+  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-4.8.5
   script:
-    - ../configure FC=gfortran FCFLAGS="-O2 $GFORTRAN_OPTIONS" --enable-distribution --enable-static --prefix="`pwd`/install" > configure.log
+    - ../configure FC=gfortran FCFLAGS="-O0 $GFORTRAN_OPTIONS" --disable-static --prefix="`pwd`/install" > configure.log
     - make $JOBS -s V=0 > make.log
     - make $JOBS -s V=0 install > make-install.log
     - make $JOBS -s V=0 check
-    - make $JOBS -s V=0 DISTCHECK_CONFIGURE_FLAGS='FC=gfortran --enable-distribution --disable-noweb-force --disable-ocaml' distcheck > make-distcheck.log
   <<: *docker_definition
 
 nagfor-6:
@@ -82,15 +62,63 @@ nagfor-6:
   tags:
     - nagfor
 
-gfortran-4.8.5:
+ifort-16:
   <<: *default_definition
-  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-4.8.5
   script:
-    - ../configure FC=gfortran FCFLAGS="-O0 $GFORTRAN_OPTIONS" --disable-static --prefix="`pwd`/install" > configure.log
+    - source /opt/intel/2016/bin/compilervars.sh intel64
+    - ../configure FC=ifort2016 FCFLAGS="-O1" --disable-static --prefix="`pwd`/install" > configure.log
     - make $JOBS -s V=0 > make.log
     - make $JOBS -s V=0 install > make-install.log
     - make $JOBS -s V=0 check
+  tags:
+    - ifort
+
+# BIG TEST SUITE (MASTER + TESTING BRANCHES)
+
+.extra_template: &extra_definition
+  <<: *default_definition
+  only:
+    - master
+    - /^testing.*$/
+
+.distcheck_template: &distcheck_script
+  script:
+    - ../configure FC=gfortran FCFLAGS="-O2 $GFORTRAN_OPTIONS" --enable-distribution --enable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+    - make $JOBS -s V=0 DISTCHECK_CONFIGURE_FLAGS='FC=gfortran --enable-distribution --disable-noweb-force --disable-ocaml' distcheck > make-distcheck.log
+
+.distcheck_template: &distcheck_definition
+  <<: *default_definition
+  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-4.9.4
+  <<: *distcheck_script
   <<: *docker_definition
+  only:
+    - master
+    - /^testing.*$/
+  artifacts:
+    expire_in: 3 weeks
+    when: always
+    paths:
+    - build/configure.log
+    - build/make.log
+    - build/make-install.log
+    - build/circe2/tests/test-suite.log
+    - build/omega/tests/test-suite.log
+    - build/vamp/tests/test-suite.log
+    - build/tests/unit_tests/test-suite.log
+    - build/tests/unit_tests/err-output/*
+    - build/tests/functional_tests/test-suite.log
+    - "build/whizard*.tar.gz"
+    - build/make-distcheck.log
+  after_script:
+  - find . -type f -exec chmod 644 {} +
+  - find . -type d -exec chmod 755 {} +
+  - rm whizard*/ -rf
+
+distcheck.static.gfortran-4.9.4:
+  <<: *distcheck_definition
 
 gfortran-4.9.4:
   <<: *extra_definition
@@ -124,7 +152,7 @@ gfortran-6.2.0:
 
 
 osx.gfortran:
-  <<: *default_definition
+  <<: *extra_definition
   script:
     - ../configure FC=gfortran FCFLAGS="-O0 $GFORTRAN_OPTIONS" --prefix="`pwd`/install" --enable-distribution --enable-hepmc --enable-lcio --enable-lhapdf --enable-hoppet --enable-fastjet --enable-looptools LOOPTOOLS_DIR=/usr/local/lib --enable-gosam --enable-openloops --enable-pythia8 > configure.log
     - make $JOBS -s V=0 > make.log
@@ -132,20 +160,6 @@ osx.gfortran:
     - make $JOBS -s V=0 check
   tags:
     - osx
-  only:
-    - master
-    - /^testing.*$/
-
-ifort-16:
-  <<: *default_definition
-  script:
-    - source /opt/intel/2016/bin/compilervars.sh intel64
-    - ../configure FC=ifort2016 FCFLAGS="-O1" --disable-static --prefix="`pwd`/install" > configure.log
-    - make $JOBS -s V=0 > make.log
-    - make $JOBS -s V=0 install > make-install.log
-    - make $JOBS -s V=0 check
-  tags:
-    - ifort
 
 disabled.static.nagfor-6:
   <<: *extra_definition
@@ -211,6 +225,8 @@ ifort-17:
     - ifort
   allow_failure: true
 
+# DEPLOY (MASTER)
+
 .deploy_template: &deploy_definition
   stage: deploy
   tags:
@@ -222,7 +238,14 @@ ifort-17:
     - ssh-add /scratch/bcho/id_rsa
   except:
     - production
+    - triggers
     - /^.*xfail.*$/
+
+notify slack:
+  <<: *deploy_definition
+  when: on_failure
+  script:
+    - echo "Build on \`$CI_BUILD_REF_NAME\` failed! Commit \`$(git log -1 --oneline)\` See https://gitlab.tp.nt.uni-siegen.de/whizard/development/commit/$CI_BUILD_REF/builds" | slacktee.sh -a "danger" -p
 
 deploy to production:
   <<: *deploy_definition
@@ -255,3 +278,98 @@ deploy to svn:
     - svndiff.log
     - svn-add-files.log
     - svn-del-files.log
+
+# WHIZARD IMAGE (WEEKLY)
+
+build whizard image:
+  stage: weekly
+  script:
+    - git clone https://${GITLAB_USER}:${GITLAB_PASSWORD}@gitlab.tp.nt.uni-siegen.de/whizard/docker.git
+    - docker build -t gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-master -f docker/whizard-master/Dockerfile .
+    - docker login -u ${GITLAB_USER} -p ${GITLAB_PASSWORD} gitlab.tp.nt.uni-siegen.de:4567
+    - docker push gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-master
+    - docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}
+    - docker tag gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-master whizard/whizard-weekly:master
+    - docker push whizard/whizard-weekly:master
+  tags:
+    - whizard
+  only:
+    - triggers
+
+# SUBPACKAGES (WEEKLY)
+
+.subpackage_template: &subpackage_definition
+  <<: *distcheck_definition
+  stage: weekly
+  only:
+    - triggers
+  except:
+
+circe1.distcheck.static.gfortran-4.9.4:
+  <<: *subpackage_definition
+  before_script:
+    - ./build_master.sh CIRCE1
+    - autoreconf
+    - mkdir -p build
+    - cd build
+
+circe2.distcheck.static.gfortran-4.9.4:
+  <<: *subpackage_definition
+  before_script:
+    - ./build_master.sh CIRCE2
+    - autoreconf
+    - mkdir -p build
+    - cd build
+
+vamp.distcheck.static.gfortran-4.9.4:
+  <<: *subpackage_definition
+  before_script:
+    - ./build_master.sh VAMP
+    - autoreconf
+    - mkdir -p build
+    - cd build
+
+omega.distcheck.static.gfortran-4.9.4:
+  <<: *subpackage_definition
+  before_script:
+    - ./build_master.sh OMEGA
+    - autoreconf
+    - mkdir -p build
+    - cd build
+  script:
+    - ../configure FC=gfortran FCFLAGS="-O2 $GFORTRAN_OPTIONS" --enable-distribution --enable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+    - make $JOBS -s V=0 extra-distcheck > make-distcheck.log
+
+# EXAMPLES (WEEKLY)
+
+.examples_template: &examples_definition
+  stage: weekly-applications
+  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-master
+  only:
+    - triggers
+  before_script:
+    - cd ~/whizard/share/examples
+  <<: *docker_definition
+
+run matching examples:
+  <<: *examples_definition
+  script:
+    - for s in *Matching*.sin ; do whizard $s; done
+
+run NLO examples:
+  <<: *examples_definition
+  script:
+    - for s in *NLO*.sin ; do whizard $s; done
+
+run collider examples:
+  <<: *examples_definition
+  script:
+    - for s in HERA_DIS.sin LEP_cc10.sin LEP_higgs.sin W-endpoint.sin Z-lineshape.sin ; do whizard $s; done
+
+run other examples:
+  <<: *examples_definition
+  script:
+    - for s in Zprime.sin casc_dec.sin circe1.sin eeww_polarized.sin fourjetsLO.sin ; do whizard $s; done
