@@ -2,26 +2,27 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2016 by
+# Copyright (C) 1999-2015 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
+#     with contributions from
 #     Fabian Bach <fabian.bach@t-online.de>
-#     Bijan Chokoufe <bijan.chokoufe@desy.de>
+#     Bijan Chokoufe <bijan.chokoufe@desy.de>  
 #     Christian Speckner <cnspeckn@googlemail.com>
 #     Marco Sekulla <marco.sekulla@kit.edu>
 #     Christian Weiss <christian.weiss@desy.de>
 #     Felix Braam, Sebastian Schmidt,
-#     Hans-Werner Boschmann, Daniel Wiesler
+#     Hans-Werner Boschmann, Daniel Wiesler       
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by
+# under the terms of the GNU General Public License as published by 
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -30,30 +31,39 @@
 #
 ########################################################################
 
-## The files in this directory implement different matchings
+## The files in this directory interface the Recola amplitude calculator
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libmatching.la
-check_LTLIBRARIES = libmatching_ut.la
+noinst_LTLIBRARIES = librecola.la
+check_LTLIBRARIES = librecola_ut.la
 
-libmatching_la_SOURCES = \
-  matching_base.f90 \
-  ckkw_matching.f90 \
-  mlm_matching.f90 \
-  powheg_matching.f90
+if FC_SUPPORTS_RECOLA
+librecola_la_SOURCES = \
+  recola_wrapper.f90 prc_recola.f90
+else
+librecola_la_SOURCES = \
+  recola_wrapper_dummy.f90 prc_recola.f90
+endif
 
-libmatching_ut_la_SOURCES = \
-  powheg_matching_uti.f90 powheg_matching_ut.f90
+librecola_ut_la_SOURCES = \
+  prc_recola_uti.f90 prc_recola_ut.f90
 
 ## Omitting this would exclude it from the distribution
-dist_noinst_DATA = matching.nw
+dist_noinst_DATA = recola.nw
 
 # Dump module names into file Modules
-libmatching_Modules = \
-  ${libmatching_la_SOURCES:.f90=} \
-  ${libmatching_ut_la_SOURCES:.f90=}
+#librecola_Modules = ${librecola_la_SOURCES:.f90=} ${librecola_ut_la_SOURCES:.f90=}
+librecola_Modules = prc_recola recola_wrapper \
+		    prc_recola_uti prc_recola_ut
+
+if FC_SUPPORTS_RECOLA
+  prc_recola.lo: recola_wrapper.lo
+else
+  prc_recola.lo: recola_wrapper_dummy.lo
+endif
+
 Modules: Makefile
-	@for module in $(libmatching_Modules); do \
+	@for module in $(librecola_Modules); do \
           echo $$module >> $@.new; \
         done
 	@if diff $@ $@.new -q >/dev/null; then \
@@ -61,6 +71,7 @@ Modules: Makefile
 	else \
           mv $@.new $@; echo "Modules updated"; \
         fi
+
 BUILT_SOURCES = Modules
 
 ## Fortran module dependencies
@@ -70,51 +81,33 @@ module_lists = \
   ../utilities/Modules \
   ../testing/Modules \
   ../system/Modules \
-  ../combinatorics/Modules \
-  ../parsing/Modules \
-  ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
-  ../expr_base/Modules \
   ../types/Modules \
   ../particles/Modules \
-  ../beams/Modules \
   ../matrix_elements/Modules \
   ../me_methods/Modules \
-  ../events/Modules \
-  ../muli/Modules \
-  ../phase_space/Modules \
-  ../mci/Modules \
-  ../user/Modules \
-  ../blha/Modules \
-  ../gosam/Modules \
-  ../openloops/Modules \
-  ../recola/Modules \
-  ../fks/Modules \
-  ../model_features/Modules \
   ../variables/Modules \
-  ../shower/Modules \
-  ../threshold/Modules \
-  ../process_integration/Modules
+  ../beams/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
-Module_dependencies.sed: $(libmatching_la_SOURCES) $(libmatching_ut_la_SOURCES)
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@
 	echo 's/, *&//' >> $@
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
-	for list in $(module_lists); do \
-		dir="`dirname $$list`"; \
-		for mod in `cat $$list`; do \
-			echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-		done \
+	for list in $^; do \
+	  dir="`dirname $$list`"; \
+	  for mod in `cat $$list`; do \
+	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+	  done ; \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
+
 
 # The following line just says
 #    include Makefile.depend
@@ -122,7 +115,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libmatching_la_SOURCES) $(libmatching_ut_la_SOURCES)
+Makefile.depend: $(librecola_la_SOURCES) ${librecola_ut_la_SOURCES}
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -132,14 +125,14 @@ Makefile.depend: $(libmatching_la_SOURCES) $(libmatching_ut_la_SOURCES)
 	          -f Module_dependencies.sed; \
 	done > $@
 
-DISTCLEANFILES += Makefile.depend
+DISTCLEANFILES += Makefile.depend 
 
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../types -I../particles -I../beams -I../matrix_elements -I../me_methods -I../events -I../muli -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../openloops -I../recola -I../fks -I../model_features -I../variables -I../tauola -I../shower -I../threshold -I../process_integration -I../fastjet -I../../vamp/src -I../lhapdf -I../pdf_builtin
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../me_methods -I../variables -I../beams -I../lhapdf -I../pdf_builtin 
 
 ########################################################################
 ## Default Fortran compiler options
@@ -154,7 +147,10 @@ if FC_USE_OPENMP
 AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
-
+# TODO: (cw 2015-03-26) Fix this
+# if RECOLA_AVAILABLE
+AM_FCFLAGS += -I$(RECOLA_DIR)/modules
+# endif
 ########################################################################
 ## Non-standard targets and dependencies
 
@@ -164,21 +160,19 @@ if NOWEB_AVAILABLE
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 
-matching.stamp: $(PRELUDE) $(srcdir)/matching.nw $(POSTLUDE)
-	@rm -f matching.tmp
-	@touch matching.tmp
-	for src in \
-          $(libmatching_la_SOURCES) \
-          $(libmatching_ut_la_SOURCES); do \
+recola.stamp: $(PRELUDE) $(srcdir)/recola.nw $(POSTLUDE)
+	@rm -f recola.tmp
+	@touch recola.tmp
+	for src in $(librecola_la_SOURCES) $(librecola_ut_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
-	@mv -f matching.tmp matching.stamp
+	@mv -f recola.tmp recola.stamp
 
-$(libmatching_la_SOURCES) $(libmatching_ut_la_SOURCES): matching.stamp
+$(librecola_la_SOURCES) $(librecola_ut_la_SOURCES): recola.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
-	  rm -f matching.stamp; \
-	  $(MAKE) $(AM_MAKEFLAGS) matching.stamp; \
+	  rm -f recola.stamp; \
+	  $(MAKE) $(AM_MAKEFLAGS) recola.stamp; \
 	fi
 
 endif
@@ -202,7 +196,7 @@ endif
 
 ## Remove F90 module files
 clean-local: clean-noweb
-	-rm -f matching.stamp matching.tmp
+	-rm -f recola.stamp recola.tmp
 	-rm -f *.$(FC_MODULE_EXT)
 if FC_SUBMODULES
 	-rm -f *.smod

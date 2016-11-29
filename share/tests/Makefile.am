@@ -238,6 +238,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/nlo_color_data_1.ref \
     unit_tests/ref-output/nlo_color_data_2.ref \
     unit_tests/ref-output/nlo_color_data_3.ref \
+    unit_tests/ref-output/prc_recola_1.ref \
     unit_tests/ref-output/rng_base_1.ref \
     unit_tests/ref-output/rng_base_2.ref \
     unit_tests/ref-output/rng_tao_1.ref \
