@@ -1125,7 +1125,12 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
      if (threshold%settings%only_interference_term) then
         call compute_born (n_tot, p_ofs, FF)
         amp_with_FF = amp_blob
-        amp_no_FF = amp_omega_full
+        if (threshold%settings%factorized_interference_term) then
+           call compute_born (n_tot, p_ofs, TREE)
+           amp_no_FF = amp_blob
+        else
+           amp_no_FF = amp_omega_full
+        end if
         amp2 = sum (2 * real (amp_no_FF * conjg (amp_with_FF)))
      end if
   end if
