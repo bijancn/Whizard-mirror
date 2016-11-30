@@ -36,7 +36,7 @@
 module module_name
 
 <<Use kinds>>
-	use other_dependencies
+  use other_dependencies
 
 <<Standard module head>>
 
@@ -62,14 +62,14 @@ end module module_name
 ```
 @
 <<$Module name: public>>=
-	public :: some_class_t
+  public :: some_class_t
 <<Module name: types>>=
-	type :: some_class_t
-		 real :: some_value
+  type :: some_class_t
+     real :: some_value
      ...
-	contains
-	 <<$Module name: some class: TBP>>
-	end type some_class_t
+  contains
+   <<$Module name: some class: TBP>>
+  end type some_class_t
 
 @ %def some_class_t
 ```
@@ -101,7 +101,7 @@ end module module_name
 
 ```
 <<Module name: class name: TBP>>=
-	procedure :: do_something => class_name_do_something
+  procedure :: do_something => class_name_do_something
 ```
 
 - In functions/subroutines where a lot of variables have to be unpacked in a
@@ -172,6 +172,9 @@ end module module_name
 
 # Style settings
 ## spacing
+- starting indentation of 2 spaces in front of everything except
+  `module/end module` (this will ensure that the build `.f90` has proper
+  indentation)
 - indentation of 7 spaces after continuing a function/subroutine with `&`
 - indentation of 5 spaces after a `&` otherwise
 - indentation of 3 spaces after `if`, `do`, `case`
@@ -179,12 +182,12 @@ end module module_name
 - 1 space in front of the brace of a function call; no space within the
   braces (`call whizard (arguments)`)
 - no space in front of the brace of an array (`array(index) = 1`)
-- 1 space around infix operators `=`, `+`, `-`, `*`, `/`, `//`, etc.
+- 1 space around infix operators `=`, `+`, `-`, `*`, `/`, `//`, `.and.` etc.
 
 ## programming
 - Main programming style is object-oriented programming (OOP), peppered with
   some old parts written in imperative style and salted with the occasional use
-  of functional programming (FP).
+  of functional programming (FP)
 - `pure` functions/subroutines are preferred where possible as it makes it
   easier to reason about the code without worrying about side effects
 - `elemental` is even better where appropriate as it allows to use the same
@@ -199,6 +202,70 @@ end module module_name
   avoided
 - The `save` attribute on variables in functions is handy for quick and dirty
   solutions but can always be replaced with appropriate classes
+- Use `>` over `.gt.`, `>=` over `.ge.`, etc.
+- Inline comments are seldom necessary, use meaningful variable names instead
+  (don't worry about performance. Fortran compilers remove unnecessary copies)
+- In case you absolutely need inline comments, use triple exclamation marks:
+  `i = 42     !!! a comment`
+- Use single exclamation marks only for temporarily commenting out code. Make
+  sure to remove these before you merge to master (the merge request is a good
+  place to double check your changes)
+- You need finalizers only when you use pointers and then you have to make sure
+  you only deallocate the target once. `allocatable` arrays are deallocated by
+  the Fortran compiler as soon as the object goes out of scope.
+- Every class should get a `write` method to print its variables in a concise
+  way. The standard layout is
+
+```
+<<My module: my class: TBP>>=
+  procedure :: write => my_class_write
+<<My module: procedures>>=
+  subroutine my_class_write (object, unit)
+    class(my_class_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(1x,A)") "My class:"
+    write (u, "(3x,A,ES19.12)")  "some property =", object%some_property
+    ...
+  end subroutine my_class_write
+
+```
+
+  Sticking to this interface allows to easily `call my_object%write ()` for
+  debugging to STDOUT. Furthermore, it lets us incorporate
+  `call my_object%write (u)` into unit tests or other output
+- Always fix the format in write statements that will stay in the code like the
+  ones above, i.e. never use `write (u, *)`. The `*` format is different for
+  every compiler and tests will break when you use it.
+- Don't put random empty lines in your subroutines. They should be concise
+  enough to read them at once. If you feel like you want to separate parts of
+  your subroutine with empty lines, it is a good sign to create a new
+  subroutine and call that.
+- Getters and setters: If you put a getter and a setter for a variable, you
+  could instead just make it public. Not everything is an object. If several
+  other objects need to access and set variables of your class, just make its
+  properties public and treat it as a simple data structure. See also "Objects
+  and Data Structures" in the "Clean Code" book by Robert C. Martin.
+- Use array notation (`my_array(1, :) = 10`) over manual setting
+  (`my_array(1,1) = 10`, `my_array(1,2) = 10`). This not only improves
+  readability but also allows the compiler to use vectorization better. This is
+  trivially obvious in such a simple example but also try writing larger
+  algorithms as `elemental` functions that can be applied on the array
+- Use the constants in `src/basics/constants` (e.g. `one`, `two`, `three`) over
+  manual settings (`1`, `2.`, `3.0`). It will save you headaches that can come
+  up when testing on higher precision
+- Never compare reals directly with `==`, etc. It's not safe in general. Use the
+  `nearly_equal` and `vanishes` functions in `numeric_utils` instead
+- Add meaningful debug output with `msg_debug (D_MY_AREA, "important var", imp_var)`.
+  Check out the code in the `diagnostics` module (you can even add colors!).
+  In case the given areas don't cover the part you are working on, just add it
+  to the `D_MY_AREA` constants and `d_area_of_string`/`d_area_to_string`
+  functions. You (or future users) can activate the debug output with
+  `whizard --debug my_area`. There is also a more verbose level
+  `msg_debug2`/`whizard --debug2`. Rule of thumb is that the first level covers
+  information that is written once per run and the second can contain
+  event-by-event information.
 
 # VIM
 - In case you don't do so already, plugins are easily installable with the

@@ -8,7 +8,7 @@
        with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
        Marco Sekulla <marco.sekulla@kit.edu>
-       Soyoung Shim <soyoung.shim@desy.de>
+       So Young Shim <soyoung.shim@desy.de>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
