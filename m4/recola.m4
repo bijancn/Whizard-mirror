@@ -15,7 +15,7 @@ AC_ARG_WITH([recola],
 unset RECOLA_DIR
 
 if test "$enable_recola" = "yes"; then
-  
+
   unset RECOLA_DIR
   if test -n "$with_recola"; then
     WO_PATH_LIB(recola_lib, [recola], [librecola.${SHRLIB_EXT}], ${with_recola})
@@ -57,7 +57,7 @@ AC_SUBST([LDFLAGS_RECOLA])
 AM_CONDITIONAL([RECOLA_AVAILABLE], [test "$enable_recola" = "yes"])
 
 ]) dnl WO_PROG_RECOLA
-### end WO_PROG_RECOLA 
+### end WO_PROG_RECOLA
 
 
 ### Check if the compiler actually supports Recola
