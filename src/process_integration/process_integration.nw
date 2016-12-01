@@ -9895,10 +9895,11 @@ relevant for a NLO algorithm.
     !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
     integer :: i, j, k
     type(quantum_numbers_t), dimension(:), allocatable :: qn
-    logical :: me_already_squared
+    logical :: me_already_squared, keep_fs_flavors
     logical :: decrease_n_tot
 
     me_already_squared = .false.
+    keep_fs_flavors = .false.
 
     term%config => process%get_term_ptr (i_term)
     term%int_hard = term%config%int
@@ -9947,7 +9948,9 @@ relevant for a NLO algorithm.
             if (me_already_squared) then
                call term%isolated%setup_identity_trace (core, mask_in, .true., .false.)
             else
-               call term%isolated%setup_square_trace (core, mask_in, term%config%col, .false.)
+               keep_fs_flavors = term%config%data%n_flv > 1
+               call term%isolated%setup_square_trace (core, mask_in, term%config%col, &
+                    keep_fs_flavors)
             end if
          case (PHS_MODE_COLLINEAR_REMNANT)
             if (me_already_squared) then
@@ -9968,9 +9971,10 @@ relevant for a NLO algorithm.
        !!! No integration of real subtraction in interactions yet
        n_sub = 0
     end if
+    keep_fs_flavors = keep_fs_flavors .or. me_already_squared
     call term%connected%setup_connected_trace (term%isolated, &
        undo_helicities = undo_helicities (core, me_already_squared), &
-       n_sub = n_sub, keep_fs_flavors = me_already_squared)
+       n_sub = n_sub, keep_fs_flavors = keep_fs_flavors)
 
     associate (int_eff => term%isolated%int_eff)
       state_matrix => int_eff%get_state_matrix_ptr ()
@@ -10796,26 +10800,15 @@ method may modify the [[core_state]] workspace object.
   subroutine term_instance_evaluate_interaction_default (term, core)
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(in) :: core
-    integer :: i, i_term
-    integer :: only_flavor
-    i_term = term%config%i_term
-    if (term%nlo_type == NLO_REAL .and. term%config%i_term_global /= term%config%i_sub) then
-       select type (config => term%pcm_instance%config)
-       type is (pcm_nlo_t)
-          only_flavor = config%region_data%get_real_index (i_term)
-       end select
-    else
-       only_flavor = 0
-    end if
+    integer :: i
     do i = 1, term%config%n_allowed
-       if (only_flavor > 0 .and. term%config%flv(i) /= only_flavor) cycle
        term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
           term%config%flv(i), term%config%hel(i), term%config%col(i), &
           term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
           term%core_state)
     end do
     if (associated (term%pcm_instance)) &
-       call term%pcm_instance%set_fac_scale (term%fac_scale)
+         call term%pcm_instance%set_fac_scale (term%fac_scale)
   end subroutine term_instance_evaluate_interaction_default
 
 @ %def term_instance_evaluate_interaction_default
