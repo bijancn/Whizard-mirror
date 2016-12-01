@@ -72,7 +72,7 @@ endif
 BRACKET = prelude.nw postlude.nw
 TRIPLE = $(srcdir)/prelude.nw $< $(srcdir)/postlude.nw
 NOTANGLE_IT = \
-  cat $(TRIPLE) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) $@
+  cat $(TRIPLE) | $(NOTANGLE) -R'[[$@]]' > $@
 
 SUFFIXES = .nw .lo .$(FC_MODULE_EXT)
 

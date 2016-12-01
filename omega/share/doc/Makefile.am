@@ -179,7 +179,7 @@ omega.pdf: \
     $(PICTURES_PDF) $(PICTURES_EPS)
 
 .nw.tex:
-	$(NOWEAVE) -delay $< | $(CPIF) $@
+	$(NOWEAVE) -delay $< > $@
 
 if DISTRIBUTION
 if OCAMLWEB_AVAILABLE
