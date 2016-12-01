@@ -557,8 +557,8 @@ contains
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
        if (threshold%settings%factorized_computation) then
-          if (threshold%settings%helicity_approximated) then
-             if (threshold%settings%helicity_approximated_extra) then
+          if (threshold%settings%helicity_approximation%simple) then
+             if (threshold%settings%helicity_approximation%extra) then
                 prod = zero
                 do h_t = -1, 1, 2
                    do h_tbar = -1, 1, 2
@@ -897,7 +897,7 @@ contains
     if (.not. threshold%settings%factorized_computation)  &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'factorized (activate with 2')
-    if (.not. threshold%settings%helicity_approximated) &
+    if (.not. threshold%settings%helicity_approximation%simple) &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
     call init_workspace ()
@@ -1114,7 +1114,7 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
            amp2 = real (sum (abs2 (amp_omega_full) + abs2 (amp_with_FF) + &
                 2 * real (amp_no_FF * conjg (amp_with_FF))))
         else
-           if (threshold%settings%helicity_approximated) then
+           if (threshold%settings%helicity_approximation%simple) then
               amp2 = real (sum (amp_blob))
            else
               amp2 = real (sum (abs2 (amp_blob)))
