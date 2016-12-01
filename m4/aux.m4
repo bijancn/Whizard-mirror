@@ -300,7 +300,8 @@ else
    echo "OpenLoops (OLP)     :   no"
 fi
 if test "$RECOLA_AVAILABLE_FLAG" = ".true." ; then
-   echo "RECOLA (OLP)        :   yes"
+   echo "RECOLA (OLP)        :   yes, v$RECOLA_VERSION"
+   echo "           path     :   $RECOLA_DIR"   
 else
    echo "RECOLA (OLP)        :   no"
 fi
