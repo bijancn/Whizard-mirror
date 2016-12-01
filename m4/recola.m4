@@ -3,84 +3,81 @@ dnl
 
 AC_DEFUN([WO_PROG_RECOLA],
 [dnl
+AC_REQUIRE([AC_PROG_FC])
+
 AC_ARG_ENABLE([recola],
   [AS_HELP_STRING([--enable-recola],
-     [(experimental) enable Recola as matrix element generator [[no]]])],
+     [(experimental) enable Recola for NLO matrix elements [[no]]])],
   [], [enable_recola="no"])
 
 AC_ARG_WITH([recola],
   [AS_HELP_STRING([--with-recola=dir],
-     [assume the given directory for Recola])])
-
-unset RECOLA_DIR
+	  	  [assume the given directory for Recola])])
 
 if test "$enable_recola" = "yes"; then
 
-  unset RECOLA_DIR
   if test -n "$with_recola"; then
-    WO_PATH_LIB(recola_lib, [recola], [librecola.${SHRLIB_EXT}], ${with_recola})
+    WO_PATH_LIB(RECOLA, [recola], [librecola.${SHRLIB_EXT}], ${with_recola})
   else
-    WO_PATH_LIB(recola_lib, [recola], [librecola.${SHRLIB_EXT}], $LD_LIBRARY_PATHj)
+    WO_PATH_LIB(RECOLA, [recola], [librecola.${SHRLIB_EXT}], $LD_LIBRARY_PATH)
   fi
-  if test "$recola_lib" != "no"; then
-    RECOLA_DIR=`dirname $recola_lib`
+  if test "$RECOLA" != "no"; then
+     AC_MSG_CHECKING([for openOpenput in RECOLA])
+     AC_LANG_PUSH([Fortran])
+     recola_libdir=`dirname $RECOLA`
+     wo_recola_libdir="-L${recola_libdir}"
+     wo_recola_includes="-I${recola_libdir}/modules"
+     wo_recola_version=""
+     save_LIBS="$LIBS"
+     LIBS="${LIBS} ${wo_recola_libdir} -lrecola ${wo_recola_includes}"
+     AC_LINK_IFELSE([dnl
+	AC_LANG_PROGRAM([],[[
+		use globals_rcl
+		call openOutput
+		]])],
+         [wo_recola_version=`./conftest | $GREP 'Version' | $SED 's/.* Version //g'`],
+	 [enable_recola="no"])
+     AC_MSG_RESULT([$enable_recola])
+     if test "$enable_recola" = "no"; then
+       LIBS="$save_LIBS"
+       AC_MSG_NOTICE([warning:  ********************************************************])
+       AC_MSG_NOTICE([warning:  It seems your RECOLA was not compiled properly or       ])
+       AC_MSG_NOTICE([warning:  compiled with a different FORTRAN compiler and you      ])
+       AC_MSG_NOTICE([warning:  forgot to add the proper runtime to                     ])
+       AC_MSG_NOTICE([warning:  LIBS / LD_LIBRARY_PATH. Disabling RECOLA support...     ])
+       AC_MSG_NOTICE([warning:  ********************************************************])
+       AC_MSG_CHECKING([for Recola])
+       AC_MSG_RESULT([disabled])
+     else
+       RECOLA_INCLUDES=$wo_recola_includes
+       RECOLA_VERSION=$wo_recola_version
+       RECOLA_DIR=$recola_libdir
+       AC_SUBST([RECOLA_VERSION])       
+       AC_MSG_CHECKING([for Recola version])
+       AC_MSG_RESULT([$wo_recola_version])
+     fi
+     AC_LANG_POP()     
+  else
+     AC_MSG_CHECKING([for Recola])
+     AC_MSG_RESULT([(disabled)])        
   fi
-
 else
+   AC_MSG_CHECKING([for Recola])
+   AC_MSG_RESULT([(disabled)])
+fi   
 
-  AC_MSG_CHECKING([for Recola])
-  AC_MSG_RESULT([disabled])
-
-fi
-
-AC_SUBST([RECOLA_DIR])
-
-if test -n "$RECOLA_DIR"; then
-  wo_recola_includes="-I$RECOLA_DIR/modules"
-  wo_recola_ldflags="-L$RECOLA_DIR -lrecola"
-fi
-
-if test "$enable_recola" = "yes" -a "$recola_lib" != "no"; then
-    AC_MSG_RESULT([ Recola found])
-    RECOLA_AVAILABLE_FLAG=".true."
-    RECOLA_INCLUDES=$wo_recola_includes
-    LDFLAGS_RECOLA=$wo_recola_ldflags
-else
-   RECOLA_AVAILABLE_FLAG=".false."
-   enable_recola="no"
-fi
-
-AC_SUBST([RECOLA_AVAILABLE_FLAG])
 AC_SUBST([RECOLA_INCLUDES])
 AC_SUBST([LDFLAGS_RECOLA])
+
+if test "$enable_recola" = "yes"; then
+   RECOLA_AVAILABLE_FLAG=".true."
+else
+   RECOLA_AVAILABLE_FLAG=".false."
+fi   
+AC_SUBST([RECOLA_AVAILABLE_FLAG])
 
 AM_CONDITIONAL([RECOLA_AVAILABLE], [test "$enable_recola" = "yes"])
 
 ]) dnl WO_PROG_RECOLA
-### end WO_PROG_RECOLA
 
 
-### Check if the compiler actually supports Recola
-AC_DEFUN([WO_FC_CHECK_RECOLA],
-[dnl
-AC_CACHE_CHECK([whether Recola can be compiled with $FC],
-[wo_cv_fc_supports_recola],
-[dnl
-AC_REQUIRE([WO_PROG_RECOLA])
-AC_LANG([Fortran])
-FCFLAGS="$RECOLA_INCLUDES"
-AC_COMPILE_IFELSE([dnl
-  program recolatest
-     use recola
-  end program recolatest
-  ],
-  [wo_cv_fc_supports_recola="yes"],
-  [wo_cv_fc_supports_recola="no"])
-])
-FC_SUPPORTS_RECOLA="$wo_cv_fc_supports_recola"
-AM_CONDITIONAL([FC_SUPPORTS_RECOLA], [test "$wo_cv_fc_supports_recola" = "yes"])
-])
-### end WO_FC_CHECK_RECOLA
-
-
-   

@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2015 by 
+# Copyright (C) 1999-2016 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -37,7 +37,7 @@
 noinst_LTLIBRARIES = librecola.la
 check_LTLIBRARIES = librecola_ut.la
 
-if FC_SUPPORTS_RECOLA
+if RECOLA_AVAILABLE
 librecola_la_SOURCES = \
   recola_wrapper.f90 prc_recola.f90
 else
@@ -56,7 +56,7 @@ dist_noinst_DATA = recola.nw
 librecola_Modules = prc_recola recola_wrapper \
 		    prc_recola_uti prc_recola_ut
 
-if FC_SUPPORTS_RECOLA
+if RECOLA_AVAILABLE
   prc_recola.lo: recola_wrapper.lo
 else
   prc_recola.lo: recola_wrapper_dummy.lo
