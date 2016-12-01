@@ -557,7 +557,14 @@ contains
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
        if (threshold%settings%factorized_computation) then
-          if (threshold%settings%helicity_approximation%simple) then
+          if (threshold%settings%helicity_approximation%ultra) then
+             prod = production_me(s(1), s(2), 1, 1)
+             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), 1, 1)
+             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), 1, 2)
+             amp_blob(hi) = amp_blob(hi) + &
+                  abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
+                  abs2 (dec1) * abs2 (dec2)
+          else if (threshold%settings%helicity_approximation%simple) then
              if (threshold%settings%helicity_approximation%extra) then
                 prod = zero
                 do h_t = -1, 1, 2
@@ -897,7 +904,8 @@ contains
     if (.not. threshold%settings%factorized_computation)  &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'factorized (activate with 2')
-    if (.not. threshold%settings%helicity_approximation%simple) &
+    if (.not. (threshold%settings%helicity_approximation%simple .or. &
+              threshold%settings%helicity_approximation%ultra)) &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
     call init_workspace ()
@@ -909,6 +917,7 @@ contains
        s = table_spin_states(:,hi)
        do h_t = -1, 1, 2
        do h_tbar = -1, 1, 2
+          if (skip (h_t, h_tbar)) cycle
           h_ass_t = [h_t, h_tbar]
           other_leg = 3 - leg
           prod_ = production_me(s(1), s(2), h_t, h_tbar)
@@ -927,6 +936,13 @@ contains
     amp2 = total * (N_**2 - one) / N_
 
   contains
+
+    function skip (h_t, h_tbar)
+      logical :: skip
+      integer, intent(in) :: h_t, h_tbar
+      skip = threshold%settings%helicity_approximation%ultra &
+           .and. (h_t /= 1 .or. h_tbar /= 1)
+    end function skip
 
     subroutine compute_amplitudes (p_ofs, p_ons, leg)
       type(momentum), intent(in), dimension(:) :: p_ofs, p_ons
@@ -965,6 +981,7 @@ contains
          p_foo(i) = apply_boost (boost_to_cms, p_ons(i))
       end do
       do h_t = -1, 1, 2
+      if (threshold%settings%helicity_approximation%ultra .and. h_t == -1) cycle
       do h_W = -1, 1, 1
       do h_b = -1, 1, 2
          !born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons, h_t, h_W, h_b)

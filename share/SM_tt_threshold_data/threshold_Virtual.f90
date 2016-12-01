@@ -114,6 +114,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   reshuffle_id = [1,2,4,3]
   do h_t = -1, 1, 2
   do h_tbar = -1, 1, 2
+     if (skip (h_t, h_tbar)) cycle
      do h_el = -1, 1, 2
      do h_pos = -1, 1, 2
         prod2 = abs2 (production_me(h_el, h_pos, h_t, h_tbar))
@@ -150,6 +151,13 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   if (debug2_active (D_ME_METHODS)) then
      print *, 'sqme_c =    ', sqme_c !!! Debugging
   end if
+contains
+  function skip (h_t, h_tbar)
+    logical :: skip
+    integer, intent(in) :: h_t, h_tbar
+    skip = threshold%settings%helicity_approximation%ultra &
+         .and. (h_t /= 1 .or. h_tbar /= 1)
+  end function skip
 end subroutine @ID@_olp_eval2
 
 subroutine @ID@_stop_openloops () bind(C)
