@@ -953,8 +953,7 @@ contains
       type(momentum), dimension(:), allocatable :: p_ons_rest
       type(momentum) :: p12
       type(momentum), dimension(4) :: p_real_ons
-      type(momentum), dimension(6) :: p_foo
-      integer :: i
+      type(momentum), dimension(6) :: p_born_ons
       allocate (p_ons_rest (size (p_ofs)))
       p12 = p_ofs(1) + p_ofs(2)
       ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
@@ -964,7 +963,6 @@ contains
       ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
       ptop_ofs(leg) = ptop_ofs(leg) + p_ofs(THR_POS_GLUON)
       production_me = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
-      call create_boost_to_cms (ptop_ofs(1), ttv_mtpole (p12 * p12))
       if (leg == 1) then
          top_decay_real => top_real_decay_calculate_amplitude
          top_decay_born_ => anti_top_decay_born
@@ -974,18 +972,18 @@ contains
       end if
       p_real_ons = [ptop_ons(leg), p_ons(ass_boson(leg)), &
            p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
-      do i = 1, 4
-         p_real_ons(i) = apply_boost (boost_to_cms, p_real_ons(i))
-      end do
-      do i = 1, 6
-         p_foo(i) = apply_boost (boost_to_cms, p_ons(i))
-      end do
+      !!! Need to have a copy of p_ons due to intent(in)
+      p_born_ons = p_ons
+      if (threshold%settings%onshell_projection%boost_decay) then
+         call create_boost_to_cms (ptop_ofs(1), ttv_mtpole (p12 * p12))
+         p_real_ons = apply_boost (boost_to_cms, p_real_ons)
+         p_born_ons = apply_boost (boost_to_cms, p_born_ons)
+      end if
       do h_t = -1, 1, 2
       if (threshold%settings%helicity_approximation%ultra .and. h_t == -1) cycle
       do h_W = -1, 1, 1
       do h_b = -1, 1, 2
-         !born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons, h_t, h_W, h_b)
-         born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_foo, h_t, h_W, h_b)
+         born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons, h_t, h_W, h_b)
          if (.not. test_ward) then
             do h_gl = -1, 1, 2
                real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
