@@ -25,7 +25,9 @@ if test "$enable_recola" = "yes"; then
      AC_MSG_CHECKING([for openOpenput in RECOLA])
      AC_LANG_PUSH([Fortran])
      recola_libdir=`dirname $RECOLA`
+     RECOLA_DIR=$recola_libdir
      wo_recola_libdir="-L${recola_libdir}"
+     wo_recola_ldflags="-Wl,-rpath,$RECOLA_DIR -L$RECOLA_DIR -lrecola"     
      wo_recola_includes="-I${recola_libdir}/modules"
      wo_recola_version=""
      save_LIBS="$LIBS"
@@ -51,8 +53,9 @@ if test "$enable_recola" = "yes"; then
      else
        RECOLA_INCLUDES=$wo_recola_includes
        RECOLA_VERSION=$wo_recola_version
-       RECOLA_DIR=$recola_libdir
-       AC_SUBST([RECOLA_VERSION])       
+       LDFLAGS_RECOLA=$wo_recola_ldflags
+       AC_SUBST([RECOLA_VERSION])
+       AC_SUBST([RECOLA_DIR])
        AC_MSG_CHECKING([for Recola version])
        AC_MSG_RESULT([$wo_recola_version])
      fi
