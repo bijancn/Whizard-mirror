@@ -345,7 +345,7 @@ clean-local:
 	rm -f core* 
 	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
-	rm -f *.grid
+	rm -f *.grid output.rcl
 	rm -rf err-output
 	rm -rf ref-output
 	rm -f *.sin *.hbc 
