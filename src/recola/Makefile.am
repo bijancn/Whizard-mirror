@@ -40,9 +40,11 @@ check_LTLIBRARIES = libwo_recola_ut.la
 if RECOLA_AVAILABLE
 libwo_recola_la_SOURCES = \
   recola_wrapper.f90 prc_recola.f90
+SOURCE_DUMMY_FILES = recola_wrapper_dummy.f90
 else
 libwo_recola_la_SOURCES = \
   recola_wrapper_dummy.f90 prc_recola.f90
+SOURCE_DUMMY_FILES = recola_wrapper.f90
 endif
 
 libwo_recola_ut_la_SOURCES = \
@@ -147,10 +149,9 @@ if FC_USE_OPENMP
 AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
-# TODO: (cw 2015-03-26) Fix this
-# if RECOLA_AVAILABLE
-AM_FCFLAGS += -I$(RECOLA_DIR)/modules
-# endif
+if RECOLA_AVAILABLE
+AM_FCFLAGS += $(RECOLA_INCLUDES)
+endif
 ########################################################################
 ## Non-standard targets and dependencies
 
@@ -163,12 +164,12 @@ POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 recola.stamp: $(PRELUDE) $(srcdir)/recola.nw $(POSTLUDE)
 	@rm -f recola.tmp
 	@touch recola.tmp
-	for src in $(libwo_recola_la_SOURCES) $(libwo_recola_ut_la_SOURCES); do \
+	for src in $(libwo_recola_la_SOURCES) $(libwo_recola_ut_la_SOURCES) $(SOURCE_DUMMY_FILES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
 	@mv -f recola.tmp recola.stamp
 
-$(libwo_recola_la_SOURCES) $(libwo_recola_ut_la_SOURCES): recola.stamp
+$(libwo_recola_la_SOURCES) $(libwo_recola_ut_la_SOURCES) $(SOURCE_DUMMY_FILES): recola.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 	  rm -f recola.stamp; \

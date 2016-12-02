@@ -322,7 +322,7 @@ extern "C" MCParticleImpl* new_lcio_particle
   mcp->setMass ( mass );
   mcp->setCharge ( charge );
   mcp->setGeneratorStatus ( status );
-  mcp->setCreatedInSimulation (true);
+  mcp->setCreatedInSimulation (false);
   return mcp; 
 }
 
