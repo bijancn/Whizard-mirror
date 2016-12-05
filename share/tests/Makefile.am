@@ -38,7 +38,7 @@ EXTRA_DIST = \
     $(TESTSUITE_TOOLS) \
     $(REF_OUTPUT_FILES) \
     functional_tests/structure_2_inc.sin functional_tests/testproc_3.phs \
-    functional_tests/user_cuts.f90 functional_tests/user_strfun.f90 \
+    functional_tests/user_cuts.f90 \
     functional_tests/susyhit.in TEST.mdl nmssm.slha
 
 TESTSUITE_MACROS = testsuite.m4
@@ -642,8 +642,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/gaussian_2.ref \
     functional_tests/ref-output/beam_events_1.ref \
     functional_tests/ref-output/beam_events_4.ref \
-    functional_tests/ref-output/energy_scan_1.ref \
-    functional_tests/ref-output/user_strfun.ref
+    functional_tests/ref-output/energy_scan_1.ref
 
 # Reference files that depend on the numerical precision
 REF_OUTPUT_FILES_DOUBLE = \
@@ -1004,7 +1003,6 @@ MISC_TESTS_SIN = \
     functional_tests/user_cuts.sin \
     functional_tests/user_prc_threshold_1.sin \
     functional_tests/user_prc_threshold_2.sin \
-    functional_tests/user_strfun.sin \
     ilc_ext.sin
 
 MSSM_EXT_M4 = \

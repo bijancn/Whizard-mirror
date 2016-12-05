@@ -93,7 +93,7 @@ libwhizard_la_LIBADD = \
   fks/libfks.la \
   gosam/libgosam.la \
   openloops/liboloops.la \
-  recola/librecola.la \
+  recola/libwo_recola.la \
   blha/libblha.la \
   user/libuser.la \
   mci/libmci.la \
@@ -179,7 +179,7 @@ libwhizard_test_la_LIBADD = \
   fks/libfks_ut.la \
   shower/libshower_ut.la \
   process_integration/libprocess_integration_ut.la \
-  recola/librecola_ut.la \
+  recola/libwo_recola_ut.la \
   blha/libblha_ut.la \
   model_features/libmodel_features_ut.la \
   mci/libmci_ut.la \

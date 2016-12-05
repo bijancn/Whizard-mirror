@@ -66,9 +66,6 @@ TESTS_DEFAULT = \
 
 XFAIL_TESTS_DEFAULT =
 
-TESTS_USER_STRFUN = \
-    user_strfun.run 
-
 TESTS_REQ_FASTJET = \
     analyze_4.run
 
@@ -234,14 +231,12 @@ TESTS_REQ_OCAML = \
     mlm_matching_fsr.run \
     user_cuts.run \
     user_prc_threshold_1.run \
-    user_prc_threshold_2.run \
-    $(TESTS_USER_STRFUN) 
+    user_prc_threshold_2.run
 
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
     hadronize_1.run \
-    user_cuts.run \
-    $(TESTS_USER_STRFUN)
+    user_cuts.run
 
 TESTS_REQ_HEPMC = \
     hepmc_1.run \
@@ -379,10 +374,7 @@ static_2.exe.sin: $(top_builddir)/share/tests/functional_tests/static_2.exe.sin
 
 susyhit.run: susyhit.in
 user_cuts.run: user_cuts.f90
-user_strfun.run: user_strfun.f90
 user_cuts.f90: $(top_builddir)/share/tests/functional_tests/user_cuts.f90
-	cp $< $@
-user_strfun.f90: $(top_builddir)/share/tests/functional_tests/user_strfun.f90
 	cp $< $@
 
 model_test.run: tdefs.$(FC_MODULE_EXT) tglue.$(FC_MODULE_EXT) \

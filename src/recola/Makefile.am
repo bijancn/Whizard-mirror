@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2015 by 
+# Copyright (C) 1999-2016 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -34,36 +34,38 @@
 ## The files in this directory interface the Recola amplitude calculator
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = librecola.la
-check_LTLIBRARIES = librecola_ut.la
+noinst_LTLIBRARIES = libwo_recola.la
+check_LTLIBRARIES = libwo_recola_ut.la
 
-if FC_SUPPORTS_RECOLA
-librecola_la_SOURCES = \
+if RECOLA_AVAILABLE
+libwo_recola_la_SOURCES = \
   recola_wrapper.f90 prc_recola.f90
+SOURCE_DUMMY_FILES = recola_wrapper_dummy.f90
 else
-librecola_la_SOURCES = \
+libwo_recola_la_SOURCES = \
   recola_wrapper_dummy.f90 prc_recola.f90
+SOURCE_DUMMY_FILES = recola_wrapper.f90
 endif
 
-librecola_ut_la_SOURCES = \
+libwo_recola_ut_la_SOURCES = \
   prc_recola_uti.f90 prc_recola_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = recola.nw
 
 # Dump module names into file Modules
-#librecola_Modules = ${librecola_la_SOURCES:.f90=} ${librecola_ut_la_SOURCES:.f90=}
-librecola_Modules = prc_recola recola_wrapper \
+#libwo_recola_Modules = ${libwo_recola_la_SOURCES:.f90=} ${libwo_recola_ut_la_SOURCES:.f90=}
+libwo_recola_Modules = prc_recola recola_wrapper \
 		    prc_recola_uti prc_recola_ut
 
-if FC_SUPPORTS_RECOLA
+if RECOLA_AVAILABLE
   prc_recola.lo: recola_wrapper.lo
 else
   prc_recola.lo: recola_wrapper_dummy.lo
 endif
 
 Modules: Makefile
-	@for module in $(librecola_Modules); do \
+	@for module in $(libwo_recola_Modules); do \
           echo $$module >> $@.new; \
         done
 	@if diff $@ $@.new -q >/dev/null; then \
@@ -115,7 +117,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(librecola_la_SOURCES) ${librecola_ut_la_SOURCES}
+Makefile.depend: $(libwo_recola_la_SOURCES) ${libwo_recola_ut_la_SOURCES}
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -147,10 +149,9 @@ if FC_USE_OPENMP
 AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
-# TODO: (cw 2015-03-26) Fix this
-# if RECOLA_AVAILABLE
-AM_FCFLAGS += -I$(RECOLA_DIR)/modules
-# endif
+if RECOLA_AVAILABLE
+AM_FCFLAGS += $(RECOLA_INCLUDES)
+endif
 ########################################################################
 ## Non-standard targets and dependencies
 
@@ -163,12 +164,12 @@ POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 recola.stamp: $(PRELUDE) $(srcdir)/recola.nw $(POSTLUDE)
 	@rm -f recola.tmp
 	@touch recola.tmp
-	for src in $(librecola_la_SOURCES) $(librecola_ut_la_SOURCES); do \
+	for src in $(libwo_recola_la_SOURCES) $(libwo_recola_ut_la_SOURCES) $(SOURCE_DUMMY_FILES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
 	@mv -f recola.tmp recola.stamp
 
-$(librecola_la_SOURCES) $(librecola_ut_la_SOURCES): recola.stamp
+$(libwo_recola_la_SOURCES) $(libwo_recola_ut_la_SOURCES) $(SOURCE_DUMMY_FILES): recola.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 	  rm -f recola.stamp; \
