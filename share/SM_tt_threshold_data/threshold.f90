@@ -534,13 +534,13 @@ contains
     p12 = mom_ofs(1) + mom_ofs(2)
     if (threshold%settings%onshell_projection%active ()) then
        call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
+       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
+       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
        if (.not. threshold%settings%onshell_projection%boost_decay) then
           lt = inverse (boost_to_cms (ptop_ons, ttv_mtpole (p12 * p12)))
        else
           lt = identity
        end if
-       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
-       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
     end if
     ptop_ofs = get_top_momenta_offshell (p_ofs)
     if (threshold%settings%factorized_computation) then
@@ -551,11 +551,13 @@ contains
        case (ONS)
           p_decay(1:2) = mom_ons(1:2)
           do i = 3, n_tot
-             p_decay(i) = apply_boost (inverse (lt(ass_leg(i))), mom_ons(i))
+             p_decay(i) = apply_boost ((lt(ass_leg(i))), mom_ons(i))
           end do
        case (ONS_BOOST)
           p_decay = mom_ons
        end select
+       if (debug2_active (D_SUBTRACTION)) &
+            call check_rest_frame (ttv_mtpole (p12 * p12))
        born_decay_me = compute_decay_me (p_decay)
     end if
     do hi = 1, nhel_max
@@ -617,6 +619,22 @@ contains
           amp_blob(hi) = - calculate_blob (ffi, p12, ptop_ofs, ptop_ons = ptop_ons)
        end if
     end do
+  contains
+    subroutine check_rest_frame (mtop)
+      real(default), intent(in) :: mtop
+      integer :: u
+      type(momentum) :: p_test
+      u = output_unit
+      print *, 'Born decay in rest frame? '
+      p_test = p_decay (THR_POS_WP) + p_decay (THR_POS_B)
+      call assert_equal (u, mtop, sqrt (p_test * p_test), &
+           "Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
+           rel_smallness = tiny_07, exit_on_fail = .true.)
+      p_test = p_decay (THR_POS_WM) + p_decay (THR_POS_BBAR)
+      call assert_equal (u, mtop, sqrt (p_test * p_test), &
+           "Check if anti-top quark is in rest frame: ", abs_smallness = tiny_07, &
+           rel_smallness = tiny_07, exit_on_fail = .true.)
+    end subroutine check_rest_frame
   end subroutine compute_born
 
   function compute_decay_me (p_decay) result (born_decay_me)
