@@ -557,7 +557,7 @@ contains
           p_decay = mom_ons
        end select
        if (.not. threshold%settings%onshell_projection%boost_decay &
-              .and. debug2_active (D_SUBTRACTION)) &
+              .and. debug2_active (D_THRESHOLD)) &
             call check_rest_frame (ttv_mtpole (p12 * p12))
        born_decay_me = compute_decay_me (p_decay)
     end if
