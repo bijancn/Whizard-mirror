@@ -105,7 +105,7 @@ module @ID@_threshold
   use diagnostics
   use numeric_utils
   use physics_defs, only: THR_POS_WP, THR_POS_WM, THR_POS_B, THR_POS_BBAR, THR_POS_GLUON
-  use physics_defs, only: ass_boson, ass_quark
+  use physics_defs, only: ass_boson, ass_quark, ass_leg
   use physics_defs, only: PROC_MODE_UNDEFINED, PROC_MODE_TT, PROC_MODE_WBWB
   use constants
   use lorentz
@@ -140,8 +140,6 @@ module @ID@_threshold
   integer, parameter :: ONS = 2
   integer, parameter :: ONS_BOOST = 3
 
-
-  type(lorentz_transformation_t), public :: boost_to_cms
 
   ! NB: you MUST NOT change the value of N_ here!!!
   !     It is defined here for convenience only and must be
@@ -528,6 +526,7 @@ contains
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest, p_decay
     type(momentum) :: p12
+    type(lorentz_transformation_t), dimension(2) :: lt
     integer :: i
     call init_workspace ()
     allocate (mom_ofs (n_tot), mom_ons (n_tot), mom_ons_rest (n_tot), p_decay(n_tot))
@@ -535,6 +534,11 @@ contains
     p12 = mom_ofs(1) + mom_ofs(2)
     if (threshold%settings%onshell_projection%active ()) then
        call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
+       if (.not. threshold%settings%onshell_projection%boost_decay) then
+          lt = inverse (boost_to_cms (ptop_ons, ttv_mtpole (p12 * p12)))
+       else
+          lt = identity
+       end if
        ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
        ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
     end if
@@ -547,7 +551,7 @@ contains
        case (ONS)
           p_decay(1:2) = mom_ons(1:2)
           do i = 3, n_tot
-             p_decay(i) = apply_boost (inverse (boost_to_cms), mom_ons(i))
+             p_decay(i) = apply_boost (inverse (lt(ass_leg(i))), mom_ons(i))
           end do
        case (ONS_BOOST)
           p_decay = mom_ons
@@ -709,7 +713,8 @@ contains
      end if
   end subroutine compute_projected_momenta
 
-  subroutine create_boost_to_cms (ptop_ons, mtop)
+  elemental function boost_to_cms (ptop_ons, mtop) result (lt)
+    type(lorentz_transformation_t) :: lt
     type(momentum), intent(in) :: ptop_ons
     real(default), intent(in) :: mtop
     real(default), dimension(4) :: tmp
@@ -717,17 +722,8 @@ contains
     !!! There is no direct conversion between type(momentum) and type(vector4_t)
     !!! So, we need a temporary real array to store the momentum values
     tmp = ptop_ons; v4_tmp = tmp
-    boost_to_cms = boost (v4_tmp, mtop)
-  end subroutine create_boost_to_cms
-
-  subroutine boost_onshell_to_rest_frame (n_tot, p_in, p_out)
-    integer, intent(in) :: n_tot
-    type(momentum), dimension(:), intent(in) :: p_in
-    type(momentum), dimension(:), allocatable, intent(out) :: p_out
-    allocate (p_out (n_tot))
-    p_out(1:2) = p_in(1:2)
-    p_out(3:n_tot) = apply_boost (inverse (boost_to_cms), p_in(3:n_tot))
-  end subroutine boost_onshell_to_rest_frame
+    lt = boost (v4_tmp, mtop)
+  end function boost_to_cms
 
   subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
     type(momentum), intent(in) :: p12, p35
@@ -736,6 +732,7 @@ contains
     real(default), dimension(1:3) :: unit_vec
     real(default), dimension(4) :: tmp, test
     integer :: u
+    type(lorentz_transformation_t) :: lt
     mtop = ttv_mtpole (p12 * p12)
     sqrts = - p12%t
     arg = sqrts**2 - four * mtop**2
@@ -744,21 +741,23 @@ contains
        unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
        ptop_ons(1) = [sqrts / 2, scale_factor * unit_vec]
        ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
-       call create_boost_to_cms (ptop_ons(1), mtop)
-    else
-       boost_to_cms = identity
     end if
     ptop_ons_rest(1) = [mtop, zero, zero, zero]
     ptop_ons_rest(2) = [mtop, zero, zero, zero]
     if (debug_active (D_THRESHOLD)) then
+       if (arg > zero) then
+          lt = boost_to_cms (ptop_ons(1), mtop)
+       else
+          lt = identity
+       end if
        u = output_unit
        if (sqrts > 2 * mtop) then
-          tmp = apply_boost (inverse (boost_to_cms), ptop_ons(1))
+          tmp = apply_boost (inverse (lt), ptop_ons(1))
           test = ptop_ons_rest(1)
           call assert_equal (u, tmp, test, &
                "verify that we have the right boost", abs_smallness=tiny_07 * 10, &
                rel_smallness=tiny_07, exit_on_fail=.true.)
-          tmp = apply_boost (boost_to_cms, ptop_ons_rest(1))
+          tmp = apply_boost (lt, ptop_ons_rest(1))
           test = ptop_ons(1)
           call assert_equal(u, test, tmp, "test the inverse boost", &
                exit_on_fail=.true.)
@@ -785,6 +784,7 @@ contains
     type(vector4_t), dimension(3) :: p_decay
     integer :: u
     logical :: momenta_already_onshell
+    type(lorentz_transformation_t) :: lt
     u = output_unit
     mtop = ttv_mtpole (p12*p12)
     mw2 = mass(24)**2
@@ -805,15 +805,17 @@ contains
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        p_ons_rest(THR_POS_B) = p_decay(2)%p
        p_ons_rest(THR_POS_WP) = p_decay(3)%p
-       p_ons(THR_POS_WP) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_WP))
-       p_ons(THR_POS_B) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_B))
+       lt = boost_to_cms (p_ons(1), mtop)
+       p_ons(THR_POS_WP) = apply_boost (lt, p_ons_rest(THR_POS_WP))
+       p_ons(THR_POS_B) = apply_boost (lt, p_ons_rest(THR_POS_B))
        p_tmp_1%p = p_ofs(THR_POS_BBAR)
        p_tmp_2%p = p_ofs(THR_POS_WM)
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        p_ons_rest(THR_POS_BBAR) = p_decay(2)%p
        p_ons_rest(THR_POS_WM) = p_decay(3)%p
-       p_ons(THR_POS_WM) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_WM))
-       p_ons(THR_POS_BBAR) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_BBAR))
+       lt = boost_to_cms (p_ons(2), mtop)
+       p_ons(THR_POS_WM) = apply_boost (lt, p_ons_rest(THR_POS_WM))
+       p_ons(THR_POS_BBAR) = apply_boost (lt, p_ons_rest(THR_POS_BBAR))
        p_ons(THR_POS_WM)%x(1:3) = - p_ons(THR_POS_WM)%x(1:3)
        p_ons(THR_POS_BBAR)%x(1:3) = - p_ons(THR_POS_BBAR)%x(1:3)
     else
@@ -954,6 +956,11 @@ contains
       type(momentum) :: p12
       type(momentum), dimension(4) :: p_real_ons
       type(momentum), dimension(6) :: p_born_ons
+      type(momentum), dimension(2) :: p_top_born
+      type(lorentz_transformation_t) :: lt
+      real(default) :: mtop
+      type(momentum) :: p_test
+      integer :: u
       allocate (p_ons_rest (size (p_ofs)))
       p12 = p_ofs(1) + p_ofs(2)
       ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
@@ -974,11 +981,22 @@ contains
            p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
       !!! Need to have a copy of p_ons due to intent(in)
       p_born_ons = p_ons
+      p_top_born(1) = p_ons (THR_POS_WP) + p_ons (THR_POS_B)
+      p_top_born(2) = p_ons (THR_POS_WM) + p_ons (THR_POS_BBAR)
       if (.not. threshold%settings%onshell_projection%boost_decay) then
-         call create_boost_to_cms (ptop_ons(leg), ttv_mtpole (p12 * p12))
-         p_real_ons = apply_boost (inverse(boost_to_cms), p_real_ons)
-         p_born_ons = apply_boost (inverse(boost_to_cms), p_born_ons)
-         p_top_born = apply_boost (inverse(boost_to_cms), p_top_born)
+         mtop = ttv_mtpole (p12 * p12)
+         lt = inverse (boost_to_cms (ptop_ons(leg), mtop))
+         p_real_ons = apply_boost (lt, p_real_ons)
+         p_born_ons = apply_boost (inverse (lt), p_born_ons)
+         if (debug2_active (D_THRESHOLd)) then
+            u = output_unit
+            call assert_equal (u, mtop, p_real_ons(1)%t, &
+                 'Real top is in rest frame?', abs_smallness = tiny_07, &
+                 rel_smallness = tiny_07, exit_on_fail = .true.)
+            p_test = p_born_ons(ass_boson(leg)) + p_born_ons (ass_quark(leg))
+            call assert_equal (u, mtop, p_test%t, 'Born top is in rest frame?', &
+                 abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+         end if
       end if
       do h_t = -1, 1, 2
       if (threshold%settings%helicity_approximation%ultra .and. h_t == -1) cycle
