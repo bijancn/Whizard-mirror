@@ -974,10 +974,11 @@ contains
            p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
       !!! Need to have a copy of p_ons due to intent(in)
       p_born_ons = p_ons
-      if (threshold%settings%onshell_projection%boost_decay) then
-         call create_boost_to_cms (ptop_ofs(1), ttv_mtpole (p12 * p12))
-         p_real_ons = apply_boost (boost_to_cms, p_real_ons)
-         p_born_ons = apply_boost (boost_to_cms, p_born_ons)
+      if (.not. threshold%settings%onshell_projection%boost_decay) then
+         call create_boost_to_cms (ptop_ons(leg), ttv_mtpole (p12 * p12))
+         p_real_ons = apply_boost (inverse(boost_to_cms), p_real_ons)
+         p_born_ons = apply_boost (inverse(boost_to_cms), p_born_ons)
+         p_top_born = apply_boost (inverse(boost_to_cms), p_top_born)
       end if
       do h_t = -1, 1, 2
       if (threshold%settings%helicity_approximation%ultra .and. h_t == -1) cycle
