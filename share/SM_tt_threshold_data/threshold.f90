@@ -981,8 +981,9 @@ contains
     procedure(top_decay_born), pointer :: top_decay_born_
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons!, ptop_ons_rest
     type(momentum) :: p12
-    type(momentum), dimension(4) :: p_real_ons
-    type(momentum), dimension(6) :: p_born_ons
+    !!! Need to have a copy of p_ons due to intent(in)
+    type(momentum), dimension(7) :: p_ons_full
+    type(momentum), dimension(4) :: p_ons_real_decay
     type(momentum), dimension(2) :: p_top_born
     type(lorentz_transformation_t) :: lt
     integer :: h_t, h_b, h_W, h_gl
@@ -1002,34 +1003,34 @@ contains
        top_decay_real => anti_top_real_decay_calculate_amplitude
        top_decay_born_ => top_decay_born
     end if
-    p_real_ons = [ptop_ons(leg), p_ons(ass_boson(leg)), &
+    p_ons_real_decay = [ptop_ons(leg), p_ons(ass_boson(leg)), &
          p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
-    !!! Need to have a copy of p_ons due to intent(in)
-    p_born_ons = p_ons
     p_top_born(1) = p_ons (THR_POS_WP) + p_ons (THR_POS_B)
     p_top_born(2) = p_ons (THR_POS_WM) + p_ons (THR_POS_BBAR)
     mtop = ttv_mtpole (p12 * p12)
     if (.not. threshold%settings%onshell_projection%boost_decay) then
        lt = inverse (boost_to_cms (ptop_ons(leg), mtop))
-       p_real_ons = apply_boost (lt, p_real_ons)
-       p_born_ons = apply_boost (inverse (lt), p_born_ons)
+       p_ons_real_decay = apply_boost (lt, p_ons_real_decay)
+       p_ons_full = apply_boost (inverse (lt), p_ons)
        if (debug2_active (D_THRESHOLd)) call check_rest_frame ()
+    else
+       p_ons_full = p_ons
     end if
     if (debug2_active (D_THRESHOLD)) call check_phase_space_point ()
     do h_t = -1, 1, 2
     if (threshold%settings%helicity_approximation%ultra .and. h_t == -1) cycle
     do h_W = -1, 1, 1
     do h_b = -1, 1, 2
-       born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_born_ons, h_t, h_W, h_b)
+       born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons_full, h_t, h_W, h_b)
        if (.not. test_ward) then
           do h_gl = -1, 1, 2
              real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
-                  (p_real_ons, [h_t, h_W, h_b, h_gl], zero)
+                  (p_ons_real_decay, [h_t, h_W, h_b, h_gl], zero)
           end do
        else
           do h_gl = -1, 1, 2
              real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
-                  (p_real_ons, [h_t, h_W, h_b, 4], zero)
+                  (p_ons_real_decay, [h_t, h_W, h_b, 4], zero)
           end do
        end if
     end do
@@ -1041,11 +1042,11 @@ contains
       integer :: u, other_leg
       type(momentum) :: p_test
       u = output_unit
-      call assert_equal (u, mtop, p_real_ons(1)%t, &
+      call assert_equal (u, mtop, p_ons_real_decay(1)%t, &
            'Real top is in rest frame?', abs_smallness = tiny_07, &
            rel_smallness = tiny_07, exit_on_fail = .true.)
       other_leg = 3 - leg
-      p_test = p_born_ons(ass_boson(other_leg)) + p_born_ons (ass_quark(other_leg))
+      p_test = p_ons_full (ass_boson(other_leg)) + p_ons_full (ass_quark(other_leg))
       call assert_equal (u, mtop, p_test%t, 'Born top is in rest frame?', &
            abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
     end subroutine check_rest_frame
@@ -1059,48 +1060,47 @@ contains
          sqrts = sqrt(p12 * p12)
          if (threshold%settings%onshell_projection%decay) then
            call assert_equal (u, mtop, &
-                sqrt (p_real_ons(1) * p_real_ons(1)), 'Real-decay Top is on-shell', &
+                sqrt (p_ons_real_decay(1) * p_ons_real_decay(1)), 'Real-decay Top is on-shell', &
                 abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
            if (threshold%settings%onshell_projection%boost_decay) &
-                call assert_equal (u, sqrts / two, sum (p_real_ons(2:4)%t), &
+                call assert_equal (u, sqrts / two, sum (p_ons_real_decay(2:4)%t), &
                      'Real decay momenta have E = sqrts / 2', abs_smallness = tiny_07, &
                      rel_smallness = tiny_07, exit_on_fail = .true.)
          end if
          !!! Use absoulate value to handle slightly negative values
-         call assert_equal (u, zero, sqrt (abs (p_real_ons(4)* p_real_ons(4))), &
+         call assert_equal (u, zero, sqrt (abs (p_ons_real_decay(4)* p_ons_real_decay(4))), &
               'Gluon is on-shell', abs_smallness = 1E-5_default, &
               rel_smallness = 1E-5_default, exit_on_fail = .true.)
-         call assert_equal (u, mass(5), sqrt (p_real_ons(3) * p_real_ons(3)), &
+         call assert_equal (u, mass(5), sqrt (p_ons_real_decay(3) * p_ons_real_decay(3)), &
               'Real-decay Bottom is on-shell', abs_smallness = tiny_07, &
               rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, mass(24), sqrt (p_real_ons(2) * p_real_ons(2)), &
+         call assert_equal (u, mass(24), sqrt (p_ons_real_decay(2) * p_ons_real_decay(2)), &
               'Real-decay W is on-shell', abs_smallness = tiny_07, &
               rel_smallness = tiny_07, exit_on_fail = .true.)
          other_leg = 3 - leg
          if (threshold%settings%onshell_projection%decay) then
-              p_test = p_born_ons(ass_quark(other_leg)) + p_born_ons(ass_boson(other_leg))
+              p_test = p_ons_full(ass_quark(other_leg)) + p_ons_full(ass_boson(other_leg))
               call assert_equal (u, mtop, sqrt (p_test * p_test), &
                    'Born-decay Top is on-shell', abs_smallness = tiny_07, &
                    rel_smallness = tiny_07, exit_on_fail = .true.)
          end if
-         p_test = p_born_ons(ass_quark(other_leg))
+         p_test = p_ons_full(ass_quark(other_leg))
          call assert_equal (u, mass(5), sqrt (p_test * p_test), &
               'Born-decay Bottom is on-shell', abs_smallness = tiny_07, &
               rel_smallness = tiny_07, exit_on_fail = .true.)
-         p_test = p_born_ons(ass_boson(other_leg))
+         p_test = p_ons_full(ass_boson(other_leg))
          call assert_equal (u, mass(24), sqrt (p_test * p_test), &
               'Born-decy W is on-shell', abs_smallness = tiny_07, &
               rel_smallness = tiny_07, exit_on_fail = .true.)
          do i = 1, 3
-            E = sum (p_real_ons (2:4)%x(i)) + p_born_ons(ass_quark(other_leg))%x(i) &
-                 + p_born_ons(ass_boson(other_leg))%x(i)
+            E = sum (p_ons_real_decay (2:4)%x(i)) + p_ons_full(ass_quark(other_leg))%x(i) &
+                 + p_ons_full(ass_boson(other_leg))%x(i)
             call assert_equal (u, zero, E, 'Total momentum vanishes', &
                  abs_smallness = 1E-5_default, rel_smallness = 1E-5_default, &
                  exit_on_fail = .true.)
          end do
       end if
     end subroutine check_phase_space_point
-
 
   end subroutine compute_real_amplitudes
 
