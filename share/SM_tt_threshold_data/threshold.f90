@@ -979,12 +979,11 @@ contains
     complex(default), intent(out) :: top_propagators_
     procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
     procedure(top_decay_born), pointer :: top_decay_born_
-    type(momentum), dimension(2) :: ptop_ofs, ptop_ons!, ptop_ons_rest
+    type(momentum), dimension(2) :: ptop_ofs, ptop_ons
     type(momentum) :: p12
     !!! Need to have a copy of p_ons due to intent(in)
     type(momentum), dimension(7) :: p_ons_full
     type(momentum), dimension(4) :: p_ons_real_decay
-    type(momentum), dimension(2) :: p_top_born
     type(lorentz_transformation_t) :: lt
     integer :: h_t, h_b, h_W, h_gl
     real(default) :: mtop
@@ -1005,13 +1004,11 @@ contains
     end if
     p_ons_real_decay = [ptop_ons(leg), p_ons(ass_boson(leg)), &
          p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
-    p_top_born(1) = p_ons (THR_POS_WP) + p_ons (THR_POS_B)
-    p_top_born(2) = p_ons (THR_POS_WM) + p_ons (THR_POS_BBAR)
     mtop = ttv_mtpole (p12 * p12)
     if (.not. threshold%settings%onshell_projection%boost_decay) then
        lt = inverse (boost_to_cms (ptop_ons(leg), mtop))
        p_ons_real_decay = apply_boost (lt, p_ons_real_decay)
-       p_ons_full = apply_boost (inverse (lt), p_ons)
+       p_ons_full = apply_boost (lt, p_ons)
        if (debug2_active (D_THRESHOLd)) call check_rest_frame ()
     else
        p_ons_full = p_ons
