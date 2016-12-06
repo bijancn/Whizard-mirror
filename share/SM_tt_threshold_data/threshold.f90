@@ -626,7 +626,6 @@ contains
       integer :: u
       type(momentum) :: p_test
       u = output_unit
-      print *, 'Born decay in rest frame? '
       p_test = p_decay (THR_POS_WP) + p_decay (THR_POS_B)
       call assert_equal (u, mtop, sqrt (p_test * p_test), &
            "Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
