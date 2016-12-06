@@ -713,10 +713,12 @@ contains
      type(momentum), dimension(2) :: ptop_ons, ptop_ons_rest
      real(default), dimension(4) :: tmp, test
      type(momentum) :: p12, p35
+     type(lorentz_transformation_t) :: lt
      if (threshold%settings%onshell_projection%active ()) then
         p12 = p_ofs(1) + p_ofs(2); p35 = p_ofs(3) + p_ofs(5)
         call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
-        call compute_projected_top_decay_products (p12, p_ofs, p_ons, p_ons_rest)
+        lt = boost_to_cms (ptop_ons(1), sqrt (ptop_ons(1) * ptop_ons(1)))
+        call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
               !!! No sum (...) function for type(momentum), need to do this explicitly
@@ -794,8 +796,9 @@ contains
     end if
   end subroutine compute_projected_top_momenta
 
-  subroutine compute_projected_top_decay_products (p12, p_ofs, p_ons, p_ons_rest)
+  subroutine compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
     type(momentum), intent(in) :: p12
+    type(lorentz_transformation_t), intent(in) :: lt
     type(momentum), intent(in), dimension(:) :: p_ofs
     type(momentum), intent(out), dimension(*) :: p_ons, p_ons_rest
     real(default) :: mtop, mw2, mb2, en_w, en_b
@@ -803,7 +806,6 @@ contains
     type(vector4_t), dimension(3) :: p_decay
     integer :: u
     logical :: momenta_already_onshell
-    type(lorentz_transformation_t) :: lt
     u = output_unit
     mtop = ttv_mtpole (p12*p12)
     mw2 = mass(24)**2
@@ -824,7 +826,6 @@ contains
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        p_ons_rest(THR_POS_B) = p_decay(2)%p
        p_ons_rest(THR_POS_WP) = p_decay(3)%p
-       lt = boost_to_cms (p_ons(1), mtop)
        p_ons(THR_POS_WP) = apply_boost (lt, p_ons_rest(THR_POS_WP))
        p_ons(THR_POS_B) = apply_boost (lt, p_ons_rest(THR_POS_B))
        p_tmp_1%p = p_ofs(THR_POS_BBAR)
@@ -832,7 +833,6 @@ contains
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        p_ons_rest(THR_POS_BBAR) = p_decay(2)%p
        p_ons_rest(THR_POS_WM) = p_decay(3)%p
-       lt = boost_to_cms (p_ons(2), mtop)
        p_ons(THR_POS_WM) = apply_boost (lt, p_ons_rest(THR_POS_WM))
        p_ons(THR_POS_BBAR) = apply_boost (lt, p_ons_rest(THR_POS_BBAR))
        p_ons(THR_POS_WM)%x(1:3) = - p_ons(THR_POS_WM)%x(1:3)
@@ -987,6 +987,7 @@ contains
     type(lorentz_transformation_t) :: lt
     integer :: h_t, h_b, h_W, h_gl
     real(default) :: mtop
+    integer :: other_leg
     p12 = p_ofs(1) + p_ofs(2)
     ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
     ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
@@ -1008,7 +1009,11 @@ contains
     if (.not. threshold%settings%onshell_projection%boost_decay) then
        lt = inverse (boost_to_cms (ptop_ons(leg), mtop))
        p_ons_real_decay = apply_boost (lt, p_ons_real_decay)
-       p_ons_full = apply_boost (lt, p_ons)
+       p_ons_full([ass_boson(leg), ass_quark(leg), THR_POS_GLUON]) = &
+               apply_boost (lt, p_ons([ass_boson(leg), ass_quark(leg), THR_POS_GLUON]))
+       other_leg = 3 - leg
+       p_ons_full([ass_boson(other_leg), ass_quark(other_leg)]) = &
+               apply_boost (inverse (lt), p_ons([ass_boson(other_leg), ass_quark(other_leg)]))
        if (debug2_active (D_THRESHOLd)) call check_rest_frame ()
     else
        p_ons_full = p_ons
