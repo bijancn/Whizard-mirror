@@ -67,6 +67,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   real(c_default_float), intent(out) :: acc_c
   type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest
   type(momentum), dimension(2) :: ptop_ofs, ptop_ons
+  type(momentum) :: p12
   complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
   integer :: h_el, h_pos, h_t, h_tbar
   integer :: leg, this_id, h_b, h_W
@@ -104,6 +105,11 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   p_decay(:,1,2) = ptop_ons(2)
   p_decay(:,2,2) = mom_ons(THR_POS_WM)
   p_decay(:,3,2) = mom_ons(THR_POS_BBAR)
+  if (.not. threshold%settings%onshell_projection%boost_decay &
+         .and. debug2_active (D_THRESHOLD)) then
+     p12 = mom_ofs(1) + mom_ofs(2)
+     call check_rest_frame (ttv_mtpole (p12 * p12))
+  end if
   bw = top_propagators (FF, mom_ofs(1) + mom_ofs(2), ptop_ofs)
   production_me = compute_production_me (FF, mom_ofs, ptop_ofs, ptop_ons)
   prod2 = zero
@@ -114,6 +120,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   reshuffle_id = [1,2,4,3]
   do h_t = -1, 1, 2
   do h_tbar = -1, 1, 2
+     if (skip (h_t, h_tbar)) cycle
      do h_el = -1, 1, 2
      do h_pos = -1, 1, 2
         prod2 = abs2 (production_me(h_el, h_pos, h_t, h_tbar))
@@ -147,9 +154,28 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   !!! the MEs are polarized or not
   total = total * production_factors
   sqme_c = [total(2), total(1), total(0), total(3)]
-  if (debug2_active (D_ME_METHODS)) then
-     print *, 'sqme_c =    ', sqme_c !!! Debugging
-  end if
+  if (debug2_active (D_ME_METHODS)) &
+       print *, 'sqme_c =    ', sqme_c !!! Debugging
+contains
+  function skip (h_t, h_tbar)
+    logical :: skip
+    integer, intent(in) :: h_t, h_tbar
+    skip = threshold%settings%helicity_approximation%ultra &
+         .and. (h_t /= 1 .or. h_tbar /= 1)
+  end function skip
+
+  subroutine check_rest_frame (mtop)
+    use, intrinsic :: iso_fortran_env, only: output_unit
+    use constants, only: tiny_07
+    use numeric_utils, only: assert_equal
+    real(default), intent(in) :: mtop
+    call assert_equal (output_unit, mtop, sqrt (ptop_ons(1) * ptop_ons(1)), &
+         'Top quark in rest frame?', abs_smallness = tiny_07, &
+         rel_smallness = tiny_07, exit_on_fail = .true.)
+    call assert_equal (output_unit, mtop, sqrt (ptop_ons(2) * ptop_ons(2)), &
+         'Anti-top quark in rest frame?', abs_smallness = tiny_07, &
+         rel_smallness = tiny_07, exit_on_fail = .true.)
+  end subroutine check_rest_frame
 end subroutine @ID@_olp_eval2
 
 subroutine @ID@_stop_openloops () bind(C)

@@ -141,8 +141,6 @@ module @ID@_threshold
   integer, parameter :: ONS_BOOST = 3
 
 
-  type(lorentz_transformation_t), public :: boost_to_cms
-
   ! NB: you MUST NOT change the value of N_ here!!!
   !     It is defined here for convenience only and must be
   !     compatible with hardcoded values in the amplitude!
@@ -528,6 +526,7 @@ contains
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest, p_decay
     type(momentum) :: p12
+    type(lorentz_transformation_t), dimension(2) :: lt
     integer :: i
     call init_workspace ()
     allocate (mom_ofs (n_tot), mom_ons (n_tot), mom_ons_rest (n_tot), p_decay(n_tot))
@@ -537,6 +536,11 @@ contains
        call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
        ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
        ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
+       if (.not. threshold%settings%onshell_projection%boost_decay) then
+          lt = inverse (boost_to_cms (ptop_ons, ttv_mtpole (p12 * p12)))
+       else
+          lt = identity
+       end if
     end if
     ptop_ofs = get_top_momenta_offshell (p_ofs)
     if (threshold%settings%factorized_computation) then
@@ -547,17 +551,27 @@ contains
        case (ONS)
           p_decay(1:2) = mom_ons(1:2)
           do i = 3, n_tot
-             p_decay(i) = apply_boost (inverse (boost_to_cms), mom_ons(i))
+             p_decay(i) = apply_boost ((lt(ass_leg(i))), mom_ons(i))
           end do
        case (ONS_BOOST)
           p_decay = mom_ons
        end select
+       if (.not. threshold%settings%onshell_projection%boost_decay &
+              .and. debug2_active (D_THRESHOLD)) &
+            call check_rest_frame (ttv_mtpole (p12 * p12))
        born_decay_me = compute_decay_me (p_decay)
     end if
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
        if (threshold%settings%factorized_computation) then
-          if (threshold%settings%helicity_approximation%simple) then
+          if (threshold%settings%helicity_approximation%ultra) then
+             prod = production_me(s(1), s(2), 1, 1)
+             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), 1, 1)
+             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), 1, 2)
+             amp_blob(hi) = amp_blob(hi) + &
+                  abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
+                  abs2 (dec1) * abs2 (dec2)
+          else if (threshold%settings%helicity_approximation%simple) then
              if (threshold%settings%helicity_approximation%extra) then
                 prod = zero
                 do h_t = -1, 1, 2
@@ -606,6 +620,34 @@ contains
           amp_blob(hi) = - calculate_blob (ffi, p12, ptop_ofs, ptop_ons = ptop_ons)
        end if
     end do
+  contains
+
+    function ass_leg (i_particle)
+      integer :: ass_leg
+      integer, intent(in) :: i_particle
+      if (i_particle == 3 .or. i_particle == 5) then
+         ass_leg = 1
+      else if (i_particle == 4 .or. i_particle == 6) then
+         ass_leg = 2
+      else
+         call msg_fatal ("ass_leg called with invalid argument!")
+      end if
+    end function ass_leg
+
+    subroutine check_rest_frame (mtop)
+      real(default), intent(in) :: mtop
+      integer :: u
+      type(momentum) :: p_test
+      u = output_unit
+      p_test = p_decay (THR_POS_WP) + p_decay (THR_POS_B)
+      call assert_equal (u, mtop, sqrt (p_test * p_test), &
+           "Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
+           rel_smallness = tiny_07, exit_on_fail = .true.)
+      p_test = p_decay (THR_POS_WM) + p_decay (THR_POS_BBAR)
+      call assert_equal (u, mtop, sqrt (p_test * p_test), &
+           "Check if anti-top quark is in rest frame: ", abs_smallness = tiny_07, &
+           rel_smallness = tiny_07, exit_on_fail = .true.)
+    end subroutine check_rest_frame
   end subroutine compute_born
 
   function compute_decay_me (p_decay) result (born_decay_me)
@@ -683,10 +725,11 @@ contains
      type(momentum), dimension(2) :: ptop_ons, ptop_ons_rest
      real(default), dimension(4) :: tmp, test
      type(momentum) :: p12, p35
+     type(lorentz_transformation_t) :: lt
      if (threshold%settings%onshell_projection%active ()) then
         p12 = p_ofs(1) + p_ofs(2); p35 = p_ofs(3) + p_ofs(5)
-        call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
-        call compute_projected_top_decay_products (p12, p_ofs, p_ons, p_ons_rest)
+        call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest, lt)
+        call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
               !!! No sum (...) function for type(momentum), need to do this explicitly
@@ -702,7 +745,8 @@ contains
      end if
   end subroutine compute_projected_momenta
 
-  subroutine create_boost_to_cms (ptop_ons, mtop)
+  elemental function boost_to_cms (ptop_ons, mtop) result (lt)
+    type(lorentz_transformation_t) :: lt
     type(momentum), intent(in) :: ptop_ons
     real(default), intent(in) :: mtop
     real(default), dimension(4) :: tmp
@@ -710,48 +754,42 @@ contains
     !!! There is no direct conversion between type(momentum) and type(vector4_t)
     !!! So, we need a temporary real array to store the momentum values
     tmp = ptop_ons; v4_tmp = tmp
-    boost_to_cms = boost (v4_tmp, mtop)
-  end subroutine create_boost_to_cms
+    lt = boost (v4_tmp, mtop)
+  end function boost_to_cms
 
-  subroutine boost_onshell_to_rest_frame (n_tot, p_in, p_out)
-    integer, intent(in) :: n_tot
-    type(momentum), dimension(:), intent(in) :: p_in
-    type(momentum), dimension(:), allocatable, intent(out) :: p_out
-    allocate (p_out (n_tot))
-    p_out(1:2) = p_in(1:2)
-    p_out(3:n_tot) = apply_boost (inverse (boost_to_cms), p_in(3:n_tot))
-  end subroutine boost_onshell_to_rest_frame
-
-  subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
+  subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest, lt)
     type(momentum), intent(in) :: p12, p35
     type(momentum), intent(out), dimension(2) :: ptop_ons, ptop_ons_rest
-    real(default) :: sqrts, scale_factor, mtop, arg
+    type(lorentz_transformation_t), intent(out) :: lt
+    real(default) :: sqrts, scale_factor, mtop, s_minus_threshold
     real(default), dimension(1:3) :: unit_vec
     real(default), dimension(4) :: tmp, test
     integer :: u
     mtop = ttv_mtpole (p12 * p12)
     sqrts = - p12%t
-    arg = sqrts**2 - four * mtop**2
-    if (arg > zero) then
-       scale_factor = sqrt (arg) / 2
+    s_minus_threshold = sqrts**2 - four * mtop**2
+    if (s_minus_threshold > zero) then
+       scale_factor = sqrt (s_minus_threshold) / 2
        unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
        ptop_ons(1) = [sqrts / 2, scale_factor * unit_vec]
        ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
-       call create_boost_to_cms (ptop_ons(1), mtop)
-    else
-       boost_to_cms = identity
     end if
     ptop_ons_rest(1) = [mtop, zero, zero, zero]
     ptop_ons_rest(2) = [mtop, zero, zero, zero]
+    if (s_minus_threshold > zero) then
+       lt = boost_to_cms (ptop_ons(1), mtop)
+    else
+       lt = identity
+    end if
     if (debug_active (D_THRESHOLD)) then
        u = output_unit
        if (sqrts > 2 * mtop) then
-          tmp = apply_boost (inverse (boost_to_cms), ptop_ons(1))
+          tmp = apply_boost (inverse (lt), ptop_ons(1))
           test = ptop_ons_rest(1)
           call assert_equal (u, tmp, test, &
                "verify that we have the right boost", abs_smallness=tiny_07 * 10, &
                rel_smallness=tiny_07, exit_on_fail=.true.)
-          tmp = apply_boost (boost_to_cms, ptop_ons_rest(1))
+          tmp = apply_boost (lt, ptop_ons_rest(1))
           test = ptop_ons(1)
           call assert_equal(u, test, tmp, "test the inverse boost", &
                exit_on_fail=.true.)
@@ -769,8 +807,9 @@ contains
     end if
   end subroutine compute_projected_top_momenta
 
-  subroutine compute_projected_top_decay_products (p12, p_ofs, p_ons, p_ons_rest)
+  subroutine compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
     type(momentum), intent(in) :: p12
+    type(lorentz_transformation_t), intent(in) :: lt
     type(momentum), intent(in), dimension(:) :: p_ofs
     type(momentum), intent(out), dimension(*) :: p_ons, p_ons_rest
     real(default) :: mtop, mw2, mb2, en_w, en_b
@@ -798,15 +837,15 @@ contains
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        p_ons_rest(THR_POS_B) = p_decay(2)%p
        p_ons_rest(THR_POS_WP) = p_decay(3)%p
-       p_ons(THR_POS_WP) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_WP))
-       p_ons(THR_POS_B) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_B))
+       p_ons(THR_POS_WP) = apply_boost (lt, p_ons_rest(THR_POS_WP))
+       p_ons(THR_POS_B) = apply_boost (lt, p_ons_rest(THR_POS_B))
        p_tmp_1%p = p_ofs(THR_POS_BBAR)
        p_tmp_2%p = p_ofs(THR_POS_WM)
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        p_ons_rest(THR_POS_BBAR) = p_decay(2)%p
        p_ons_rest(THR_POS_WM) = p_decay(3)%p
-       p_ons(THR_POS_WM) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_WM))
-       p_ons(THR_POS_BBAR) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_BBAR))
+       p_ons(THR_POS_WM) = apply_boost (lt, p_ons_rest(THR_POS_WM))
+       p_ons(THR_POS_BBAR) = apply_boost (lt, p_ons_rest(THR_POS_BBAR))
        p_ons(THR_POS_WM)%x(1:3) = - p_ons(THR_POS_WM)%x(1:3)
        p_ons(THR_POS_BBAR)%x(1:3) = - p_ons(THR_POS_BBAR)%x(1:3)
     else
@@ -891,24 +930,27 @@ contains
     real(default) :: total
     integer, dimension(2) :: h_ass_t
     integer, dimension(n_prt) :: s
-    integer :: hi, h_t, h_tbar, h_gl, h_W, h_b
+    integer :: hi, h_t, h_tbar, h_gl
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons
     integer :: other_leg
     if (.not. threshold%settings%factorized_computation)  &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'factorized (activate with 2')
-    if (.not. threshold%settings%helicity_approximation%simple) &
+    if (.not. (threshold%settings%helicity_approximation%simple .or. &
+              threshold%settings%helicity_approximation%ultra)) &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
     call init_workspace ()
     call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     call convert_to_mom_and_invert_sign (p_ons, n_tot, mom_ons)
-    call compute_amplitudes (mom_ofs, mom_ons, leg)
+    call compute_real_amplitudes (ffi, mom_ofs, mom_ons, leg, &
+         production_me, real_decay_me, born_decay_me, top_propagators_)
     total = zero
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
        do h_t = -1, 1, 2
        do h_tbar = -1, 1, 2
+          if (skip (h_t, h_tbar)) cycle
           h_ass_t = [h_t, h_tbar]
           other_leg = 3 - leg
           prod_ = production_me(s(1), s(2), h_t, h_tbar)
@@ -928,95 +970,152 @@ contains
 
   contains
 
-    subroutine compute_amplitudes (p_ofs, p_ons, leg)
-      type(momentum), intent(in), dimension(:) :: p_ofs, p_ons
-      integer, intent(in) :: leg
-      procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
-      procedure(top_decay_born), pointer :: top_decay_born_
-      type(momentum), dimension(2) :: ptop_ofs, ptop_ons!, ptop_ons_rest
-      type(momentum), dimension(:), allocatable :: p_ons_rest
-      type(momentum) :: p12
-      type(momentum), dimension(4) :: p_real_ons
-      allocate (p_ons_rest (size (p_ofs)))
-      p12 = p_ofs(1) + p_ofs(2)
-      ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
-      ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
-      ptop_ons(leg) = ptop_ons(leg) + p_ons(THR_POS_GLUON)
-      ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
-      ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
-      ptop_ofs(leg) = ptop_ofs(leg) + p_ofs(THR_POS_GLUON)
-      production_me = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
-      if (leg == 1) then
-         top_decay_real => top_real_decay_calculate_amplitude
-         top_decay_born_ => anti_top_decay_born
-      else
-         top_decay_real => anti_top_real_decay_calculate_amplitude
-         top_decay_born_ => top_decay_born
-      end if
-      p_real_ons = [ptop_ons(leg), p_ons(ass_boson(leg)), &
-           p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
-      do h_t = -1, 1, 2
-      do h_W = -1, 1, 1
-      do h_b = -1, 1, 2
-         born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons, h_t, h_W, h_b)
-         if (.not. test_ward) then
-            do h_gl = -1, 1, 2
-               real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
-                    (p_real_ons, [h_t, h_W, h_b, h_gl], zero)
-            end do
-         else
-            do h_gl = -1, 1, 2
-               real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
-                    (p_real_ons, [h_t, h_W, h_b, 4], zero)
-            end do
-         end if
-      end do
-      end do
-      end do
-      top_propagators_ = top_propagators (ffi, p12, ptop_ofs)
-    end subroutine compute_amplitudes
+    function skip (h_t, h_tbar)
+      logical :: skip
+      integer, intent(in) :: h_t, h_tbar
+      skip = threshold%settings%helicity_approximation%ultra &
+           .and. (h_t /= 1 .or. h_tbar /= 1)
+    end function skip
 
-    subroutine check_phase_space_point (p_decay, p_prod, mandelstam_s)
-      type(vector4_t), intent(in), dimension(4) :: p_decay
-      type(vector4_t), intent(in), dimension(3) :: p_prod
-      real(default), intent(in) :: mandelstam_s
+  end function compute_real
+
+  subroutine compute_real_amplitudes (ffi, p_ofs, p_ons, leg, &
+       production_me, real_decay_me, born_decay_me, top_propagators_)
+    integer, intent(in) :: ffi
+    type(momentum), intent(in), dimension(:) :: p_ofs, p_ons
+    integer, intent(in) :: leg
+    complex(default), intent(out), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
+    complex(default), intent(out), dimension(-1:1,-1:1,-1:1,-1:1) :: real_decay_me
+    complex(default), intent(out), dimension(-1:1,-1:1,-1:1) :: born_decay_me
+    complex(default), intent(out) :: top_propagators_
+    procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
+    procedure(top_decay_born), pointer :: top_decay_born_
+    type(momentum), dimension(2) :: ptop_ofs, ptop_ons
+    type(momentum) :: p12
+    !!! Need to have a copy of p_ons due to intent(in)
+    type(momentum), dimension(7) :: p_ons_full
+    type(momentum), dimension(4) :: p_ons_real_decay
+    type(lorentz_transformation_t) :: lt
+    integer :: h_t, h_b, h_W, h_gl
+    real(default) :: mtop
+    integer :: other_leg
+    p12 = p_ofs(1) + p_ofs(2)
+    ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
+    ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
+    ptop_ons(leg) = ptop_ons(leg) + p_ons(THR_POS_GLUON)
+    ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
+    ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
+    ptop_ofs(leg) = ptop_ofs(leg) + p_ofs(THR_POS_GLUON)
+    production_me = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
+    if (leg == 1) then
+       top_decay_real => top_real_decay_calculate_amplitude
+       top_decay_born_ => anti_top_decay_born
+    else
+       top_decay_real => anti_top_real_decay_calculate_amplitude
+       top_decay_born_ => top_decay_born
+    end if
+    p_ons_real_decay = [ptop_ons(leg), p_ons(ass_boson(leg)), &
+         p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
+    mtop = ttv_mtpole (p12 * p12)
+    if (.not. threshold%settings%onshell_projection%boost_decay) then
+       lt = inverse (boost_to_cms (ptop_ons(leg), mtop))
+       p_ons_real_decay = apply_boost (lt, p_ons_real_decay)
+       p_ons_full([ass_boson(leg), ass_quark(leg), THR_POS_GLUON]) = &
+               apply_boost (lt, p_ons([ass_boson(leg), ass_quark(leg), THR_POS_GLUON]))
+       other_leg = 3 - leg
+       p_ons_full([ass_boson(other_leg), ass_quark(other_leg)]) = &
+               apply_boost (inverse (lt), p_ons([ass_boson(other_leg), ass_quark(other_leg)]))
+       if (debug2_active (D_THRESHOLd)) call check_rest_frame ()
+    else
+       p_ons_full = p_ons
+    end if
+    if (debug2_active (D_THRESHOLD)) call check_phase_space_point ()
+    do h_t = -1, 1, 2
+    if (threshold%settings%helicity_approximation%ultra .and. h_t == -1) cycle
+    do h_W = -1, 1, 1
+    do h_b = -1, 1, 2
+       born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons_full, h_t, h_W, h_b)
+       if (.not. test_ward) then
+          do h_gl = -1, 1, 2
+             real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
+                  (p_ons_real_decay, [h_t, h_W, h_b, h_gl], zero)
+          end do
+       else
+          do h_gl = -1, 1, 2
+             real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
+                  (p_ons_real_decay, [h_t, h_W, h_b, 4], zero)
+          end do
+       end if
+    end do
+    end do
+    end do
+    top_propagators_ = top_propagators (ffi, p12, ptop_ofs)
+  contains
+    subroutine check_rest_frame ()
+      integer :: u, other_leg
+      type(momentum) :: p_test
+      u = output_unit
+      call assert_equal (u, mtop, p_ons_real_decay(1)%t, &
+           'Real top is in rest frame?', abs_smallness = tiny_07, &
+           rel_smallness = tiny_07, exit_on_fail = .true.)
+      other_leg = 3 - leg
+      p_test = p_ons_full (ass_boson(other_leg)) + p_ons_full (ass_quark(other_leg))
+      call assert_equal (u, mtop, p_test%t, 'Born top is in rest frame?', &
+           abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+    end subroutine check_rest_frame
+
+    subroutine check_phase_space_point ()
       real(default) :: sqrts, E
-      integer :: u, i
+      integer :: u, i, other_leg
+      type(momentum) :: p_test
       if (debug_active (D_THRESHOLD)) then
          u = output_unit
-         sqrts = sqrt(mandelstam_s)
-         call assert_equal (u, ttv_mtpole (mandelstam_s), &
-              p_decay(1)**1, 'Decay-top is on-shell', &
-              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, zero, p_decay(4)**1, 'Gluon is on-shell', &
-              abs_smallness = 1E-5_default, rel_smallness = 1E-5_default, &
-              exit_on_fail = .true.)
-         call assert_equal (u, mass(5), p_decay(3)**1, 'Decay-bottom is on-shell', &
-              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, mass(24), p_decay(2)**1, 'Decay-W is on-shell', &
-              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, ttv_mtpole (mandelstam_s), &
-              p_prod(1)**1, 'Production-top is on-shell', &
-              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, mass(5), p_prod(2)**1, 'Production-bottom is on-shell', &
-              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, mass(24), p_prod(3)**1, 'Production-W is on-shell', &
-              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, sqrts / two, sum (p_decay(2:4)%p(0)), &
-              'Decay momenta have E = sqrts / 2', abs_smallness = tiny_07, &
+         sqrts = sqrt(p12 * p12)
+         if (threshold%settings%onshell_projection%decay) then
+           call assert_equal (u, mtop, &
+                sqrt (p_ons_real_decay(1) * p_ons_real_decay(1)), 'Real-decay Top is on-shell', &
+                abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+           if (threshold%settings%onshell_projection%boost_decay) &
+                call assert_equal (u, sqrts / two, sum (p_ons_real_decay(2:4)%t), &
+                     'Real decay momenta have E = sqrts / 2', abs_smallness = tiny_07, &
+                     rel_smallness = tiny_07, exit_on_fail = .true.)
+         end if
+         !!! Use absoulate value to handle slightly negative values
+         call assert_equal (u, zero, sqrt (abs (p_ons_real_decay(4)* p_ons_real_decay(4))), &
+              'Gluon is on-shell', abs_smallness = 1E-5_default, &
+              rel_smallness = 1E-5_default, exit_on_fail = .true.)
+         call assert_equal (u, mass(5), sqrt (p_ons_real_decay(3) * p_ons_real_decay(3)), &
+              'Real-decay Bottom is on-shell', abs_smallness = tiny_07, &
               rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, sqrts / two, sum (p_prod(2:3)%p(0)), &
-              'Production momenta have E = sqrts / 2', abs_smallness = tiny_07, &
+         call assert_equal (u, mass(24), sqrt (p_ons_real_decay(2) * p_ons_real_decay(2)), &
+              'Real-decay W is on-shell', abs_smallness = tiny_07, &
+              rel_smallness = tiny_07, exit_on_fail = .true.)
+         other_leg = 3 - leg
+         if (threshold%settings%onshell_projection%decay) then
+              p_test = p_ons_full(ass_quark(other_leg)) + p_ons_full(ass_boson(other_leg))
+              call assert_equal (u, mtop, sqrt (p_test * p_test), &
+                   'Born-decay Top is on-shell', abs_smallness = tiny_07, &
+                   rel_smallness = tiny_07, exit_on_fail = .true.)
+         end if
+         p_test = p_ons_full(ass_quark(other_leg))
+         call assert_equal (u, mass(5), sqrt (p_test * p_test), &
+              'Born-decay Bottom is on-shell', abs_smallness = tiny_07, &
+              rel_smallness = tiny_07, exit_on_fail = .true.)
+         p_test = p_ons_full(ass_boson(other_leg))
+         call assert_equal (u, mass(24), sqrt (p_test * p_test), &
+              'Born-decy W is on-shell', abs_smallness = tiny_07, &
               rel_smallness = tiny_07, exit_on_fail = .true.)
          do i = 1, 3
-            E = sum (p_decay (2:4)%p(i)) + sum (p_prod(2:3)%p(i))
+            E = sum (p_ons_real_decay (2:4)%x(i)) + p_ons_full(ass_quark(other_leg))%x(i) &
+                 + p_ons_full(ass_boson(other_leg))%x(i)
             call assert_equal (u, zero, E, 'Total momentum vanishes', &
                  abs_smallness = 1E-5_default, rel_smallness = 1E-5_default, &
                  exit_on_fail = .true.)
          end do
       end if
     end subroutine check_phase_space_point
-  end function compute_real
+
+  end subroutine compute_real_amplitudes
 
 end module @ID@_threshold
 
