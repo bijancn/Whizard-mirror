@@ -715,8 +715,7 @@ contains
      type(lorentz_transformation_t) :: lt
      if (threshold%settings%onshell_projection%active ()) then
         p12 = p_ofs(1) + p_ofs(2); p35 = p_ofs(3) + p_ofs(5)
-        call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
-        lt = boost_to_cms (ptop_ons(1), sqrt (ptop_ons(1) * ptop_ons(1)))
+        call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest, lt)
         call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
@@ -745,31 +744,31 @@ contains
     lt = boost (v4_tmp, mtop)
   end function boost_to_cms
 
-  subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
+  subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest, lt)
     type(momentum), intent(in) :: p12, p35
     type(momentum), intent(out), dimension(2) :: ptop_ons, ptop_ons_rest
-    real(default) :: sqrts, scale_factor, mtop, arg
+    type(lorentz_transformation_t), intent(out) :: lt
+    real(default) :: sqrts, scale_factor, mtop, s_minus_threshold
     real(default), dimension(1:3) :: unit_vec
     real(default), dimension(4) :: tmp, test
     integer :: u
-    type(lorentz_transformation_t) :: lt
     mtop = ttv_mtpole (p12 * p12)
     sqrts = - p12%t
-    arg = sqrts**2 - four * mtop**2
-    if (arg > zero) then
-       scale_factor = sqrt (arg) / 2
+    s_minus_threshold = sqrts**2 - four * mtop**2
+    if (s_minus_threshold > zero) then
+       scale_factor = sqrt (s_minus_threshold) / 2
        unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
        ptop_ons(1) = [sqrts / 2, scale_factor * unit_vec]
        ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
     end if
     ptop_ons_rest(1) = [mtop, zero, zero, zero]
     ptop_ons_rest(2) = [mtop, zero, zero, zero]
+    if (s_minus_threshold > zero) then
+       lt = boost_to_cms (ptop_ons(1), mtop)
+    else
+       lt = identity
+    end if
     if (debug_active (D_THRESHOLD)) then
-       if (arg > zero) then
-          lt = boost_to_cms (ptop_ons(1), mtop)
-       else
-          lt = identity
-       end if
        u = output_unit
        if (sqrts > 2 * mtop) then
           tmp = apply_boost (inverse (lt), ptop_ons(1))
