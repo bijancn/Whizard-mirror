@@ -105,7 +105,7 @@ module @ID@_threshold
   use diagnostics
   use numeric_utils
   use physics_defs, only: THR_POS_WP, THR_POS_WM, THR_POS_B, THR_POS_BBAR, THR_POS_GLUON
-  use physics_defs, only: ass_boson, ass_quark, ass_leg
+  use physics_defs, only: ass_boson, ass_quark
   use physics_defs, only: PROC_MODE_UNDEFINED, PROC_MODE_TT, PROC_MODE_WBWB
   use constants
   use lorentz
@@ -621,6 +621,19 @@ contains
        end if
     end do
   contains
+
+    function ass_leg (i_particle)
+      integer :: ass_leg
+      integer, intent(in) :: i_particle
+      if (i_particle == 3 .or. i_particle == 5) then
+         ass_leg = 1
+      else if (i_particle == 4 .or. i_particle == 6) then
+         ass_leg = 2
+      else
+         call msg_fatal ("ass_leg called with invalid argument!")
+      end if
+    end function ass_leg
+
     subroutine check_rest_frame (mtop)
       real(default), intent(in) :: mtop
       integer :: u
