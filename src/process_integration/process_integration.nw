@@ -1947,6 +1947,23 @@ the trace (and thus, matrix and flows) evaluator, respectively.
 
 @ %def connected_state_get_beam_index
 @ %def connected_state_get_in_index
+@
+<<Parton states: connected state: TBP>>=
+  procedure :: fill_matrix_with_real => connected_state_fill_matrix_with_real
+<<Parton states: procedures>>=
+  subroutine connected_state_fill_matrix_with_real (state, sqme, qn)
+    class(connected_state_t), intent(inout) :: state
+    complex(default), intent(in), dimension(:) :: sqme
+    type(quantum_numbers_t), intent(in), dimension(:,:) :: qn
+    integer :: i
+    do i = 1, size (qn, dim = 2)
+       print *, 'Set: ', i, sqme(i)
+       call quantum_numbers_write (qn(:,i))
+       call state%matrix%set_matrix_element (qn(:,i), sqme(i))
+    end do
+  end subroutine connected_state_fill_matrix_with_real
+
+@ %def connected_state_add_to_matrix
 @ Return the number of outgoing (hard) particles for the state.
 <<Parton states: parton state: TBP>>=
   procedure :: get_n_out => parton_state_get_n_out
@@ -8352,6 +8369,9 @@ module pcm
   use lorentz, only: vector4_t, lorentz_transformation_t, identity
   use process_constants, only: process_constants_t
   use physics_defs
+  use model_data, only: model_data_t
+  use quantum_numbers, only: quantum_numbers_t
+  use flavors, only: flavor_t
   use nlo_data, only: nlo_settings_t
   use nlo_data, only: powheg_damping_t, powheg_damping_simple_t
   use phs_fks, only: isr_kinematics_t, real_kinematics_t
@@ -8465,6 +8485,7 @@ corresponding instance.  This is the nontrivial NLO version.
     type(region_data_t) :: region_data
     type(nlo_color_data_t) :: color_data
     class(powheg_damping_t), allocatable :: powheg_damping
+    type(quantum_numbers_t), dimension(:,:), allocatable :: qn_real, qn_born
   contains
   <<Pcm: pcm nlo: TBP>>
   end type pcm_nlo_t
@@ -8503,6 +8524,17 @@ each entry of the BLHA output array.
 @ %def pcm_nlo_get_n_flv_born
 @
 <<Pcm: pcm nlo: TBP>>=
+  procedure :: get_n_flv_real => pcm_nlo_get_n_flv_real
+<<Pcm: procedures>>=
+  function pcm_nlo_get_n_flv_real (pcm_nlo) result (n_flv)
+    integer :: n_flv
+    class(pcm_nlo_t), intent(in) :: pcm_nlo
+    n_flv = pcm_nlo%region_data%n_flv_real
+  end function pcm_nlo_get_n_flv_real
+
+@ %def pcm_nlo_get_n_flv_real
+@
+<<Pcm: pcm nlo: TBP>>=
   procedure :: get_n_alr => pcm_nlo_get_n_alr
 <<Pcm: procedures>>=
   function pcm_nlo_get_n_alr (pcm) result (n_alr)
@@ -8512,6 +8544,38 @@ each entry of the BLHA output array.
   end function pcm_nlo_get_n_alr
 
 @ %def pcm_nlo_get_n_alr
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_flv_states => pcm_nlo_get_flv_states
+<<Pcm: procedures>>=
+  function pcm_nlo_get_flv_states (pcm, born) result (flv)
+    integer, dimension(:,:), allocatable :: flv
+    class(pcm_nlo_t), intent(in) :: pcm
+    logical, intent(in) :: born
+    if (born) then
+       flv = pcm%region_data%get_flv_states_born ()
+    else
+       flv = pcm%region_data%get_flv_states_real ()
+    end if
+  end function pcm_nlo_get_flv_states
+
+@ %def pcm_nlo_get_flv_states
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_qn => pcm_nlo_get_qn
+<<Pcm: procedures>>=
+  function pcm_nlo_get_qn (pcm, born) result (qn)
+    type(quantum_numbers_t), dimension(:,:), allocatable :: qn
+    class(pcm_nlo_t), intent(in) :: pcm
+    logical, intent(in) :: born
+    if (born) then
+       qn = pcm%qn_born
+    else
+       qn = pcm%qn_real
+    end if
+  end function pcm_nlo_get_qn
+
+@ %def pcm_nlo_get_qn
 @ Check if there are massive emitters. Since the mass-structure of all
 underlying Born configurations have to be the same (\textbf{This does
 not have to be the case when different components are generated at LO})
@@ -8572,6 +8636,39 @@ not have to be the case when different components are generated at LO})
   end subroutine pcm_nlo_init_color_data
 
 @ %def pcm_nlo_init_color_data
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: init_qn => pcm_nlo_init_qn
+<<Pcm: procedures>>=
+  subroutine pcm_nlo_init_qn (pcm, model)
+    class(pcm_nlo_t), intent(inout) :: pcm
+    class(model_data_t), intent(in) :: model
+    integer, dimension(:,:), allocatable :: flv_states
+    type(flavor_t), dimension(:), allocatable :: flv
+    integer :: i
+    type(quantum_numbers_t), dimension(:), allocatable :: qn
+    flv_states = pcm%get_flv_states (.true.)
+    allocate (pcm%qn_born (size (flv_states, dim = 1), size (flv_states, dim = 2)))
+    allocate (flv (size (flv_states, dim = 1)))
+    allocate (qn (size (flv_states, dim = 1)))
+    do i = 1, pcm%get_n_flv_born ()
+       call flv%init (flv_states (:,i), model)
+       call qn%init (flv)
+       pcm%qn_born(:,i) = qn
+    end do
+    deallocate (flv); deallocate (qn)
+    flv_states = pcm%get_flv_states (.false.)
+    allocate (pcm%qn_real (size (flv_states, dim = 1), size (flv_states, dim = 2)))
+    allocate (flv (size (flv_states, dim = 1)))
+    allocate (qn (size (flv_states, dim = 1)))
+    do i = 1, pcm%get_n_flv_real ()
+       call flv%init (flv_states (:,i), model)
+       call qn%init (flv)
+       pcm%qn_real(:,i) = qn
+    end do
+  end subroutine pcm_nlo_init_qn
+
+@ %def pcm_nlo_init_qn
 @
 <<Pcm: pcm nlo: TBP>>=
   procedure :: allocate_ps_matching => pcm_nlo_allocate_ps_matching
@@ -10584,12 +10681,17 @@ The quantum numbers mask of the incoming particle
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(inout) :: core
     real(default), intent(in) :: alpha_s_sub
-    real(default) :: sqme
+    real(default), dimension(:), allocatable :: sqme
     integer :: i_phs, emitter
-    sqme = zero
     associate (pcm_instance => term%pcm_instance)
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
+          if (term%connected%has_matrix) then
+             allocate (sqme (config%get_n_alr ()))
+          else
+             allocate (sqme (1))
+          end if
+          sqme = zero
           select type (phs => term%k_term%phs)
           type is (phs_fks_t)
              call pcm_instance%set_real_and_isr_kinematics &
@@ -10598,20 +10700,31 @@ The quantum numbers mask of the incoming particle
                 call pcm_instance%disable_sqme_np1 ()
                 do i_phs = 1, config%region_data%n_phs
                    emitter = phs%phs_identifiers(i_phs)%emitter
-                   sqme = sqme + pcm_instance%real_sub%compute (emitter, &
-                          i_phs, alpha_s_sub)
+                   call pcm_instance%real_sub%compute (emitter, &
+                        i_phs, alpha_s_sub, term%connected%has_matrix, sqme)
                 end do
              else
                 call pcm_instance%disable_subtraction ()
                 emitter = term%k_term%emitter; i_phs = term%k_term%i_phs
                 pcm_instance%real_sub%sqme_real_non_sub (:, i_phs) = &
                      real (term%connected%trace%get_matrix_element ())
-                sqme = pcm_instance%real_sub%compute (emitter, i_phs, alpha_s_sub)
+                call pcm_instance%real_sub%compute (emitter, i_phs, alpha_s_sub, &
+                     term%connected%has_matrix, sqme)
              end if
           end select
        end select
     end associate
-    call term%connected%trace%set_matrix_element (cmplx (sqme, zero, default))
+    if (term%connected%has_trace) &
+         call term%connected%trace%set_matrix_element (cmplx (sum(sqme), zero, default))
+    if (term%connected%has_matrix) then
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          call term%connected%fill_matrix_with_real &
+               (cmplx (pack (sqme, sqme /= zero), zero, default), &
+               config%get_qn (term%k_term%emitter < 0))
+       end select
+       call term%connected%matrix%write ()
+    end if
   end subroutine term_instance_apply_fks
 
 @ %def term_instance_apply_fks
@@ -11313,6 +11426,7 @@ to subobject of [[instance]].
           call pcm%init_color_data &
              ([process%get_constants (i_born), process%get_constants (i_real)], &
               term%flv, term%col)
+          call pcm%init_qn (process%get_model_ptr ())
           if (i_real_fin > 0) call pcm%allocate_ps_matching ()
        end if
        pcm%initialized = .true.
