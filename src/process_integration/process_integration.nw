@@ -1952,25 +1952,29 @@ the trace (and thus, matrix and flows) evaluator, respectively.
 @ %def connected_state_get_in_index
 @
 <<Parton states: connected state: TBP>>=
-  procedure :: fill_matrix_with_real => connected_state_fill_matrix_with_real
+  procedure :: refill_matrix => connected_state_refill_matrix
 <<Parton states: procedures>>=
-  subroutine connected_state_fill_matrix_with_real (state, sqme, qn, flv_index)
+  subroutine connected_state_refill_matrix (state, sqme, qn, flv_index)
     class(connected_state_t), intent(inout) :: state
     complex(default), intent(in), dimension(:) :: sqme
     type(quantum_numbers_t), intent(in), dimension(:,:) :: qn
-    integer, intent(in), dimension(:) :: flv_index
-    integer :: alr, i_flv
+    integer, intent(in), dimension(:), optional :: flv_index
+    integer :: i, i_flv
     if (debug2_active (D_TRANSFORMS)) &
          print *, 'Fill matrix elements: ', sqme
-    do alr = 1, size (sqme)
-       i_flv = flv_index(alr)
-       call state%matrix%add_to_matrix_element (qn(:,i_flv), sqme(alr))
+    do i = 1, size (sqme)
+       if (present (flv_index)) then
+          i_flv = flv_index(i)
+       else
+          i_flv = i
+       end if
+       call state%matrix%add_to_matrix_element (qn(:,i_flv), sqme(i))
     end do
     if (debug2_active (D_TRANSFORMS)) then
-       print *, 'Real-sqme contents of connected%matrix: '
+       print *, 'NLO contents of connected%matrix: '
        call state%matrix%write ()
     end if
-  end subroutine connected_state_fill_matrix_with_real
+  end subroutine connected_state_refill_matrix
 
 @ %def connected_state_add_to_matrix
 @ Return the number of outgoing (hard) particles for the state.
@@ -9109,12 +9113,14 @@ object and the squared matrix-element collector.
 <<Pcm: pcm instance: TBP>>=
   procedure :: compute_sqme_virt => pcm_instance_nlo_compute_sqme_virt
 <<Pcm: procedures>>=
-  function pcm_instance_nlo_compute_sqme_virt (pcm_instance, p, alpha_s, me) result (sqme_virt)
-    real(default) :: sqme_virt
+  subroutine pcm_instance_nlo_compute_sqme_virt (pcm_instance, p, &
+         alpha_s, me, separate_alrs, sqme_virt)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: alpha_s
     complex(default), intent(in), dimension(:) :: me
+    logical, intent(in) :: separate_alrs
+    real(default), dimension(:), allocatable, intent(inout) :: sqme_virt
     type(vector4_t), dimension(:), allocatable :: pp
     associate (virtual => pcm_instance%virtual)
        allocate (pp (size (p)))
@@ -9125,11 +9131,16 @@ object and the squared matrix-element collector.
        end if
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
-          sqme_virt = virtual%evaluate (config%region_data, &
-               alpha_s, pp, real(me))
+          if (separate_alrs) then
+             allocate (sqme_virt (config%get_n_alr ()))
+          else
+             allocate (sqme_virt (1))
+          end if
+          call virtual%evaluate (config%region_data, &
+               alpha_s, pp, real(me), separate_alrs, sqme_virt)
        end select
     end associate
-  end function pcm_instance_nlo_compute_sqme_virt
+  end subroutine pcm_instance_nlo_compute_sqme_virt
 
 @ %def pcm_instance_nlo_compute_sqme_virt
 @
@@ -10595,7 +10606,7 @@ The quantum numbers mask of the incoming particle
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
     call setup_isolated (term%isolated, core, model, mask_in, term%config%col)
-    call setup_connected (term%connected, term%isolated)
+    call setup_connected (term%connected, term%isolated, term%nlo_type)
  contains
    subroutine setup_isolated (isolated, core, model, mask, color)
      type(isolated_state_t), intent(inout), target :: isolated
@@ -10607,10 +10618,17 @@ The quantum numbers mask of the incoming particle
      call isolated%setup_square_flows (core, model, mask)
    end subroutine setup_isolated
 
-   subroutine setup_connected (connected, isolated)
+   subroutine setup_connected (connected, isolated, nlo_type)
      type(connected_state_t), intent(inout), target :: connected
      type(isolated_state_t), intent(in), target :: isolated
+     integer :: nlo_type
+     type(quantum_numbers_mask_t), dimension(:), allocatable :: mask
      call connected%setup_connected_matrix (isolated)
+     if (term%nlo_type == NLO_VIRTUAL) then
+        allocate (mask (connected%matrix%get_n_tot()))
+        call mask%set_sub (1)
+        call connected%matrix%reduce_state_matrix (mask)
+     end if
      call connected%setup_connected_flows (isolated)
      call connected%setup_state_flv (isolated%get_n_out ())
    end subroutine setup_connected
@@ -10725,13 +10743,13 @@ The quantum numbers mask of the incoming particle
        end select
     end associate
     if (term%connected%has_trace) &
-         call term%connected%trace%set_matrix_element (cmplx (sum(sqme), zero, default))
+         call term%connected%trace%set_matrix_element (cmplx (sum(sqme), 0, default))
     if (term%connected%has_matrix) then
        select type (config => term%pcm_instance%config)
        type is (pcm_nlo_t)
           is_subtraction = term%k_term%emitter < 0
-          call term%connected%fill_matrix_with_real &
-               (cmplx (sqme, zero, default), &
+          call term%connected%refill_matrix &
+               (cmplx (sqme, 0, default), &
                config%get_qn (is_subtraction), &
                config%region_data%get_flavor_indices (is_subtraction))
        end select
@@ -10746,7 +10764,7 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_evaluate_sqme_virt (term, alpha_s)
      class(term_instance_t), intent(inout) :: term
      real(default), intent(in) :: alpha_s
-     real(default) :: sqme_virt
+     real(default), dimension(:), allocatable :: sqme_virt
      if (term%nlo_type /= NLO_VIRTUAL) call msg_fatal &
         ("Trying to evaluate virtual matrix element with unsuited term_instance.")
      if (debug2_active (D_VIRTUAL)) then
@@ -10757,10 +10775,18 @@ The quantum numbers mask of the incoming particle
      end if
      call term%pcm_instance%set_momenta_and_scales_virtual &
           (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
-     sqme_virt = term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
-          term%connected%trace%get_matrix_element ())
+     call term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
+          term%connected%trace%get_matrix_element (), &
+          term%connected%has_matrix, sqme_virt)
      call term%connected%trace%set_matrix_element &
-          (cmplx (sqme_virt * term%weight, 0, default))
+          (cmplx (sum(sqme_virt) * term%weight, 0, default))
+     if (term%connected%has_matrix) then
+        select type (config => term%pcm_instance%config)
+        type is (pcm_nlo_t)
+           call term%connected%refill_matrix (cmplx (sqme_virt, 0, default), &
+                config%get_qn (.true.), config%region_data%get_flavor_indices (.true.))
+        end select
+     end if
   end subroutine term_instance_evaluate_sqme_virt
 
 @ %def term_instance_evaluate_sqme_virt
