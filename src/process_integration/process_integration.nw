@@ -1951,14 +1951,20 @@ the trace (and thus, matrix and flows) evaluator, respectively.
 <<Parton states: connected state: TBP>>=
   procedure :: fill_matrix_with_real => connected_state_fill_matrix_with_real
 <<Parton states: procedures>>=
-  subroutine connected_state_fill_matrix_with_real (state, sqme, qn)
+  subroutine connected_state_fill_matrix_with_real (state, sqme, qn, flv_index)
     class(connected_state_t), intent(inout) :: state
     complex(default), intent(in), dimension(:) :: sqme
     type(quantum_numbers_t), intent(in), dimension(:,:) :: qn
-    integer :: i
-    do i = 1, size (qn, dim = 2)
-       call state%matrix%set_matrix_element (qn(:,i), sqme(i))
+    integer, intent(in), dimension(:) :: flv_index
+    integer :: alr, i_flv
+    do alr = 1, size (sqme)
+       i_flv = flv_index(alr)
+       call state%matrix%add_to_matrix_element (qn(:,i_flv), sqme(alr))
     end do
+    if (debug2_active (D_TRANSFORMS)) then
+       print *, 'Real-sqme contents of connected%matrix: '
+       call state%matrix%write ()
+    end if
   end subroutine connected_state_fill_matrix_with_real
 
 @ %def connected_state_add_to_matrix
@@ -10681,6 +10687,7 @@ The quantum numbers mask of the incoming particle
     real(default), intent(in) :: alpha_s_sub
     real(default), dimension(:), allocatable :: sqme
     integer :: i_phs, emitter
+    logical :: is_subtraction
     associate (pcm_instance => term%pcm_instance)
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
@@ -10717,9 +10724,11 @@ The quantum numbers mask of the incoming particle
     if (term%connected%has_matrix) then
        select type (config => term%pcm_instance%config)
        type is (pcm_nlo_t)
+          is_subtraction = term%k_term%emitter < 0
           call term%connected%fill_matrix_with_real &
-               (cmplx (pack (sqme, sqme /= zero), zero, default), &
-               config%get_qn (term%k_term%emitter < 0))
+               (cmplx (sqme, zero, default), &
+               config%get_qn (is_subtraction), &
+               config%region_data%get_flavor_indices (is_subtraction))
        end select
     end if
   end subroutine term_instance_apply_fks
@@ -12909,7 +12918,8 @@ term instance.
     class(process_instance_t), intent(inout) :: instance
     integer :: i_term
     do i_term = 1, size (instance%term)
-       call instance%term(i_term)%connected%trace%set_matrix_element (cmplx (0,0,default))
+       call instance%term(i_term)%connected%trace%set_matrix_element (cmplx (0, 0, default))
+       call instance%term(i_term)%connected%matrix%set_matrix_element (cmplx (0, 0, default))
     end do
   end subroutine process_instance_reset_matrix_elements
 
