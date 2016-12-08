@@ -53,6 +53,7 @@ module event_transforms
   use particles
   use subevents
   use rng_base
+  use quantum_numbers, only: quantum_numbers_t
   use process, only: process_t
   use instances, only: process_instance_t
   use process_stacks
@@ -336,6 +337,37 @@ the state.  For testing purposes, we can provide those numbers explicitly.
   end subroutine evt_factorize_interactions
 
 @ %def evt_factorize_interactions
+@
+<<Event transforms: public>>=
+  public :: make_factorized_particle_set
+<<Event transforms: procedures>>=
+  subroutine make_factorized_particle_set (evt, factorization_mode, &
+         keep_correlations, r, ii_term, qn_select)
+    class(evt_t), intent(inout) :: evt
+    integer, intent(in) :: factorization_mode
+    logical, intent(in) :: keep_correlations
+    real(default), dimension(:), intent(in), optional :: r
+    integer, intent(in), optional :: ii_term
+    type(quantum_numbers_t), dimension(:), intent(in), optional :: qn_select
+    integer :: i_term
+    type(interaction_t), pointer :: int_matrix, int_flows
+    if (evt%process_instance%is_complete_event ()) then
+       if (present (ii_term)) then
+          i_term = ii_term
+       else
+          i_term = evt%process_instance%select_i_term ()
+       end if
+       int_matrix => evt%process_instance%get_matrix_int_ptr (i_term)
+       int_flows  => evt%process_instance%get_flows_int_ptr (i_term)
+       call evt%factorize_interactions (int_matrix, int_flows, &
+            factorization_mode, keep_correlations, r)
+       call evt%tag_incoming ()
+    else
+       call msg_bug ("Event factorization: event is incomplete")
+    end if
+  end subroutine make_factorized_particle_set
+
+@ %def make_factorized_particle_set
 @ Mark the incoming particles as incoming in the particle set.  This
 is necessary because in the interaction objects they are usually
 marked as virtual.
@@ -442,18 +474,8 @@ instance as-is.
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
-    integer :: i_term
-    type(interaction_t), pointer :: int_matrix, int_flows
-    if (evt%process_instance%is_complete_event ()) then
-       i_term = evt%process_instance%select_i_term ()
-       int_matrix => evt%process_instance%get_matrix_int_ptr (i_term)
-       int_flows  => evt%process_instance%get_flows_int_ptr (i_term)
-       call evt%factorize_interactions (int_matrix, int_flows, &
-            factorization_mode, keep_correlations, r)
-       call evt%tag_incoming ()
-    else
-       call msg_bug ("Event factorization: event is incomplete")
-    end if
+    call make_factorized_particle_set (evt, factorization_mode, &
+         keep_correlations, r)
   end subroutine evt_trivial_make_particle_set
 
 @ %def event_trivial_make_particle_set
@@ -5281,7 +5303,7 @@ object in the [[pcm_instance]].
     end type registered_triple_t
     type(registered_triple_t), allocatable, target :: check_list
     i_evaluation = 1
-    n_phs = reg_data%n_phs!; n_flv = reg_data%n_flv_real
+    n_phs = reg_data%n_phs
     evt%weight_multiplier = n_phs + 1
     allocate (evt%i_evaluation_to_i_phs (n_phs), source = 0)
     allocate (evt%i_evaluation_to_emitter (n_phs), source = -1)
@@ -5481,7 +5503,24 @@ is distributed over the real and Born subevents.
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
-    evt%particle_set_exists = .true.
+    integer :: i_term
+    if (evt%mode >= EVT_NLO_SEPARATE_BORNLIKE) then
+       select type (config => evt%process_instance%pcm%config)
+       type is (pcm_nlo_t)
+          if (evt%i_evaluation > 0) then
+             call make_factorized_particle_set (evt, factorization_mode, &
+                  keep_correlations, r, evt%i_evaluation_to_i_term (evt%i_evaluation), &
+                  config%qn_real(:, evt%chosen_i_flv))
+          else
+             call make_factorized_particle_set (evt, factorization_mode, &
+                  keep_correlations, r, evt%i_evaluation_to_i_term (evt%i_evaluation), &
+                  config%qn_born(:, evt%chosen_i_flv))
+          end if
+       end select
+    else
+       call make_factorized_particle_set (evt, factorization_mode, &
+            keep_correlations, r)
+    end if
   end subroutine evt_nlo_make_particle_set
 
 @ %def evt_nlo_make_particle_set
@@ -5512,20 +5551,20 @@ mother-daughter relations and color information.
        select type (config => pcm%config)
        type is (pcm_nlo_t)
           !!! TODO (cw-2016-12-07): Make this nice again
-          i_flv = 1
-          allocate (flv_radiated (size (config%region_data%get_flv_states_real (i_flv))))
-          flv_radiated = config%region_data%get_flv_states_real (i_flv)
-          call evt%rng%generate (r_col)
-          call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
-          if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
-          i_phs = evt%get_i_phs()
-          emitter = evt%get_emitter ()
-          if (emitter == 0) emitter = choose_in_or_out ()
-          call msg_debug (D_TRANSFORMS, "emitter", emitter)
-          allocate (p_new (size (pcm%get_momenta (i_phs = i_phs, born_phsp = .false.))))
-          p_new = pcm%get_momenta (i_phs = i_phs, born_phsp = .false.)
-          call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
-             evt%process_instance%process%get_model_ptr (), r_col)
+          !i_flv = 1
+          !allocate (flv_radiated (size (config%region_data%get_flv_states_real (i_flv))))
+          !flv_radiated = config%region_data%get_flv_states_real (i_flv)
+          !call evt%rng%generate (r_col)
+          !call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
+          !if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
+          !i_phs = evt%get_i_phs()
+          !emitter = evt%get_emitter ()
+          !if (emitter == 0) emitter = choose_in_or_out ()
+          !call msg_debug (D_TRANSFORMS, "emitter", emitter)
+          !allocate (p_new (size (pcm%get_momenta (i_phs = i_phs, born_phsp = .false.))))
+          !p_new = pcm%get_momenta (i_phs = i_phs, born_phsp = .false.)
+          !call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
+          !   evt%process_instance%process%get_model_ptr (), r_col)
        end select
     end select
   contains
@@ -5839,23 +5878,51 @@ emission matrix elements.
     real(default), dimension(:), allocatable :: sqme_flv
     call evt%reset ()
     call evt%rng%generate (x)
-    allocate (ii_term (evt%event_deps%n_phs + 1))
-    ii_term = evt%process_instance%get_term_indices (NLO_REAL)
     sqme_total = zero
-    select type (config => evt%process_instance%pcm%config)
-    type is (pcm_nlo_t)
-       allocate (sqme_flv (config%region_data%n_flv_real))
-       sqme_flv = zero
-       do i = 1, 3
-          associate (term => evt%process_instance%term(ii_term(i)))
-             sqme_total = sqme_total + sum (term%connected%matrix%get_matrix_element ())
-             sqme_flv = sqme_flv + term%connected%matrix%get_matrix_element ()
-          end associate
-       end do
-    end select
+    allocate (sqme_flv (evt%process_instance%term(1)%config%data%n_flv))
+    do i = 1, size (evt%process_instance%term)
+       print *, 'i: ', i
+       print *, 'flavors: ', evt%process_instance%term(i)%config%data%flv_state
+       print *, 'n_flavors: ', evt%process_instance%term(i)%config%data%n_flv
+       print *, 'trace - n_me: ', size (evt%process_instance%term(i)%connected%trace%get_matrix_element ())
+       print *, 'matrix - n_me: ', size (evt%process_instance%term(i)%connected%matrix%get_matrix_element ())
+       print *, 'trace: ', evt%process_instance%term(i)%connected%trace%get_matrix_element ()
+    end do
+    sqme_flv = zero
+    do i = 1, size (evt%process_instance%term)
+       associate (term => evt%process_instance%term(i))
+          sqme_total = sqme_total + sum (term%connected%matrix%get_matrix_element ())
+          sqme_flv = sqme_flv + term%connected%matrix%get_matrix_element ()
+       end associate
+    end do
+       !select case (evt%mode)
+       !case (EVT_NLO_SEPARATE_REAL)
+       !   allocate (ii_term (evt%event_deps%n_phs + 1))
+       !   ii_term = evt%process_instance%get_term_indices (NLO_REAL)
+       !case (EVT_NLO_COMBINED)
+       !   allocate (ii_term (size (evt%process_instance%term)))
+       !   do i = 1, size (evt%process_instance%term)
+       !      ii_term(i) = i
+       !   end do
+       !end select
+       !do i = 1, size (ii_term)
+       !   associate (term => evt%process_instance%term(ii_term(i)))
+       !      sqme_total = sqme_total + sum (term%connected%matrix%get_matrix_element ())
+       !      sqme_flv = sqme_flv + term%connected%matrix%get_matrix_element ()
+       !   end associate
+       !end do
+    !else
+    !   associate (term => evt%process_instance%term(1))
+    !      allocate (sqme_flv (term%config%data%n_flv))
+    !      sqme_total = sum (term%connected%matrix%get_matrix_element ())
+    !      sqme_flv = term%connected%matrix%get_matrix_element ()  
+    !   end associate
+    !end if
     !!! Need absolute values to take into account negative weights
     x = x * abs (sqme_total)
     s = zero
+    print *, 'Choose i_flv: ', sqme_flv
+    print *, 'x: ', x
     do i = 1, size (sqme_flv)
        s = s + abs (sqme_flv (i))
        if (s > x) then
