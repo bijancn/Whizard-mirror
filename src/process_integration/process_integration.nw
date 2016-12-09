@@ -9148,25 +9148,46 @@ object and the squared matrix-element collector.
 <<Pcm: pcm instance: TBP>>=
   procedure :: compute_sqme_mismatch => pcm_instance_nlo_compute_sqme_mismatch
 <<Pcm: procedures>>=
-  function pcm_instance_nlo_compute_sqme_mismatch (pcm_instance, alpha_s) result (sqme_mism)
-    real(default) :: sqme_mism
+  subroutine pcm_instance_nlo_compute_sqme_mismatch (pcm_instance, &
+           alpha_s, separate_alrs, sqme_mism)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
-    real(default) :: alpha_s
-    sqme_mism = pcm_instance%soft_mismatch%evaluate (alpha_s)
-  end function pcm_instance_nlo_compute_sqme_mismatch
+    real(default), intent(in) :: alpha_s
+    logical, intent(in) :: separate_alrs
+    real(default), dimension(:), allocatable, intent(inout) :: sqme_mism
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       if (separate_alrs) then
+          allocate (sqme_mism (config%get_n_flv_born ()))
+       else
+          allocate (sqme_mism (1))
+       end if
+       sqme_mism = zero
+       sqme_mism = pcm_instance%soft_mismatch%evaluate (alpha_s)
+    end select
+  end subroutine pcm_instance_nlo_compute_sqme_mismatch
 
 @ %def pcm_instance_nlo_compute_sqme_mismatch
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: compute_sqme_dglap_remnant => pcm_instance_nlo_compute_sqme_dglap_remnant
 <<Pcm: procedures>>=
-  function pcm_instance_nlo_compute_sqme_dglap_remnant (pcm_instance, alpha_s, sqme_born) &
-     result (sqme_dglap)
-    real(default) :: sqme_dglap
+  subroutine pcm_instance_nlo_compute_sqme_dglap_remnant (pcm_instance, &
+            alpha_s, sqme_born, separate_alrs, sqme_dglap)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
-    real(default), intent(in) :: alpha_s, sqme_born
+    real(default), intent(in) :: alpha_s
+    real(default), dimension(:), intent(in) :: sqme_born
+    logical, intent(in) :: separate_alrs
+    real(default), dimension(:), allocatable, intent(inout) :: sqme_dglap
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       if (separate_alrs) then
+          allocate (sqme_dglap (config%get_n_flv_born ()))
+       else
+          allocate (sqme_dglap (1))
+       end if
+    end select
     sqme_dglap = pcm_instance%dglap_remnant%evaluate (alpha_s, sqme_born)
-  end function pcm_instance_nlo_compute_sqme_dglap_remnant
+  end subroutine pcm_instance_nlo_compute_sqme_dglap_remnant
 
 @ %def pcm_instance_nlo_compute_sqme_dglap_remnant
 @
@@ -10784,7 +10805,7 @@ The quantum numbers mask of the incoming particle
      if (term%connected%has_matrix) then
         select type (config => term%pcm_instance%config)
         type is (pcm_nlo_t)
-           call term%connected%refill_matrix (cmplx (sqme_virt, 0, default), &
+           call term%connected%refill_matrix (cmplx (sqme_virt * term%weight, 0, default), &
                 config%get_qn (.true.), config%region_data%get_flavor_indices (.true.))
         end select
      end if
@@ -10798,10 +10819,20 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_evaluate_sqme_mismatch (term, alpha_s)
     class(term_instance_t), intent(inout) :: term
     real(default), intent(in) :: alpha_s
+    real(default), dimension(:), allocatable :: sqme_mism
     if (term%nlo_type /= NLO_MISMATCH) call msg_fatal &
        ("Trying to evaluate soft mismatch with unsuited term_instance.")
+    call term%pcm_instance%compute_sqme_mismatch &
+         (alpha_s, term%connected%has_matrix, sqme_mism)
     call term%connected%trace%set_matrix_element &
-       (cmplx (term%pcm_instance%compute_sqme_mismatch (alpha_s) * term%weight, zero, default))
+       (cmplx (sqme_mism * term%weight, zero, default))
+    if (term%connected%has_matrix) then
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          call term%connected%refill_matrix (cmplx (sqme_mism * term%weight, 0, default), &
+               config%get_qn (.true.), config%region_data%get_flavor_indices (.true.))
+       end select
+    end if
   end subroutine term_instance_evaluate_sqme_mismatch
 
 @ %def term_instance_evaluate_sqme_mismatch
@@ -10812,12 +10843,21 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_evaluate_sqme_dglap (term, alpha_s)
     class(term_instance_t), intent(inout) :: term
     real(default), intent(in) :: alpha_s
-    real(default) :: sqme
+    real(default), dimension(:), allocatable :: sqme_dglap
     if (term%nlo_type /= NLO_DGLAP) call msg_fatal &
        ("Trying to evaluate DGLAP remnant with unsuited term_instance.")
-    sqme = term%pcm_instance%compute_sqme_dglap_remnant (alpha_s, &
-       real (term%connected%trace%get_matrix_element (1)))
-    call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
+    call term%pcm_instance%compute_sqme_dglap_remnant (alpha_s, &
+       real (term%connected%trace%get_matrix_element ()), &
+       term%connected%has_matrix, sqme_dglap)
+    call term%connected%trace%set_matrix_element &
+         (cmplx (sqme_dglap * term%weight, 0, default))
+    if (term%connected%has_matrix) then
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          call term%connected%refill_matrix (cmplx (sqme_dglap * term%weight, 0, default), &
+               config%get_qn (.true.), config%region_data%get_flavor_indices (.true.))
+       end select
+    end if
   end subroutine term_instance_evaluate_sqme_dglap
 
 @ %def term_instance_evaluate_sqme_dglap
