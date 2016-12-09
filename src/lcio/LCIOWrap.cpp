@@ -94,6 +94,10 @@ extern "C" void lcio_set_beam_file ( LCEventImpl* evt, char* file ) {
   evt->parameters().setValue ( "BeamSpectrum", file );
 }
 
+extern "C" void lcio_set_process_name ( LCEventImpl* evt, char* name ) {
+  evt->parameters().setValue ( "processName", name );
+}
+
 extern "C" LCEvent* read_lcio_event ( LCReader* lcRdr) {
   LCEvent* evt;
   if ((evt = lcRdr->readNextEvent ()) != 0) {    

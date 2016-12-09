@@ -128,6 +128,17 @@ subroutine lcio_set_beam_file (evt_obj, file) bind(C)
   stop                     
 end subroutine lcio_set_beam_file
 
+! extern "C" void lcio_set_process_name ( LCEventImpl* evt, char* name ) {
+subroutine lcio_set_process_name (evt_obj, name) bind(C)
+  use iso_c_binding
+  type(c_ptr), value :: evt_obj
+  character(len=1, kind=c_char), dimension(*), intent(in) :: name
+  write (0, "(A)")  "***********************************************************"
+  write (0, "(A)")  "*** LCIO: Error: library not linked, WHIZARD terminates ***"
+  write (0, "(A)")  "***********************************************************"
+  stop                     
+end subroutine lcio_set_process_name
+
 ! extern "C" void lcio_event_delete( void* evt) {}
 subroutine lcio_event_delete (evt_obj) bind(C)
   use iso_c_binding
