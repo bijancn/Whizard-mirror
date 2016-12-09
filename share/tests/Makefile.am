@@ -593,6 +593,9 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/stdhep_5.ref \
     functional_tests/ref-output/stdhep_6.ref \
     functional_tests/ref-output/lcio_1.ref \
+    functional_tests/ref-output/lcio_2.ref \
+    functional_tests/ref-output/lcio_3.ref \
+    functional_tests/ref-output/lcio_4.ref \
     functional_tests/ref-output/fatal_beam_decay.ref \
     functional_tests/ref-output/smtest_1.ref \
     functional_tests/ref-output/smtest_3.ref \
@@ -908,6 +911,9 @@ MISC_TESTS_SIN = \
     functional_tests/stdhep_5.sin \
     functional_tests/stdhep_6.sin \
     functional_tests/lcio_1.sin \
+    functional_tests/lcio_2.sin \
+    functional_tests/lcio_3.sin \
+    functional_tests/lcio_4.sin \
     functional_tests/fatal_beam_decay.sin \
     functional_tests/smtest_1.sin \
     functional_tests/smtest_2.sin \
