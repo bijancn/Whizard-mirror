@@ -118,7 +118,7 @@ subroutine lcio_set_pol (evt_obj, pol1, pol2) bind(C)
 end subroutine lcio_set_pol
 
 ! extern "C" void lcio_set_beam_file ( LCEventImpl* evt, char* file ) {
-subroutine lcio_set_beam_file (evt_obj, pol1, pol2) bind(C)
+subroutine lcio_set_beam_file (evt_obj, file) bind(C)
   use iso_c_binding
   type(c_ptr), value :: evt_obj
   character(len=1, kind=c_char), dimension(*), intent(in) :: file  
