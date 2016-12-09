@@ -5401,6 +5401,21 @@ object in the [[pcm_instance]].
 @ %def evt_nlo_get_emitter
 @
 <<Evt Nlo: evt nlo: TBP>>=
+  procedure :: get_i_term => evt_nlo_get_i_term
+<<Evt Nlo: procedures>>=
+  function evt_nlo_get_i_term (evt) result (i_term)
+    integer :: i_term
+    class(evt_nlo_t), intent(in) :: evt
+    if (evt%mode >= EVT_NLO_SEPARATE_REAL) then
+       i_term = evt%i_evaluation_to_i_term (evt%i_evaluation)
+    else
+       i_term = evt%process_instance%get_first_active_i_term ()
+    end if
+  end function evt_nlo_get_i_term
+
+@ %def evt_nlo_get_i_term
+@
+<<Evt Nlo: evt nlo: TBP>>=
   procedure :: copy_previous_particle_set => evt_nlo_copy_previous_particle_set
 <<Evt Nlo: procedures>>=
   subroutine evt_nlo_copy_previous_particle_set (evt)
@@ -5505,17 +5520,16 @@ is distributed over the real and Born subevents.
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
-    integer :: i_term
     if (evt%mode >= EVT_NLO_SEPARATE_BORNLIKE) then
        select type (config => evt%process_instance%pcm%config)
        type is (pcm_nlo_t)
           if (evt%i_evaluation > 0) then
              call make_factorized_particle_set (evt, factorization_mode, &
-                  keep_correlations, r, evt%i_evaluation_to_i_term (evt%i_evaluation), &
+                  keep_correlations, r, evt%get_i_term (), &
                   config%qn_real(:, evt%chosen_i_flv))
           else
              call make_factorized_particle_set (evt, factorization_mode, &
-                  keep_correlations, r, evt%i_evaluation_to_i_term (evt%i_evaluation), &
+                  keep_correlations, r, evt%get_i_term (), &
                   config%qn_born(:, evt%chosen_i_flv))
           end if
        end select
@@ -5614,17 +5628,21 @@ mother-daughter relations and color information.
     integer :: alr, i_phs, i_con, emitter
     real(default), dimension(3) :: x_rad
     logical :: use_contributors
+    integer :: i_term
 
     select type (pcm => evt%process_instance%pcm)
     class is (pcm_instance_nlo_t)
        x_rad = pcm%real_kinematics%x_rad
        associate (event_deps => evt%event_deps)
+          i_term = evt%get_i_term ()
+          !event_deps%p_born_lab%phs_point(1) = &
+          !   evt%particle_set%get_in_and_out_momenta ()
           event_deps%p_born_lab%phs_point(1) = &
-             evt%particle_set%get_in_and_out_momenta ()
+               evt%process_instance%term(i_term)%connected%matrix%get_momenta ()
           event_deps%p_born_cms%phs_point(1) &
-             = evt%boost_to_cms (event_deps%p_born_lab%phs_point(1))
+               = evt%boost_to_cms (event_deps%p_born_lab%phs_point(1))
           call evt%phs_fks_generator%set_sqrts_hat &
-             (event_deps%p_born_cms%get_energy (1, 1))
+               (event_deps%p_born_cms%get_energy (1, 1))
           use_contributors = allocated (event_deps%contributors)
           do alr = 1, size (event_deps%i_evaluation_to_i_phs)
              i_phs = event_deps%i_evaluation_to_i_phs(alr)
@@ -5633,36 +5651,36 @@ mother-daughter relations and color information.
              associate (generator => evt%phs_fks_generator)
                 if (emitter <= 2) then
                    call generator%prepare_generation (x_rad, i_phs, emitter, &
-                      event_deps%p_born_cms%phs_point(1)%p, event_deps%phs_identifiers)
+                        event_deps%p_born_cms%phs_point(1)%p, event_deps%phs_identifiers)
                    call generator%generate_isr (i_phs, &
-                      event_deps%p_born_lab%phs_point(1)%p, &
-                      event_deps%p_real_lab%phs_point(i_phs))
+                        event_deps%p_born_lab%phs_point(1)%p, &
+                        event_deps%p_real_lab%phs_point(i_phs))
                    event_deps%p_real_cms%phs_point(i_phs) &
-                      = evt%boost_to_cms (event_deps%p_real_lab%phs_point(i_phs))
+                        = evt%boost_to_cms (event_deps%p_real_lab%phs_point(i_phs))
                 else
                    if (use_contributors) then
                       i_con = event_deps%alr_to_i_con(alr)
                       call generator%prepare_generation (x_rad, i_phs, emitter, &
-                         event_deps%p_born_cms%phs_point(1)%p, &
-                         event_deps%phs_identifiers, event_deps%contributors, i_con)
+                           event_deps%p_born_cms%phs_point(1)%p, &
+                           event_deps%phs_identifiers, event_deps%contributors, i_con)
                       call generator%generate_fsr (emitter, i_phs, i_con, &
-                         event_deps%p_born_cms%phs_point(1)%p, &
-                         event_deps%p_real_cms%phs_point(i_phs))
+                           event_deps%p_born_cms%phs_point(1)%p, &
+                           event_deps%p_real_cms%phs_point(i_phs))
                    else
                       call generator%prepare_generation (x_rad, i_phs, emitter, &
-                         event_deps%p_born_cms%phs_point(1)%p, event_deps%phs_identifiers)
+                           event_deps%p_born_cms%phs_point(1)%p, event_deps%phs_identifiers)
                       call generator%generate_fsr (emitter, i_phs, &
-                         event_deps%p_born_cms%phs_point(1)%p, &
-                         event_deps%p_real_cms%phs_point(i_phs))
+                           event_deps%p_born_cms%phs_point(1)%p, &
+                           event_deps%p_real_cms%phs_point(i_phs))
                    end if
                    event_deps%p_real_lab%phs_point(i_phs) &
                         = evt%boost_to_lab (event_deps%p_real_cms%phs_point(i_phs))
                 end if
              end associate
              call pcm%set_momenta (event_deps%p_born_lab%phs_point(1)%p, &
-                event_deps%p_real_lab%phs_point(i_phs)%p, i_phs)
+                  event_deps%p_real_lab%phs_point(i_phs)%p, i_phs)
              call pcm%set_momenta (event_deps%p_born_cms%phs_point(1)%p, &
-                event_deps%p_real_cms%phs_point(i_phs)%p, i_phs, cms = .true.)
+                  event_deps%p_real_cms%phs_point(i_phs)%p, i_phs, cms = .true.)
              event_deps%phs_identifiers(i_phs)%evaluated = .true.
           end do
        end associate
@@ -6542,7 +6560,7 @@ For testing purpose, we allow for providing them explicitly, as an option.
              select type (evt)
              type is (evt_nlo_t)
                 failed_but_keep = .not. evt%is_valid_event (i_term) .and. evt%keep_failed_events
-                call evt%copy_previous_particle_set ()
+                !call evt%copy_previous_particle_set ()
                 if (.not. evt%is_valid_event (i_term) .and. .not. failed_but_keep) &
                    return
              end select
