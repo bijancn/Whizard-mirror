@@ -252,7 +252,10 @@ TESTS_REQ_HEPMC = \
 XFAIL_TESTS_REQ_HEPMC =
 
 TESTS_REQ_LCIO = \
-    lcio_1.run
+    lcio_1.run \
+    lcio_2.run \
+    lcio_3.run \
+    lcio_4.run
 XFAIL_TESTS_REQ_LCIO =
 
 TESTS_REQ_LHAPDF5 = \
@@ -437,6 +440,9 @@ lcio_rd_SOURCES = lcio_rd.cpp
 lcio_rd_CXXFLAGS = $(LCIO_INCLUDES) $(AM_CXXFLAGS)
 lcio_rd_LDADD = $(LDFLAGS_LCIO)
 lcio_1.run: lcio_rd
+lcio_2.run: lcio_rd
+lcio_3.run: lcio_rd
+lcio_4.run: lcio_rd
 endif
 
 stdhep_4.run: stdhep_rd
