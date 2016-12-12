@@ -593,7 +593,6 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/stdhep_5.ref \
     functional_tests/ref-output/stdhep_6.ref \
     functional_tests/ref-output/lcio_1.ref \
-    functional_tests/ref-output/lcio_2.ref \
     functional_tests/ref-output/lcio_3.ref \
     functional_tests/ref-output/lcio_4.ref \
     functional_tests/ref-output/fatal_beam_decay.ref \
@@ -669,6 +668,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/helicity.ref \
     functional_tests/ref-output-double/lhef_7.ref \
     functional_tests/ref-output-double/hepmc_8.ref \
+    functional_tests/ref-output-double/lcio_2.ref \
     functional_tests/ref-output-double/multi_comp_1.ref \
     functional_tests/ref-output-double/multi_comp_2.ref \
     functional_tests/ref-output-double/multi_comp_3.ref \
@@ -754,7 +754,8 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/beam_events_2.ref \
     functional_tests/ref-output-ext/beam_events_3.ref \
     functional_tests/ref-output-ext/mlm_matching_isr.ref \
-    functional_tests/ref-output-ext/hepmc_8.ref
+    functional_tests/ref-output-ext/hepmc_8.ref \
+    functional_tests/ref-output-ext/lcio_2.ref
 
 REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/circe1_4.ref \
@@ -772,7 +773,8 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/beam_events_2.ref \
     functional_tests/ref-output-quad/beam_events_3.ref \
     functional_tests/ref-output-quad/mlm_matching_isr.ref \
-    functional_tests/ref-output-quad/hepmc_8.ref
+    functional_tests/ref-output-quad/hepmc_8.ref \
+    functional_tests/ref-output-quad/lcio_2.ref
 
 TESTSUITES_M4 = \
     $(MISC_TESTS_M4) \
