@@ -741,6 +741,7 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/circe1_5.ref \
     functional_tests/ref-output-ext/circe1_7.ref \
     functional_tests/ref-output-ext/circe1_8.ref \
+    functional_tests/ref-output-ext/nlo_5.ref \
     functional_tests/ref-output-ext/powheg_1.ref \
     functional_tests/ref-output-ext/pythia6_3.ref \
     functional_tests/ref-output-ext/pythia6_4.ref \
@@ -759,6 +760,7 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/circe1_5.ref \
     functional_tests/ref-output-quad/circe1_7.ref \
     functional_tests/ref-output-quad/circe1_8.ref \
+    functional_tests/ref-output-quad/nlo_5.ref \
     functional_tests/ref-output-quad/powheg_1.ref \
     functional_tests/ref-output-quad/pythia6_3.ref \
     functional_tests/ref-output-quad/pythia6_4.ref \
