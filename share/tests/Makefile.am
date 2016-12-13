@@ -4,7 +4,7 @@
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2016 by 
+# Copyright (C) 1999-2016 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -18,13 +18,13 @@
 #     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by 
+# under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -656,6 +656,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/beam_setup_5.ref \
     functional_tests/ref-output-double/nlo_3.ref \
     functional_tests/ref-output-double/nlo_4.ref \
+    functional_tests/ref-output-double/nlo_5.ref \
     functional_tests/ref-output-double/fks_res_1.ref \
     functional_tests/ref-output-double/fks_res_2.ref \
     functional_tests/ref-output-double/fks_res_3.ref \
@@ -929,6 +930,7 @@ MISC_TESTS_SIN = \
     functional_tests/nlo_2.sin \
     functional_tests/nlo_3.sin \
     functional_tests/nlo_4.sin \
+    functional_tests/nlo_5.sin \
     functional_tests/nlo_decay_1.sin \
     functional_tests/fks_res_1.sin \
     functional_tests/fks_res_2.sin \
@@ -1061,7 +1063,7 @@ all-local: $(TESTSUITES_SIN)
 
 if M4_AVAILABLE
 SUFFIXES = .m4 .sin
-.m4.sin: 
+.m4.sin:
 	$(M4) $(srcdir)/$(TESTSUITE_MACROS) $< > $@
 endif M4_AVAILABLE
 
