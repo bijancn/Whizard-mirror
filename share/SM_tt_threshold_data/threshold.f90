@@ -570,7 +570,7 @@ contains
              dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), 1, 2)
              amp_blob(hi) = amp_blob(hi) + &
                   abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
-                  abs2 (dec1) * abs2 (dec2)
+                  abs2 (dec1) * abs2 (dec2) / 4
           else if (threshold%settings%helicity_approximation%simple) then
              if (threshold%settings%helicity_approximation%extra) then
                 prod = zero
