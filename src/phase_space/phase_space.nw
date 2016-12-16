@@ -12418,7 +12418,7 @@ module phs_fks
 <<Use strings>>
   use constants
   use diagnostics
-  use io_units, only: given_output_unit
+  use io_units, only: given_output_unit, free_unit
   use format_utils, only: write_separator
   use lorentz
   use physics_defs
@@ -12429,6 +12429,7 @@ module phs_fks
   use sf_base
   use phs_base
   use phs_wood
+  use phs_forests, only: phs_forest_final
   use cascades
   use process_constants
   use process_libraries
@@ -13063,6 +13064,7 @@ initial-state phase spaces.
   type, extends (phs_wood_config_t) :: phs_fks_config_t
     integer :: mode = PHS_MODE_UNDEFINED
     character(32) :: md5sum_born_config
+    logical :: make_dalitz_plot = .false.
   contains
   <<phs fks: fks config: TBP>>
   end type phs_fks_config_t
@@ -13281,11 +13283,14 @@ phase-space points with [[p_real(emitter) = 0]].
     integer :: i_fsr_first = -1
     type(resonance_contributors_t), dimension(:), allocatable :: resonance_contributors !!! Put somewhere else?
     integer :: mode = GEN_REAL_PHASE_SPACE
+    logical :: make_dalitz_plot = .false.
+    integer :: unit_dalitz = -1
   contains
   <<phs fks: phs fks generator: TBP>>
   end type phs_fks_generator_t
 
 @ %def phs_fks_generator_t
+@
 <<phs fks: phs fks generator: TBP>>=
   procedure :: connect_kinematics => phs_fks_generator_connect_kinematics
 <<phs fks: procedures>>=
@@ -13329,6 +13334,52 @@ phase-space points with [[p_real(emitter) = 0]].
   end subroutine phs_fks_generator_compute_isr_kinematics
 
 @ %def phs_fks_generator_compute_isr_kinematics
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: active_dalitz_plot => phs_fks_generator_activate_dalitz_plot
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_activate_dalitz_plot (generator)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    generator%make_dalitz_plot = .true.
+    generator%unit_dalitz = free_unit ()
+    open (generator%unit_dalitz, file="Daltiz-Plot", action = "write")
+  end subroutine phs_fks_generator_activate_dalitz_plot
+
+@ %def phs_fks_generator_activate_dalitz_plot
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: register_dalitz_plot => phs_fks_generator_register_dalitz_plot
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_register_dalitz_plot (generator, k0_n, k0_np1)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    real(default), intent(in) :: k0_n, k0_np1
+    write (generator%unit_dalitz, "(F8.4,1X,F8.4)") k0_n, k0_np1
+  end subroutine phs_fks_generator_register_dalitz_plot
+
+@ %def phs_fks_generator_register_dalitz_plot
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: final => phs_fks_generator_final
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_final (generator)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    if (allocated (generator%emitters)) deallocate (generator%emitters)
+    if (associated (generator%real_kinematics)) nullify (generator%real_kinematics)
+    if (associated (generator%isr_kinematics)) nullify (generator%isr_kinematics)
+    if (allocated (generator%m2)) deallocate (generator%m2)
+    generator%massive_phsp = .false.
+    if (allocated (generator%is_massive)) deallocate (generator%is_massive)
+    generator%singular_jacobian = .false.
+    generator%i_fsr_first = -1
+    if (allocated (generator%resonance_contributors)) &
+           deallocate (generator%resonance_contributors)
+    generator%mode = GEN_REAL_PHASE_SPACE
+    generator%make_dalitz_plot = .false.
+    close (generator%unit_dalitz)
+    generator%unit_dalitz = -1
+  end subroutine phs_fks_generator_final
+
+@ %def phs_fks_generator_final
 @ A resonance phase space is uniquely specified via the resonance contributors and the
 corresponding emitters. The [[phs_identifier]] type also checks whether
 the given contributor-emitter configuration has already been evaluated to
@@ -14129,6 +14180,8 @@ recoiling momenta.
     if (generator%is_massive(emitter)) then
        call generator%compute_emitter_kinematics &
           (y, emitter, i_phs, q0, k0_n, uk_n, uk)
+       if (generator%make_dalitz_plot) &
+          call generator%register_dalitz_plot (k0_n, uk_np1)
     else
        call generator%compute_emitter_kinematics (y, q0, uk_n, uk)
        generator%real_kinematics%y_soft(i_phs) = y
@@ -15500,6 +15553,17 @@ has already been taken into account during its generation.
   end subroutine phs_fks_compute_isr_kinematics
 
 @ %def phs_fks_compute_isr_kinematics
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: final => phs_fks_final
+<<phs fks: procedures>>=
+  subroutine phs_fks_final (object)
+    class(phs_fks_t), intent(inout) :: object
+    call phs_forest_final (object%forest)
+    call object%generator%final ()
+  end subroutine phs_fks_final
+
+@ %def phs_fks_final
 @
 <<phs fks: public>>=
   public :: get_filtered_resonance_histories
