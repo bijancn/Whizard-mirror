@@ -565,9 +565,11 @@ contains
        s = table_spin_states(:,hi)
        if (threshold%settings%factorized_computation) then
           if (threshold%settings%helicity_approximation%ultra) then
-             prod = production_me(s(1), s(2), 1, 1)
-             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), 1, 1)
-             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), 1, 2)
+             h_t = threshold%settings%sel_hel_top
+             h_tbar = threshold%settings%sel_hel_topbar
+             prod = production_me(s(1), s(2), h_t, h_tbar)
+             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
              amp_blob(hi) = amp_blob(hi) + &
                   abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
                   abs2 (dec1) * abs2 (dec2)
@@ -973,8 +975,10 @@ contains
     function skip (h_t, h_tbar)
       logical :: skip
       integer, intent(in) :: h_t, h_tbar
-      skip = threshold%settings%helicity_approximation%ultra &
-           .and. (h_t /= 1 .or. h_tbar /= 1)
+      associate (s => threshold%settings)
+         skip = s%helicity_approximation%ultra &
+              .and. (h_t /= s%sel_hel_top .or. h_tbar /= s%sel_hel_topbar)
+      end associate
     end function skip
 
   end function compute_real

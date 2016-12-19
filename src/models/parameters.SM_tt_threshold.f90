@@ -53,6 +53,7 @@ module parameters_sm_tt_threshold
        gncneu, gnclep, gncup, gncdwn
 
   integer, public :: FF, offshell_strategy
+  integer, public :: top_helicity_selection
 
   public :: import_from_whizard, model_update_alpha_s, &
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, ttv_wtpole, &
@@ -67,7 +68,7 @@ module parameters_sm_tt_threshold
 contains
 
   subroutine import_from_whizard (par_array, scheme)
-    real(default), dimension(41), intent(in) :: par_array
+    real(default), dimension(42), intent(in) :: par_array
     integer, intent(in) :: scheme
     type :: parameter_set
        real(default) :: mZ
@@ -97,6 +98,7 @@ contains
        real(default) :: sf
        real(default) :: FF
        real(default) :: offshell_strategy
+       real(default) :: top_helicity_selection
        real(default) :: v1
        real(default) :: v2
        real(default) :: scan_sqrts_min
@@ -142,20 +144,21 @@ contains
     par%sf     = par_array(25)
     par%FF     = par_array(26)
     par%offshell_strategy = par_array(27)
-    par%v1     = par_array(28)
-    par%v2     = par_array(29)
-    par%scan_sqrts_min = par_array(30)
-    par%scan_sqrts_max = par_array(31)
-    par%scan_sqrts_stepsize = par_array(32)
-    par%test   = par_array(33)
-    par%no_pwave = par_array(34)
-    par%mpole_fixed = par_array(35)
-    par%ee     = par_array(36)
-    par%cw     = par_array(37)
-    par%sw     = par_array(38)
-    par%v      = par_array(39)
-    par%mtpole = par_array(40)
-    par%wtop   = par_array(41)
+    par%top_helicity_selection = par_array(28)
+    par%v1     = par_array(29)
+    par%v2     = par_array(30)
+    par%scan_sqrts_min = par_array(31)
+    par%scan_sqrts_max = par_array(32)
+    par%scan_sqrts_stepsize = par_array(33)
+    par%test   = par_array(34)
+    par%no_pwave = par_array(35)
+    par%mpole_fixed = par_array(36)
+    par%ee     = par_array(37)
+    par%cw     = par_array(38)
+    par%sw     = par_array(39)
+    par%v      = par_array(40)
+    par%mtpole = par_array(41)
+    par%wtop   = par_array(42)
     mass(1:27) = 0
     width(1:27) = 0
     mass(3) = par%ms
@@ -247,7 +250,8 @@ contains
           par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, &
           mass(5), par%sh, par%sf, par%nrqcd_order, par%FF, &
           par%offshell_strategy, par%v1, par%v2, par%scan_sqrts_min, &
-          par%scan_sqrts_max, par%scan_sqrts_stepsize, mpole_fixed)
+          par%scan_sqrts_max, par%scan_sqrts_stepsize, mpole_fixed, &
+          par%top_helicity_selection)
     call init_threshold_grids (par%test)
     call threshold%formfactor%activate ()
   end subroutine import_from_whizard
