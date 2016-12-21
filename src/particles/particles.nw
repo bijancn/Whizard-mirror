@@ -3313,6 +3313,29 @@ Check if there are only diagonal entries.
   
 @ %def pmatrix_is_diagonal
 @
+Check if there are only diagonal entries.
+<<Polarizations: pmatrix: TBP>>=
+  procedure :: get_simple_pol => pmatrix_get_simple_pol
+<<Polarizations: procedures>>=
+  elemental function pmatrix_get_simple_pol (pmatrix) result (pol)
+    class(pmatrix_t), intent(in) :: pmatrix
+    real(default) :: pol
+    if (pmatrix%is_polarized ()) then
+       select case (size (pmatrix%value))
+       case (0)
+          pol = 0
+       case (1)
+          pol = pmatrix%index (1,1) * pmatrix%degree
+       case (2)
+          pol = 42
+       end select
+    else
+       pol = 0
+    end if
+  end function pmatrix_get_simple_pol
+  
+@ %def pmatrix_get_simple_pol
+@
 \subsection{Data Transformation}
 Create a [[polarization_t]] object from the contents of a normalized
 [[pmatrix_t]] object.  We scan the entries as present in [[pmatrix]] and
@@ -4846,13 +4869,13 @@ particles are assumed outgoing (in the beam interaction) and become
 virtual in all derived interactions.  In the particle set they should
 be re-identified as incoming.  The optional integer [[n_incoming]]
 can be used to perform this correction.
-    
+
 The flag [[is_valid]] is false if factorization of the state is not
 possible, in particular if the squared matrix element is zero.
 <<Particles: procedures>>=
   subroutine particle_set_init_interaction &
        (particle_set, is_valid, int, int_flows, mode, x, &
-        keep_correlations, keep_virtual, n_incoming)
+        keep_correlations, keep_virtual, n_incoming, qn_select)
     class(particle_set_t), intent(out) :: particle_set
     logical, intent(out) :: is_valid
     type(interaction_t), intent(in), target :: int, int_flows
@@ -4860,6 +4883,7 @@ possible, in particular if the squared matrix element is zero.
     real(default), dimension(2), intent(in) :: x
     logical, intent(in) :: keep_correlations, keep_virtual
     integer, intent(in), optional :: n_incoming
+    type(quantum_numbers_t), dimension(:), intent(in), optional :: qn_select
     type(state_matrix_t), dimension(:), allocatable, target :: flavor_state
     type(state_matrix_t), dimension(:), allocatable, target :: single_state
     integer :: n_in, n_vir, n_out, n_tot
@@ -4885,12 +4909,18 @@ possible, in particular if the squared matrix element is zero.
        particle_set%n_tot = n_in + n_out
     end if
     particle_set%factorization_mode = mode
-    call int%factorize &
-         (FM_IGNORE_HELICITY, x(1), is_valid, flavor_state)
-    allocate (qn (n_tot,1))
-    do i = 1, n_tot
-       qn(i,:) = flavor_state(i)%get_quantum_number (1)
-    end do
+    allocate (qn (n_tot, 1))
+    if (.not. present (qn_select)) then
+       call int%factorize &
+            (FM_IGNORE_HELICITY, x(1), is_valid, flavor_state)
+       do i = 1, n_tot
+          qn(i,:) = flavor_state(i)%get_quantum_number (1)
+       end do
+    else
+       do i = 1, n_tot
+          qn(i,:) = qn_select(i)
+       end do
+    end if
     if (keep_correlations .and. keep_virtual) then
        call particle_set%correlated_state%final ()
        call int_flows%factorize (mode, x(2), ok, &
@@ -4928,9 +4958,11 @@ possible, in particular if the squared matrix element is zero.
        call particle_set_resonance_flag &
             (particle_set%prt, int%get_resonance_flags ())
     end if
-    do i = 1, size(flavor_state)
-       call flavor_state(i)%final ()
-    end do
+    if (allocated (flavor_state)) then
+       do i = 1, size(flavor_state)
+          call flavor_state(i)%final ()
+       end do
+    end if
     do i = 1, size(single_state)
        call single_state(i)%final ()
     end do

@@ -1321,13 +1321,14 @@ table from the hard matrix element data.
   procedure :: setup_square_trace => isolated_state_setup_square_trace
 <<Parton states: procedures>>=
   subroutine isolated_state_setup_square_trace (state, core, &
-       qn_mask_in, col)
+       qn_mask_in, col, keep_fs_flavor)
     class(isolated_state_t), intent(inout), target :: state
     class(prc_core_t), intent(in) :: core
     type(quantum_numbers_mask_t), intent(in), dimension(:) :: qn_mask_in
     !!! Actually need allocatable attribute here fore once because col might
     !!! enter the subroutine non-allocated.
     integer, intent(in), dimension(:), allocatable :: col
+    logical, intent(in) :: keep_fs_flavor
     type(quantum_numbers_mask_t), dimension(:), allocatable :: qn_mask
     associate (data => core%data)
       allocate (qn_mask (data%n_in + data%n_out))
@@ -1335,16 +1336,16 @@ table from the hard matrix element data.
               quantum_numbers_mask (.false., .true., .false.) &
               .or. qn_mask_in
       qn_mask(data%n_in + 1 : ) = &
-           quantum_numbers_mask (.true., .true., .true.)
-    if (core%use_color_factors) then
-       call state%trace%init_square (state%int_eff, qn_mask, &
-            col_flow_index = data%cf_index, &
-            col_factor = data%color_factors, &
-            col_index_hi = col, &
-            nc = core%nc)
-    else
-       call state%trace%init_square (state%int_eff, qn_mask, nc = core%nc)
-    end if
+              quantum_numbers_mask (.not. keep_fs_flavor, .true., .true.)
+      if (core%use_color_factors) then
+         call state%trace%init_square (state%int_eff, qn_mask, &
+              col_flow_index = data%cf_index, &
+              col_factor = data%color_factors, &
+              col_index_hi = col, &
+              nc = core%nc)
+      else
+         call state%trace%init_square (state%int_eff, qn_mask, nc = core%nc)
+      end if
     end associate
     state%has_trace = .true.
   end subroutine isolated_state_setup_square_trace
@@ -1825,9 +1826,7 @@ evaluated at this point.
   subroutine isolated_state_evaluate_sf_chain (state, fac_scale)
     class(isolated_state_t), intent(inout) :: state
     real(default), intent(in) :: fac_scale
-    if (state%sf_chain_is_allocated) then
-       call state%sf_chain_eff%evaluate (fac_scale)
-    end if
+    if (state%sf_chain_is_allocated) call state%sf_chain_eff%evaluate (fac_scale)
   end subroutine isolated_state_evaluate_sf_chain
 
 @ %def isolated_state_evaluate_sf_chain
@@ -1837,9 +1836,7 @@ evaluated at this point.
 <<Parton states: procedures>>=
   subroutine parton_state_evaluate_trace (state)
     class(parton_state_t), intent(inout) :: state
-    if (state%has_trace) then
-       call state%trace%evaluate ()
-    end if
+    if (state%has_trace) call state%trace%evaluate ()
   end subroutine parton_state_evaluate_trace
 
 @ %def parton_state_evaluate_trace
@@ -1848,9 +1845,7 @@ evaluated at this point.
 <<Parton states: procedures>>=
   subroutine parton_state_evaluate_matrix (state)
     class(parton_state_t), intent(inout) :: state
-    if (state%has_matrix) then
-       call state%matrix%evaluate ()
-    end if
+    if (state%has_matrix) call state%matrix%evaluate ()
   end subroutine parton_state_evaluate_matrix
 
 @ %def parton_state_evaluate_matrix
@@ -1858,22 +1853,25 @@ evaluated at this point.
 <<Parton states: parton state: TBP>>=
   procedure :: evaluate_event_data => parton_state_evaluate_event_data
 <<Parton states: procedures>>=
-  subroutine parton_state_evaluate_event_data (state)
+  subroutine parton_state_evaluate_event_data (state, only_momenta)
     class(parton_state_t), intent(inout) :: state
+    logical, intent(in), optional :: only_momenta
+    logical :: only_mom
+    only_mom = .false.; if (present (only_momenta)) only_mom = only_momenta
     select type (state)
     type is (connected_state_t)
        if (state%has_flows_sf) then
           call state%flows_sf%receive_momenta ()
-          call state%flows_sf%evaluate ()
+          if (.not. only_mom) call state%flows_sf%evaluate ()
        end if
     end select
     if (state%has_matrix) then
        call state%matrix%receive_momenta ()
-       call state%matrix%evaluate ()
+       if (.not. only_mom) call state%matrix%evaluate ()
     end if
     if (state%has_flows) then
        call state%flows%receive_momenta ()
-       call state%flows%evaluate ()
+       if (.not. only_mom) call state%flows%evaluate ()
     end if
   end subroutine parton_state_evaluate_event_data
 
@@ -1887,9 +1885,7 @@ and flow evaluators are unchanged.
 <<Parton states: procedures>>=
   subroutine parton_state_normalize_matrix_by_trace (state)
     class(parton_state_t), intent(inout) :: state
-    if (state%has_matrix) then
-       call state%matrix%normalize_by_trace ()
-    end if
+    if (state%has_matrix) call state%matrix%normalize_by_trace ()
   end subroutine parton_state_normalize_matrix_by_trace
 
 @ %def parton_state_normalize_matrix_by_trace
@@ -1954,6 +1950,28 @@ the trace (and thus, matrix and flows) evaluator, respectively.
 
 @ %def connected_state_get_beam_index
 @ %def connected_state_get_in_index
+@
+<<Parton states: public>>=
+  public :: refill_evaluator
+<<Parton states: procedures>>=
+  subroutine refill_evaluator (sqme, qn, flv_index, evaluator)
+    complex(default), intent(in), dimension(:) :: sqme
+    type(quantum_numbers_t), intent(in), dimension(:,:) :: qn
+    integer, intent(in), dimension(:), optional :: flv_index
+    type(evaluator_t), intent(inout) :: evaluator
+    integer :: i, i_flv
+    do i = 1, size (sqme)
+       if (present (flv_index)) then
+          i_flv = flv_index(i)
+       else
+          i_flv = i
+       end if
+       call evaluator%add_to_matrix_element (qn(:,i_flv), sqme(i), &
+            match_only_flavor = .true.)
+    end do
+  end subroutine refill_evaluator
+
+@ %def refill_evaluator
 @ Return the number of outgoing (hard) particles for the state.
 <<Parton states: parton state: TBP>>=
   procedure :: get_n_out => parton_state_get_n_out
@@ -2158,7 +2176,7 @@ end module parton_states_uti
     allocate (col_flow_index (n_states)); col_flow_index = 1
     call qn_mask%init (.false., .false., .true., mask_cg = .false.)
     write (u, "(A)") "* Give a trace to the isolated state"
-    call isolated_state%setup_square_trace (core, qn_mask, col_flow_index)
+    call isolated_state%setup_square_trace (core, qn_mask, col_flow_index, .false.)
     call isolated_state%evaluate_trace ()
     write (u, "(A)")
     write (u, "(A)", advance = "no") "* Squared matrix element correct: "
@@ -5191,6 +5209,17 @@ one that is stored in the process object.
   end function process_get_sqrts
 
 @ %def process_get_sqrts
+@ The beam polarization in case of simple degrees.
+<<Process: process: TBP>>=
+  procedure :: get_polarization => process_get_polarization
+<<Process: procedures>>=
+  function process_get_polarization (process) result (pol)
+    class(process_t), intent(in) :: process
+    real(default), dimension(2) :: pol
+    pol = process%beam_config%data%get_polarization ()
+  end function process_get_polarization
+
+@ %def process_get_polarization
 @
 <<Process: process: TBP>>=
   procedure :: get_meta => process_get_meta
@@ -5284,6 +5313,17 @@ one that is stored in the process object.
   end function process_get_pdf_set
 
 @ %def process_get_pdf_set
+@ Get the beam spectrum file currently in use, if any.
+<<Process: process: TBP>>=
+  procedure :: get_beam_file => process_get_beam_file
+<<Process: procedures>>=
+  function process_get_beam_file (process) result (file)
+    class(process_t), intent(in) :: process
+    type(string_t) :: file
+    file = process%beam_config%get_beam_file ()
+  end function process_get_beam_file
+
+@ %def process_get_beam_file
 @ Pointer to the process variable list.
 <<Process: process: TBP>>=
   procedure :: get_var_list_ptr => process_get_var_list_ptr
@@ -5854,12 +5894,11 @@ Could also be moved to the [[core_manager_t]].
      => process_create_and_load_extra_libraries
 <<Process: procedures>>=
   subroutine process_create_and_load_extra_libraries &
-     (process, beam_structure, var_list, os_data, n_sub)
+     (process, beam_structure, var_list, os_data)
     class(process_t), intent(inout), target :: process
     type(beam_structure_t), intent(in) :: beam_structure
     type(var_list_t), intent(in) :: var_list
     type(os_data_t), intent(in) :: os_data
-    integer, intent(out) :: n_sub
     type(string_t) :: libname
     integer :: i, i_component, i_term, i_core
     logical, dimension(process%cm%n_cores) :: loaded
@@ -5882,10 +5921,6 @@ Could also be moved to the [[core_manager_t]].
           !end do
        end associate
     end do
-    select type (pcm => process%pcm)
-    type is (pcm_nlo_t)
-       n_sub =  pcm%get_n_sub ()
-    end select
   end subroutine process_create_and_load_extra_libraries
 
 @ %def process_create_and_load_extra_libraries
@@ -6742,6 +6777,24 @@ photon structure used together), this doesn't work correctly.)
   end function process_beam_config_get_pdf_set
 
 @ %def process_beam_config_get_pdf_set
+@ Return the beam file.
+<<Process config: process beam config: TBP>>=
+  procedure :: get_beam_file => process_beam_config_get_beam_file
+<<Process config: procedures>>=
+  function process_beam_config_get_beam_file (beam_config) result (file)
+    class(process_beam_config_t), intent(in) :: beam_config
+    type(string_t) :: file
+    integer :: i
+    file = ""
+    if (allocated (beam_config%sf)) then
+       do i = 1, size (beam_config%sf)
+          file = beam_config%sf(i)%get_beam_file ()
+          if (file /= "")  return
+       end do
+    end if
+  end function process_beam_config_get_beam_file
+
+@ %def process_beam_config_get_beam_file
 @ Compute the MD5 sum for the complete beam setup.  We rely on the
 default output of [[write]] to contain all relevant data.
 
@@ -7241,10 +7294,10 @@ could become relevant for NLO algorithms.
     end if
     use_internal_color = .false.
     if (present (subtraction_method)) &
-       use_internal_color = (char (subtraction_method) == 'omega') &
-            .or. (char (subtraction_method) == 'threshold')
+         use_internal_color = (char (subtraction_method) == 'omega') &
+         .or. (char (subtraction_method) == 'threshold')
     call term%setup_interaction (core, model, nlo_type = nlo_type, &
-       pol_beams = use_beam_pol, use_internal_color = use_internal_color)
+         pol_beams = use_beam_pol, use_internal_color = use_internal_color)
   end subroutine process_term_init
 
 @ %def process_term_init
@@ -8365,6 +8418,9 @@ module pcm
   use lorentz, only: vector4_t, lorentz_transformation_t, identity
   use process_constants, only: process_constants_t
   use physics_defs
+  use model_data, only: model_data_t
+  use quantum_numbers, only: quantum_numbers_t
+  use flavors, only: flavor_t
   use nlo_data, only: nlo_settings_t
   use nlo_data, only: powheg_damping_t, powheg_damping_simple_t
   use phs_fks, only: isr_kinematics_t, real_kinematics_t
@@ -8478,6 +8534,7 @@ corresponding instance.  This is the nontrivial NLO version.
     type(region_data_t) :: region_data
     type(nlo_color_data_t) :: color_data
     class(powheg_damping_t), allocatable :: powheg_damping
+    type(quantum_numbers_t), dimension(:,:), allocatable :: qn_real, qn_born
   contains
   <<Pcm: pcm nlo: TBP>>
   end type pcm_nlo_t
@@ -8497,10 +8554,34 @@ each entry of the BLHA output array.
     if (.not. pcm_nlo%settings%use_internal_color_correlations) then
        n_tot = pcm_nlo%region_data%n_legs_born
        n_sub = n_sub + n_tot * (n_tot - 1) / 2
+    else
+       !!! TODO (cw-2016-12-05): Implementation
     end if
   end function pcm_nlo_get_n_sub
 
 @ %def pcm_nlo_get_n_sub
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_n_flv_born => pcm_nlo_get_n_flv_born
+<<Pcm: procedures>>=
+  function pcm_nlo_get_n_flv_born (pcm_nlo) result (n_flv)
+    integer :: n_flv
+    class(pcm_nlo_t), intent(in) :: pcm_nlo
+    n_flv = pcm_nlo%region_data%n_flv_born
+  end function pcm_nlo_get_n_flv_born
+
+@ %def pcm_nlo_get_n_flv_born
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_n_flv_real => pcm_nlo_get_n_flv_real
+<<Pcm: procedures>>=
+  function pcm_nlo_get_n_flv_real (pcm_nlo) result (n_flv)
+    integer :: n_flv
+    class(pcm_nlo_t), intent(in) :: pcm_nlo
+    n_flv = pcm_nlo%region_data%n_flv_real
+  end function pcm_nlo_get_n_flv_real
+
+@ %def pcm_nlo_get_n_flv_real
 @
 <<Pcm: pcm nlo: TBP>>=
   procedure :: get_n_alr => pcm_nlo_get_n_alr
@@ -8512,6 +8593,46 @@ each entry of the BLHA output array.
   end function pcm_nlo_get_n_alr
 
 @ %def pcm_nlo_get_n_alr
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_flv_states => pcm_nlo_get_flv_states
+<<Pcm: procedures>>=
+  function pcm_nlo_get_flv_states (pcm, born) result (flv)
+    integer, dimension(:,:), allocatable :: flv
+    class(pcm_nlo_t), intent(in) :: pcm
+    logical, intent(in) :: born
+    if (born) then
+       !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+       allocate (flv (pcm%region_data%n_legs_born, pcm%region_data%n_flv_born))
+       flv = pcm%region_data%get_flv_states_born ()
+    else
+       !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+       allocate (flv (pcm%region_data%n_legs_real, pcm%region_data%n_flv_real))
+       flv = pcm%region_data%get_flv_states_real ()
+    end if
+  end function pcm_nlo_get_flv_states
+
+@ %def pcm_nlo_get_flv_states
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_qn => pcm_nlo_get_qn
+<<Pcm: procedures>>=
+  function pcm_nlo_get_qn (pcm, born) result (qn)
+    type(quantum_numbers_t), dimension(:,:), allocatable :: qn
+    class(pcm_nlo_t), intent(in) :: pcm
+    logical, intent(in) :: born
+    if (born) then
+       !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+       allocate (qn (size (pcm%qn_born, dim = 1), size (pcm%qn_born, dim = 2)))
+       qn = pcm%qn_born
+    else
+       !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+       allocate (qn (size (pcm%qn_real, dim = 1), size (pcm%qn_real, dim = 2)))
+       qn = pcm%qn_real
+    end if
+  end function pcm_nlo_get_qn
+
+@ %def pcm_nlo_get_qn
 @ Check if there are massive emitters. Since the mass-structure of all
 underlying Born configurations have to be the same (\textbf{This does
 not have to be the case when different components are generated at LO})
@@ -8572,6 +8693,44 @@ not have to be the case when different components are generated at LO})
   end subroutine pcm_nlo_init_color_data
 
 @ %def pcm_nlo_init_color_data
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: init_qn => pcm_nlo_init_qn
+<<Pcm: procedures>>=
+  subroutine pcm_nlo_init_qn (pcm, model)
+    class(pcm_nlo_t), intent(inout) :: pcm
+    class(model_data_t), intent(in) :: model
+    integer, dimension(:,:), allocatable :: flv_states
+    type(flavor_t), dimension(:), allocatable :: flv
+    integer :: i
+    type(quantum_numbers_t), dimension(:), allocatable :: qn
+    !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+    allocate (flv_states (pcm%region_data%n_legs_born, pcm%region_data%n_flv_born))
+    flv_states = pcm%get_flv_states (.true.)
+    allocate (pcm%qn_born (size (flv_states, dim = 1), size (flv_states, dim = 2)))
+    allocate (flv (size (flv_states, dim = 1)))
+    allocate (qn (size (flv_states, dim = 1)))
+    do i = 1, pcm%get_n_flv_born ()
+       call flv%init (flv_states (:,i), model)
+       call qn%init (flv)
+       pcm%qn_born(:,i) = qn
+    end do
+    deallocate (flv); deallocate (qn)
+    deallocate (flv_states)
+    !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+    allocate (flv_states (pcm%region_data%n_legs_real, pcm%region_data%n_flv_real))
+    flv_states = pcm%get_flv_states (.false.)
+    allocate (pcm%qn_real (size (flv_states, dim = 1), size (flv_states, dim = 2)))
+    allocate (flv (size (flv_states, dim = 1)))
+    allocate (qn (size (flv_states, dim = 1)))
+    do i = 1, pcm%get_n_flv_real ()
+       call flv%init (flv_states (:,i), model)
+       call qn%init (flv)
+       pcm%qn_real(:,i) = qn
+    end do
+  end subroutine pcm_nlo_init_qn
+
+@ %def pcm_nlo_init_qn
 @
 <<Pcm: pcm nlo: TBP>>=
   procedure :: allocate_ps_matching => pcm_nlo_allocate_ps_matching
@@ -9003,12 +9162,14 @@ object and the squared matrix-element collector.
 <<Pcm: pcm instance: TBP>>=
   procedure :: compute_sqme_virt => pcm_instance_nlo_compute_sqme_virt
 <<Pcm: procedures>>=
-  function pcm_instance_nlo_compute_sqme_virt (pcm_instance, p, alpha_s, me) result (sqme_virt)
-    real(default) :: sqme_virt
+  subroutine pcm_instance_nlo_compute_sqme_virt (pcm_instance, p, &
+         alpha_s, me, separate_alrs, sqme_virt)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: alpha_s
     complex(default), intent(in), dimension(:) :: me
+    logical, intent(in) :: separate_alrs
+    real(default), dimension(:), allocatable, intent(inout) :: sqme_virt
     type(vector4_t), dimension(:), allocatable :: pp
     associate (virtual => pcm_instance%virtual)
        allocate (pp (size (p)))
@@ -9019,36 +9180,63 @@ object and the squared matrix-element collector.
        end if
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
-          sqme_virt = virtual%evaluate (config%region_data, &
-               alpha_s, pp, real(me))
+          if (separate_alrs) then
+             allocate (sqme_virt (config%get_n_flv_born ()))
+          else
+             allocate (sqme_virt (1))
+          end if
+          sqme_virt = zero
+          call virtual%evaluate (config%region_data, &
+               alpha_s, pp, real(me), separate_alrs, sqme_virt)
        end select
     end associate
-  end function pcm_instance_nlo_compute_sqme_virt
+  end subroutine pcm_instance_nlo_compute_sqme_virt
 
 @ %def pcm_instance_nlo_compute_sqme_virt
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: compute_sqme_mismatch => pcm_instance_nlo_compute_sqme_mismatch
 <<Pcm: procedures>>=
-  function pcm_instance_nlo_compute_sqme_mismatch (pcm_instance, alpha_s) result (sqme_mism)
-    real(default) :: sqme_mism
+  subroutine pcm_instance_nlo_compute_sqme_mismatch (pcm_instance, &
+           alpha_s, separate_alrs, sqme_mism)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
-    real(default) :: alpha_s
-    sqme_mism = pcm_instance%soft_mismatch%evaluate (alpha_s)
-  end function pcm_instance_nlo_compute_sqme_mismatch
+    real(default), intent(in) :: alpha_s
+    logical, intent(in) :: separate_alrs
+    real(default), dimension(:), allocatable, intent(inout) :: sqme_mism
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       if (separate_alrs) then
+          allocate (sqme_mism (config%get_n_flv_born ()))
+       else
+          allocate (sqme_mism (1))
+       end if
+       sqme_mism = zero
+       sqme_mism = pcm_instance%soft_mismatch%evaluate (alpha_s)
+    end select
+  end subroutine pcm_instance_nlo_compute_sqme_mismatch
 
 @ %def pcm_instance_nlo_compute_sqme_mismatch
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: compute_sqme_dglap_remnant => pcm_instance_nlo_compute_sqme_dglap_remnant
 <<Pcm: procedures>>=
-  function pcm_instance_nlo_compute_sqme_dglap_remnant (pcm_instance, alpha_s, sqme_born) &
-     result (sqme_dglap)
-    real(default) :: sqme_dglap
+  subroutine pcm_instance_nlo_compute_sqme_dglap_remnant (pcm_instance, &
+            alpha_s, sqme_born, separate_alrs, sqme_dglap)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
-    real(default), intent(in) :: alpha_s, sqme_born
+    real(default), intent(in) :: alpha_s
+    real(default), dimension(:), intent(in) :: sqme_born
+    logical, intent(in) :: separate_alrs
+    real(default), dimension(:), allocatable, intent(inout) :: sqme_dglap
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       if (separate_alrs) then
+          allocate (sqme_dglap (config%get_n_flv_born ()))
+       else
+          allocate (sqme_dglap (1))
+       end if
+    end select
     sqme_dglap = pcm_instance%dglap_remnant%evaluate (alpha_s, sqme_born)
-  end function pcm_instance_nlo_compute_sqme_dglap_remnant
+  end subroutine pcm_instance_nlo_compute_sqme_dglap_remnant
 
 @ %def pcm_instance_nlo_compute_sqme_dglap_remnant
 @
@@ -9711,6 +9899,7 @@ module instances
   use process_mci
   use process
   use kinematics
+  use parton_states, only: refill_evaluator
 
 <<Standard module head>>
 
@@ -9895,10 +10084,11 @@ relevant for a NLO algorithm.
     !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
     integer :: i, j, k
     type(quantum_numbers_t), dimension(:), allocatable :: qn
-    logical :: me_already_squared
+    logical :: me_already_squared, keep_fs_flavors
     logical :: decrease_n_tot
 
     me_already_squared = .false.
+    keep_fs_flavors = .false.
 
     term%config => process%get_term_ptr (i_term)
     term%int_hard = term%config%int
@@ -9939,7 +10129,7 @@ relevant for a NLO algorithm.
          if (me_already_squared) then
             call term%isolated%setup_identity_trace (core, mask_in, .true., .false.)
          else
-            call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+            call term%isolated%setup_square_trace (core, mask_in, term%config%col, .false.)
          end if
       type is (phs_fks_t)
          select case (phs%mode)
@@ -9947,17 +10137,19 @@ relevant for a NLO algorithm.
             if (me_already_squared) then
                call term%isolated%setup_identity_trace (core, mask_in, .true., .false.)
             else
-               call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+               keep_fs_flavors = term%config%data%n_flv > 1
+               call term%isolated%setup_square_trace (core, mask_in, term%config%col, &
+                    keep_fs_flavors)
             end if
          case (PHS_MODE_COLLINEAR_REMNANT)
             if (me_already_squared) then
                call term%isolated%setup_identity_trace (core, mask_in)
             else
-               call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+               call term%isolated%setup_square_trace (core, mask_in, term%config%col, .false.)
             end if
          end select
       class default
-         call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+         call term%isolated%setup_square_trace (core, mask_in, term%config%col, .false.)
     end select
     if (term%nlo_type == NLO_VIRTUAL) then
        select type (pcm => process%get_pcm_ptr ())
@@ -9968,9 +10160,10 @@ relevant for a NLO algorithm.
        !!! No integration of real subtraction in interactions yet
        n_sub = 0
     end if
+    keep_fs_flavors = keep_fs_flavors .or. me_already_squared
     call term%connected%setup_connected_trace (term%isolated, &
        undo_helicities = undo_helicities (core, me_already_squared), &
-       n_sub = n_sub, keep_fs_flavors = me_already_squared)
+       n_sub = n_sub, keep_fs_flavors = keep_fs_flavors)
 
     associate (int_eff => term%isolated%int_eff)
       state_matrix => int_eff%get_state_matrix_ptr ()
@@ -10485,7 +10678,7 @@ The quantum numbers mask of the incoming particle
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
     call setup_isolated (term%isolated, core, model, mask_in, term%config%col)
-    call setup_connected (term%connected, term%isolated)
+    call setup_connected (term%connected, term%isolated, term%nlo_type)
  contains
    subroutine setup_isolated (isolated, core, model, mask, color)
      type(isolated_state_t), intent(inout), target :: isolated
@@ -10497,10 +10690,21 @@ The quantum numbers mask of the incoming particle
      call isolated%setup_square_flows (core, model, mask)
    end subroutine setup_isolated
 
-   subroutine setup_connected (connected, isolated)
+   subroutine setup_connected (connected, isolated, nlo_type)
      type(connected_state_t), intent(inout), target :: connected
      type(isolated_state_t), intent(in), target :: isolated
+     integer :: nlo_type
+     type(quantum_numbers_mask_t), dimension(:), allocatable :: mask
      call connected%setup_connected_matrix (isolated)
+     if (term%nlo_type == NLO_VIRTUAL) then
+        !!! We don't care about the subtraction matrix elements in
+        !!! connected%matrix, because all entries there are supposed
+        !!! to be squared. To be able to match with flavor quantum numbers,
+        !!! we remove the subtraction quantum entries from the state matrix.
+        allocate (mask (connected%matrix%get_n_tot()))
+        call mask%set_sub (1)
+        call connected%matrix%reduce_state_matrix (mask)
+     end if
      call connected%setup_connected_flows (isolated)
      call connected%setup_state_flv (isolated%get_n_out ())
    end subroutine setup_connected
@@ -10580,12 +10784,18 @@ The quantum numbers mask of the incoming particle
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(inout) :: core
     real(default), intent(in) :: alpha_s_sub
-    real(default) :: sqme
+    real(default), dimension(:), allocatable :: sqme
     integer :: i_phs, emitter
-    sqme = zero
+    logical :: is_subtraction
     associate (pcm_instance => term%pcm_instance)
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
+          if (term%connected%has_matrix) then
+             allocate (sqme (config%get_n_alr ()))
+          else
+             allocate (sqme (1))
+          end if
+          sqme = zero
           select type (phs => term%k_term%phs)
           type is (phs_fks_t)
              call pcm_instance%set_real_and_isr_kinematics &
@@ -10594,20 +10804,36 @@ The quantum numbers mask of the incoming particle
                 call pcm_instance%disable_sqme_np1 ()
                 do i_phs = 1, config%region_data%n_phs
                    emitter = phs%phs_identifiers(i_phs)%emitter
-                   sqme = sqme + pcm_instance%real_sub%compute (emitter, &
-                          i_phs, alpha_s_sub)
+                   call pcm_instance%real_sub%compute (emitter, &
+                        i_phs, alpha_s_sub, term%connected%has_matrix, sqme)
                 end do
              else
                 call pcm_instance%disable_subtraction ()
                 emitter = term%k_term%emitter; i_phs = term%k_term%i_phs
-                pcm_instance%real_sub%sqme_real_non_sub (1, i_phs) = &
-                     real (term%connected%trace%get_matrix_element (1))
-                sqme = pcm_instance%real_sub%compute (emitter, i_phs, alpha_s_sub)
+                pcm_instance%real_sub%sqme_real_non_sub (:, i_phs) = &
+                     real (term%connected%trace%get_matrix_element ())
+                call pcm_instance%real_sub%compute (emitter, i_phs, alpha_s_sub, &
+                     term%connected%has_matrix, sqme)
              end if
           end select
        end select
     end associate
-    call term%connected%trace%set_matrix_element (cmplx (sqme, zero, default))
+    if (term%connected%has_trace) &
+         call term%connected%trace%set_matrix_element (cmplx (sum(sqme), 0, default))
+    select type (config => term%pcm_instance%config)
+    type is (pcm_nlo_t)
+       is_subtraction = term%k_term%emitter < 0
+       if (term%connected%has_matrix) &
+           call refill_evaluator (cmplx (sqme, 0, default), &
+                config%get_qn (is_subtraction), &
+                config%region_data%get_flavor_indices (is_subtraction), &
+                term%connected%matrix)
+       if (term%connected%has_flows) &
+            call refill_evaluator (cmplx (sqme, 0, default), &
+                 config%get_qn (is_subtraction), &
+                 config%region_data%get_flavor_indices (is_subtraction), &
+                 term%connected%flows)
+    end select
   end subroutine term_instance_apply_fks
 
 @ %def term_instance_apply_fks
@@ -10618,7 +10844,7 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_evaluate_sqme_virt (term, alpha_s)
      class(term_instance_t), intent(inout) :: term
      real(default), intent(in) :: alpha_s
-     real(default) :: sqme_virt
+     real(default), dimension(:), allocatable :: sqme_virt
      if (term%nlo_type /= NLO_VIRTUAL) call msg_fatal &
         ("Trying to evaluate virtual matrix element with unsuited term_instance.")
      if (debug2_active (D_VIRTUAL)) then
@@ -10629,10 +10855,19 @@ The quantum numbers mask of the incoming particle
      end if
      call term%pcm_instance%set_momenta_and_scales_virtual &
           (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
-     sqme_virt = term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
-          term%connected%trace%get_matrix_element ())
+     call term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
+          term%connected%trace%get_matrix_element (), &
+          term%connected%has_matrix, sqme_virt)
      call term%connected%trace%set_matrix_element &
-          (cmplx (sqme_virt * term%weight, 0, default))
+          (cmplx (sum(sqme_virt) * term%weight, 0, default))
+     if (term%connected%has_matrix) then
+        select type (config => term%pcm_instance%config)
+        type is (pcm_nlo_t)
+           call refill_evaluator (cmplx (sqme_virt * term%weight, 0, default), &
+                config%get_qn (.true.), config%region_data%get_flavor_indices (.true.), &
+                term%connected%matrix)
+        end select
+     end if
   end subroutine term_instance_evaluate_sqme_virt
 
 @ %def term_instance_evaluate_sqme_virt
@@ -10643,10 +10878,21 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_evaluate_sqme_mismatch (term, alpha_s)
     class(term_instance_t), intent(inout) :: term
     real(default), intent(in) :: alpha_s
+    real(default), dimension(:), allocatable :: sqme_mism
     if (term%nlo_type /= NLO_MISMATCH) call msg_fatal &
        ("Trying to evaluate soft mismatch with unsuited term_instance.")
+    call term%pcm_instance%compute_sqme_mismatch &
+         (alpha_s, term%connected%has_matrix, sqme_mism)
     call term%connected%trace%set_matrix_element &
-       (cmplx (term%pcm_instance%compute_sqme_mismatch (alpha_s) * term%weight, zero, default))
+       (cmplx (sqme_mism * term%weight, zero, default))
+    if (term%connected%has_matrix) then
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          call refill_evaluator (cmplx (sqme_mism * term%weight, 0, default), &
+               config%get_qn (.true.), config%region_data%get_flavor_indices (.true.), &
+               term%connected%matrix)
+       end select
+    end if
   end subroutine term_instance_evaluate_sqme_mismatch
 
 @ %def term_instance_evaluate_sqme_mismatch
@@ -10657,12 +10903,22 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_evaluate_sqme_dglap (term, alpha_s)
     class(term_instance_t), intent(inout) :: term
     real(default), intent(in) :: alpha_s
-    real(default) :: sqme
+    real(default), dimension(:), allocatable :: sqme_dglap
     if (term%nlo_type /= NLO_DGLAP) call msg_fatal &
        ("Trying to evaluate DGLAP remnant with unsuited term_instance.")
-    sqme = term%pcm_instance%compute_sqme_dglap_remnant (alpha_s, &
-       real (term%connected%trace%get_matrix_element (1)))
-    call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
+    call term%pcm_instance%compute_sqme_dglap_remnant (alpha_s, &
+       real (term%connected%trace%get_matrix_element ()), &
+       term%connected%has_matrix, sqme_dglap)
+    call term%connected%trace%set_matrix_element &
+         (cmplx (sqme_dglap * term%weight, 0, default))
+    if (term%connected%has_matrix) then
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          call refill_evaluator (cmplx (sqme_dglap * term%weight, 0, default), &
+               config%get_qn (.true.), config%region_data%get_flavor_indices (.true.), &
+               term%connected%matrix)
+       end select
+    end if
   end subroutine term_instance_evaluate_sqme_dglap
 
 @ %def term_instance_evaluate_sqme_dglap
@@ -10796,26 +11052,15 @@ method may modify the [[core_state]] workspace object.
   subroutine term_instance_evaluate_interaction_default (term, core)
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(in) :: core
-    integer :: i, i_term
-    integer :: only_flavor
-    i_term = term%config%i_term
-    if (term%nlo_type == NLO_REAL .and. term%config%i_term_global /= term%config%i_sub) then
-       select type (config => term%pcm_instance%config)
-       type is (pcm_nlo_t)
-          only_flavor = config%region_data%get_real_index (i_term)
-       end select
-    else
-       only_flavor = 0
-    end if
+    integer :: i
     do i = 1, term%config%n_allowed
-       if (only_flavor > 0 .and. term%config%flv(i) /= only_flavor) cycle
-       term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
+       term%amp(i) = core%compute_amplitude (term%config%i_term, term%p_hard, &
           term%config%flv(i), term%config%hel(i), term%config%col(i), &
           term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
           term%core_state)
     end do
     if (associated (term%pcm_instance)) &
-       call term%pcm_instance%set_fac_scale (term%fac_scale)
+         call term%pcm_instance%set_fac_scale (term%fac_scale)
   end subroutine term_instance_evaluate_interaction_default
 
 @ %def term_instance_evaluate_interaction_default
@@ -10918,7 +11163,7 @@ method may modify the [[core_state]] workspace object.
        select type (core)
        class is (prc_user_defined_base_t)
           call core%compute_sqme_virt (i, term%p_hard, &
-             term%ren_scale, sqme_virt, bad_point)
+               term%ren_scale, sqme_virt, bad_point)
           associate (bad_blha => term%pcm_instance%bad_blha_point (term%config%i_component))
              bad_blha = bad_blha .or. bad_point
           end associate
@@ -10945,7 +11190,7 @@ method may modify the [[core_state]] workspace object.
     end do
   end subroutine term_instance_evaluate_interaction_userdef_loop
 
-@ %def term_instance_evaluate_interaction_loop
+@ %def term_instance_evaluate_interaction_userdef_loop
 @
 @
 <<Instances: term instance: TBP>>=
@@ -11002,8 +11247,10 @@ physical event.
 <<Instances: procedures>>=
   subroutine term_instance_evaluate_event_data (term)
     class(term_instance_t), intent(inout) :: term
-    call term%isolated%evaluate_event_data ()
-    call term%connected%evaluate_event_data ()
+    logical :: only_momenta
+    only_momenta = term%nlo_type > BORN
+    call term%isolated%evaluate_event_data (only_momenta)
+    call term%connected%evaluate_event_data (only_momenta)
   end subroutine term_instance_evaluate_event_data
 
 @ %def term_instance_evaluate_event_data
@@ -11111,6 +11358,17 @@ by the model.  If the model does not provide a value, the result is zero.
   end function term_instance_get_boost_to_cms
 
 @ %def term_instance_get_boost_to_cms
+@
+<<Instances: term instance: TBP>>=
+  procedure :: get_i_term_global => term_instance_get_i_term_global
+<<Instances: procedures>>=
+  elemental function term_instance_get_i_term_global (term) result (i_term)
+    integer :: i_term
+    class(term_instance_t), intent(in) :: term
+    i_term = term%config%i_term_global
+  end function term_instance_get_i_term_global
+
+@ %def term_instance_get_i_term_global
 @
 \subsection{The process instance}
 A process instance contains all process data that depend on the
@@ -11320,6 +11578,7 @@ to subobject of [[instance]].
           call pcm%init_color_data &
              ([process%get_constants (i_born), process%get_constants (i_real)], &
               term%flv, term%col)
+          call pcm%init_qn (process%get_model_ptr ())
           if (i_real_fin > 0) call pcm%allocate_ps_matching ()
        end if
        pcm%initialized = .true.
@@ -12107,30 +12366,30 @@ terms, iterating over all active process components.
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
-              core => instance%process%get_core_term (i)
-              if (instance%pcm%config%is_nlo ()) &
-                   core_sub => instance%process%get_subtraction_core ()
-              call term%evaluate_interaction (core)
-              call term%evaluate_trace ()
-              if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) &
-                   call set_sqme_born (term, 1)
-              if (term%nlo_type > BORN) then
-                 if (.not. (term%nlo_type == NLO_REAL .and. term%k_term%emitter > 0)) &
-                      call term%evaluate_color_correlations (term%p_seed, core_sub)
-              end if
-              alpha_s = core%get_alpha_s (term%core_state)
-              select case (term%nlo_type)
-              case (NLO_REAL)
-                 i_real_fin = instance%process%get_associated_real_fin (1)
-                 if (term%config%i_component /= i_real_fin) &
-                    call term%apply_fks (core, alpha_s)
-              case (NLO_VIRTUAL)
-                 call term%evaluate_sqme_virt (alpha_s)
-              case (NLO_MISMATCH)
-                 call term%evaluate_sqme_mismatch (alpha_s)
-              case (NLO_DGLAP)
-                 call term%evaluate_sqme_dglap (alpha_s)
-              end select
+               core => instance%process%get_core_term (i)
+               if (instance%pcm%config%is_nlo ()) &
+                    core_sub => instance%process%get_subtraction_core ()
+               call term%evaluate_interaction (core)
+               call term%evaluate_trace ()
+               if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) &
+                    call set_born_sqmes (term)
+               if (term%nlo_type > BORN) then
+                  if (.not. (term%nlo_type == NLO_REAL .and. term%k_term%emitter > 0)) &
+                       call term%evaluate_color_correlations (term%p_seed, core_sub)
+               end if
+               alpha_s = core%get_alpha_s (term%core_state)
+               select case (term%nlo_type)
+               case (NLO_REAL)
+                  i_real_fin = instance%process%get_associated_real_fin (1)
+                  if (term%config%i_component /= i_real_fin) &
+                       call term%apply_fks (core, alpha_s)
+               case (NLO_VIRTUAL)
+                  call term%evaluate_sqme_virt (alpha_s)
+               case (NLO_MISMATCH)
+                  call term%evaluate_sqme_mismatch (alpha_s)
+               case (NLO_DGLAP)
+                  call term%evaluate_sqme_dglap (alpha_s)
+               end select
             end if
             core_sub => null ()
           end associate
@@ -12149,23 +12408,25 @@ terms, iterating over all active process components.
           instance%term%connected%trace%get_matrix_element (1) * &
           instance%term%weight))
     else
-       ! failed kinematics, failed cuts: set sqme to zero
+       !!! Failed kinematics or failed cuts: set sqme to zero
        instance%sqme = zero
     end if
   contains
 
-    subroutine set_sqme_born (term, i_flv)
+    subroutine set_born_sqmes (term)
       type(term_instance_t), intent(inout) :: term
-      integer, intent(in) :: i_flv
+      integer :: i_flv
       real(default) :: sqme
-      sqme = real (term%connected%trace%get_matrix_element (i_flv))
-      select case (term%nlo_type)
-      case (NLO_REAL)
-         term%pcm_instance%real_sub%sqme_born (i_flv) = sqme
-      case (NLO_MISMATCH)
-         term%pcm_instance%soft_mismatch%sqme_born (i_flv) = sqme
-      end select
-    end subroutine set_sqme_born
+      do i_flv = 1, term%connected%trace%get_n_matrix_elements ()
+         sqme = real (term%connected%trace%get_matrix_element (i_flv))
+         select case (term%nlo_type)
+         case (NLO_REAL)
+            term%pcm_instance%real_sub%sqme_born (i_flv) = sqme
+         case (NLO_MISMATCH)
+            term%pcm_instance%soft_mismatch%sqme_born (i_flv) = sqme
+         end select
+      end do
+    end subroutine set_born_sqmes
   end subroutine process_instance_evaluate_trace
 
 @ %def process_instance_evaluate_trace
@@ -12801,7 +13062,8 @@ term instance.
     class(process_instance_t), intent(inout) :: instance
     integer :: i_term
     do i_term = 1, size (instance%term)
-       call instance%term(i_term)%connected%trace%set_matrix_element (cmplx (0,0,default))
+       call instance%term(i_term)%connected%trace%set_matrix_element (cmplx (0, 0, default))
+       call instance%term(i_term)%connected%matrix%set_matrix_element (cmplx (0, 0, default))
     end do
   end subroutine process_instance_reset_matrix_elements
 
@@ -12834,6 +13096,24 @@ term instance.
   end subroutine process_instance_get_phase_space_point
 
 @ %def process_instance_get_phase_space_point
+@
+<<Instances: process instance: TBP>>=
+  procedure :: get_first_active_i_term => process_instance_get_first_active_i_term
+<<Instances: procedures>>=
+  function process_instance_get_first_active_i_term (instance) result (i_term)
+    integer :: i_term
+    class(process_instance_t), intent(in) :: instance
+    integer :: i
+    i_term = 0
+    do i = 1, size (instance%term)
+       if (instance%term(i)%active) then
+          i_term = i
+          exit
+       end if
+    end do
+  end function process_instance_get_first_active_i_term
+
+@ %def process_instance_get_first_active_i_term
 @
 <<Instances: process instance: TBP>>=
   procedure :: get_associated_real => process_instance_get_associated_real
@@ -12880,6 +13160,39 @@ term instance.
   end function process_instance_get_sqrts
 
 @ %def process_instance_get_sqrts
+@ Get the polarizations
+<<Instances: process instance: TBP>>=
+  procedure :: get_polarization => process_instance_get_polarization
+<<Instances: procedures>>=
+  function process_instance_get_polarization (instance) result (pol)
+    class(process_instance_t), intent(in) :: instance
+    real(default), dimension(2) :: pol
+    pol = instance%process%get_polarization ()
+  end function process_instance_get_polarization
+
+@ %def process_instance_get_polarization
+@ Get the beam spectrum 
+<<Instances: process instance: TBP>>=
+  procedure :: get_beam_file => process_instance_get_beam_file
+<<Instances: procedures>>=
+  function process_instance_get_beam_file (instance) result (file)
+    class(process_instance_t), intent(in) :: instance
+    type(string_t) :: file
+    file = instance%process%get_beam_file ()
+  end function process_instance_get_beam_file
+
+@ %def process_instance_get_beam_file
+@ Get the process name
+<<Instances: process instance: TBP>>=
+  procedure :: get_process_name => process_instance_get_process_name
+<<Instances: procedures>>=
+  function process_instance_get_process_name (instance) result (name)
+    class(process_instance_t), intent(in) :: instance
+    type(string_t) :: name
+    name = instance%process%get_id ()
+  end function process_instance_get_process_name
+  
+@ %def process_instance_get_process_name
 @
 \subsubsection{Particle sets}
 Here we provide two procedures that convert the process instance
@@ -12969,6 +13282,19 @@ and directly set the coupling value that comes together with a particle set.
 @ %def process_instance_keep_failed_events
 @
 <<Instances: process instance: TBP>>=
+  procedure :: get_term_indices => process_instance_get_term_indices
+<<Instances: procedures>>=
+  function process_instance_get_term_indices (instance, nlo_type) result (i_term)
+    integer, dimension(:), allocatable :: i_term
+    class(process_instance_t), intent(in) :: instance
+    integer :: nlo_type
+    allocate (i_term (count (instance%term%nlo_type == nlo_type)))
+    i_term = pack (instance%term%get_i_term_global (), instance%term%nlo_type == nlo_type)
+  end function process_instance_get_term_indices
+
+@ %def process_instance_get_term_indices
+@
+<<Instances: process instance: TBP>>=
   procedure :: create_and_load_extra_libraries &
      => process_instance_create_and_load_extra_libraries
 <<Instances: procedures>>=
@@ -12977,13 +13303,13 @@ and directly set the coupling value that comes together with a particle set.
     class(process_instance_t), intent(inout), target :: instance
     type(beam_structure_t), intent(in) :: beam_structure
     type(os_data_t), intent(in) :: os_data
-    integer :: i, i_component, n_sub
+    integer :: i, i_component, n_sub, n_flv
     type(vector4_t), dimension(:), allocatable :: p
     type(core_manager_t), pointer :: cm => null ()
 
     associate (var_list => instance%process%get_var_list_ptr ())
        call instance%process%create_and_load_extra_libraries ( &
-            beam_structure, var_list, os_data, n_sub)
+            beam_structure, var_list, os_data)
     end associate
     cm => instance%process%get_core_manager_ptr ()
     do i = 1, cm%n_cores
@@ -12996,7 +13322,12 @@ and directly set the coupling value that comes together with a particle set.
              call instance%get_phase_space_point (i_component, i, p)
              call core%warmup_helicities (p)
           else
-             call core%set_helicity_list_trivial (n_sub)
+             select type (pcm => instance%process%get_pcm_ptr ())
+             type is (pcm_nlo_t)
+                n_flv = pcm%get_n_flv_born ()
+                n_sub = pcm%get_n_sub ()
+             end select
+             call core%set_helicity_list_trivial (n_flv, n_sub)
           end if
        end select
     end do
