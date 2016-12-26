@@ -27,7 +27,7 @@ if test "$enable_recola" = "yes"; then
      recola_libdir=`dirname $RECOLA`
      RECOLA_DIR=$recola_libdir
      wo_recola_libdir="-L${recola_libdir}"
-     wo_recola_ldflags="-Wl,-rpath,$RECOLA_DIR -L$RECOLA_DIR -lrecola"     
+     wo_recola_ldflags="-Wl,-rpath,$RECOLA_DIR -L$RECOLA_DIR -lrecola"
      wo_recola_includes="-I${recola_libdir}/modules"
      wo_recola_version=""
      save_LIBS="$LIBS"
@@ -59,15 +59,15 @@ if test "$enable_recola" = "yes"; then
        AC_MSG_CHECKING([for Recola version])
        AC_MSG_RESULT([$wo_recola_version])
      fi
-     AC_LANG_POP()     
+     AC_LANG_POP()
   else
      AC_MSG_CHECKING([for Recola])
-     AC_MSG_RESULT([(disabled)])        
+     AC_MSG_RESULT([(disabled)])
   fi
 else
    AC_MSG_CHECKING([for Recola])
    AC_MSG_RESULT([(disabled)])
-fi   
+fi
 
 AC_SUBST([RECOLA_INCLUDES])
 AC_SUBST([LDFLAGS_RECOLA])
@@ -76,7 +76,7 @@ if test "$enable_recola" = "yes"; then
    RECOLA_AVAILABLE_FLAG=".true."
 else
    RECOLA_AVAILABLE_FLAG=".false."
-fi   
+fi
 AC_SUBST([RECOLA_AVAILABLE_FLAG])
 
 AM_CONDITIONAL([RECOLA_AVAILABLE], [test "$enable_recola" = "yes"])
