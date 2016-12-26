@@ -8413,8 +8413,10 @@ entry.  This also resets the counter.
 module pcm
 
 <<Use kinds>>
+<<Use strings>>
   use constants, only: zero, two
   use diagnostics
+  use io_units, only: free_unit
   use lorentz, only: vector4_t, lorentz_transformation_t, identity
   use process_constants, only: process_constants_t
   use physics_defs
@@ -8430,6 +8432,7 @@ module pcm
   use phs_fks, only: phs_fks_generator_t
   use phs_fks, only: get_boost_for_threshold_projection
   use phs_fks, only: threshold_projection_born
+  use phs_fks, only: dalitz_plot_t
   use real_subtraction, only: real_subtraction_t, soft_mismatch_t
   use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG
   use virtual, only: virtual_t
@@ -8534,6 +8537,7 @@ corresponding instance.  This is the nontrivial NLO version.
     type(region_data_t) :: region_data
     type(nlo_color_data_t) :: color_data
     class(powheg_damping_t), allocatable :: powheg_damping
+    type(dalitz_plot_t) :: dalitz_plot
     type(quantum_numbers_t), dimension(:,:), allocatable :: qn_real, qn_born
   contains
   <<Pcm: pcm nlo: TBP>>
@@ -8745,6 +8749,33 @@ not have to be the case when different components are generated at LO})
 @ %def pcm_nlo_allocate_ps_matching
 @
 <<Pcm: pcm nlo: TBP>>=
+  procedure :: activate_dalitz_plot => pcm_nlo_activate_dalitz_plot
+<<Pcm: procedures>>=
+  subroutine pcm_nlo_activate_dalitz_plot (pcm, filename)
+    class(pcm_nlo_t), intent(inout) :: pcm
+    type(string_t), intent(in) :: filename
+    call pcm%dalitz_plot%init (free_unit (), filename, .false.)
+    call pcm%dalitz_plot%write_header ()
+  end subroutine pcm_nlo_activate_dalitz_plot
+
+@ %def pcm_nlo_activate_dalitz_plot
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: register_dalitz_plot => pcm_nlo_register_dalitz_plot
+<<Pcm: procedures>>=
+  subroutine pcm_nlo_register_dalitz_plot (pcm, emitter, p)
+    class(pcm_nlo_t), intent(inout) :: pcm
+    integer, intent(in) :: emitter
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default) :: k0_n, k0_np1
+    k0_n = p(emitter)%p(0)
+    k0_np1 = p(size(p))%p(0)
+    call pcm%dalitz_plot%register (k0_n, k0_np1)
+  end subroutine pcm_nlo_register_dalitz_plot
+
+@ %def pcm_nlo_register_dalitz_plot
+@
+<<Pcm: pcm nlo: TBP>>=
   procedure :: setup_phs_generator => pcm_nlo_setup_phs_generator
 <<Pcm: procedures>>=
   subroutine pcm_nlo_setup_phs_generator (pcm, pcm_instance, generator, &
@@ -8776,6 +8807,7 @@ not have to be the case when different components are generated at LO})
   subroutine pcm_nlo_final (pcm)
     class(pcm_nlo_t), intent(inout) :: pcm
     if (allocated (pcm%powheg_damping)) deallocate (pcm%powheg_damping)
+    call pcm%dalitz_plot%final ()
   end subroutine pcm_nlo_final
 
 @ %def pcm_nlo_final
@@ -10345,7 +10377,7 @@ allocated explicitly.
        select type (config => term%pcm_instance%config)
        type is (pcm_nlo_t)
           call config%setup_phs_generator (term%pcm_instance, &
-             phs%generator, phs%config%sqrts, mode, singular_jacobian)
+               phs%generator, phs%config%sqrts, mode, singular_jacobian)
        end select
     class default
        call msg_fatal ("Phase space should be an FKS phase space!")
@@ -10486,6 +10518,11 @@ choose to calculate all terms at once together with the seed kinematics, use
 
     if (term%nlo_type == NLO_REAL .and. term%k_term%emitter >= 0) then
        call term%k_term%evaluate_radiation (term%p_seed, p)
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          if (config%dalitz_plot%active) &
+               call config%register_dalitz_plot (term%k_term%emitter, p)
+       end select
     else if (term%nlo_type == NLO_REAL .and. term%k_term%emitter < 0) then
        call term%k_term%modify_momenta_for_subtraction (term%p_seed, p)
     else
@@ -11580,6 +11617,10 @@ to subobject of [[instance]].
               term%flv, term%col)
           call pcm%init_qn (process%get_model_ptr ())
           if (i_real_fin > 0) call pcm%allocate_ps_matching ()
+          associate (var_list => process%get_var_list_ptr ())
+             if (var_list%get_sval (var_str ("$dalitz_plot")) /= var_str ('')) &
+                  call pcm%activate_dalitz_plot (var_list%get_sval (var_str ("$dalitz_plot")))
+          end associate
        end if
        pcm%initialized = .true.
        select type (pcm_instance => instance%pcm)
