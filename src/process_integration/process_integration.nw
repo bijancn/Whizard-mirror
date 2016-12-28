@@ -118,6 +118,7 @@ module subevt_expr
 
 <<Use kinds>>
 <<Use strings>>
+  use constants, only: zero, one
   use io_units
   use format_utils, only: write_separator
   use diagnostics
@@ -638,7 +639,7 @@ default values.
              scale = expr%scale%get_real ()
           else
              call msg_error ("Evaluate scale expression: result undefined")
-             scale = 0
+             scale = zero
           end if
        else
           scale = expr%sqrts_hat
@@ -652,7 +653,7 @@ default values.
           else
              call msg_error ("Evaluate factorization scale expression: &
                   &result undefined")
-             fac_scale = 0
+             fac_scale = zero
           end if
        else
           fac_scale = scale
@@ -666,7 +667,7 @@ default values.
           else
              call msg_error ("Evaluate renormalization scale expression: &
                   &result undefined")
-             ren_scale = 0
+             ren_scale = zero
           end if
        else
           ren_scale = scale
@@ -677,11 +678,13 @@ default values.
              weight = expr%weight%get_real ()
           else
              call msg_error ("Evaluate weight expression: result undefined")
-             weight = 0
+             weight = zero
           end if
        else
-          weight = 1
+          weight = one
        end if
+    else
+       weight = zero
     end if
   end subroutine parton_expr_evaluate
 
@@ -12315,22 +12318,38 @@ in the term expressions.
     class(process_instance_t), intent(inout) :: instance
     real(default), intent(in), allocatable, optional :: scale_forced
     integer :: i
+    logical :: passed_real
     if (instance%evaluation_status >= STAT_EFF_KINEMATICS) then
        do i = 1, size (instance%term)
           if (instance%term(i)%active) then
              call instance%term(i)%evaluate_expressions (scale_forced)
           end if
        end do
-       if (any (instance%term%passed)) then
-          instance%evaluation_status = STAT_PASSED_CUTS
-       else
+       call evaluate_real_scales_and_cuts (passed_real)
+       if (.not. passed_real) then
           instance%evaluation_status = STAT_FAILED_CUTS
-       end if
-       do i = 1, size (instance%term)
-          if (instance%term(i)%nlo_type == NLO_REAL) call replace_scales (instance%term(i))
-       end do
+       else
+          if (any (instance%term%passed)) then
+             instance%evaluation_status = STAT_PASSED_CUTS
+          else
+             instance%evaluation_status = STAT_FAILED_CUTS
+          end if
+      end if
     end if
   contains
+    subroutine evaluate_real_scales_and_cuts (passed)
+      logical, intent(inout) :: passed
+      integer :: i
+      passed = .true.
+      do i = 1, size (instance%term)
+         if (.not. instance%term(i)%active) cycle
+         if (instance%term(i)%nlo_type == NLO_REAL) then
+            call replace_scales (instance%term(i))
+            passed_real = passed_real .and. instance%term(i)%passed
+        end if
+      end do
+    end subroutine evaluate_real_scales_and_cuts
+
     subroutine replace_scales (this_term)
       type(term_instance_t), intent(inout) :: this_term
       real(default) :: ren_scale_born, fac_scale_born
