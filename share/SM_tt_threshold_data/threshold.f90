@@ -557,6 +557,7 @@ contains
           p_decay = mom_ons
        end select
        if (.not. threshold%settings%onshell_projection%boost_decay &
+              .and. threshold%settings%onshell_projection%decay &
               .and. debug2_active (D_THRESHOLD)) &
             call check_rest_frame (ttv_mtpole (p12 * p12))
        born_decay_me = compute_decay_me (p_decay)
@@ -643,11 +644,11 @@ contains
       u = output_unit
       p_test = p_decay (THR_POS_WP) + p_decay (THR_POS_B)
       call assert_equal (u, mtop, sqrt (p_test * p_test), &
-           "Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
+           "Born phase-space: Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
            rel_smallness = tiny_07, exit_on_fail = .true.)
       p_test = p_decay (THR_POS_WM) + p_decay (THR_POS_BBAR)
       call assert_equal (u, mtop, sqrt (p_test * p_test), &
-           "Check if anti-top quark is in rest frame: ", abs_smallness = tiny_07, &
+           "Born phase-space: Check if anti-top quark is in rest frame: ", abs_smallness = tiny_07, &
            rel_smallness = tiny_07, exit_on_fail = .true.)
     end subroutine check_rest_frame
   end subroutine compute_born
@@ -724,13 +725,13 @@ contains
      integer, intent(in) :: leg
      type(momentum), intent(in), dimension(:) :: p_ofs
      type(momentum), intent(out), dimension(:) :: p_ons, p_ons_rest
-     type(momentum), dimension(2) :: ptop_ons, ptop_ons_rest
+     type(momentum), dimension(2) :: ptop_ons
      real(default), dimension(4) :: tmp, test
      type(momentum) :: p12, p35
      type(lorentz_transformation_t) :: lt
      if (threshold%settings%onshell_projection%active ()) then
         p12 = p_ofs(1) + p_ofs(2); p35 = p_ofs(3) + p_ofs(5)
-        call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest, lt)
+        call compute_projected_top_momenta (p12, p35, ptop_ons, lt)
         call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
@@ -759,9 +760,10 @@ contains
     lt = boost (v4_tmp, mtop)
   end function boost_to_cms
 
-  subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest, lt)
+  subroutine compute_projected_top_momenta (p12, p35, ptop_ons, lt)
     type(momentum), intent(in) :: p12, p35
-    type(momentum), intent(out), dimension(2) :: ptop_ons, ptop_ons_rest
+    type(momentum), intent(out), dimension(2) :: ptop_ons
+    type(momentum), dimension(2) :: ptop_ons_rest
     type(lorentz_transformation_t), intent(out) :: lt
     real(default) :: sqrts, scale_factor, mtop, s_minus_threshold
     real(default), dimension(1:3) :: unit_vec
@@ -772,20 +774,18 @@ contains
     s_minus_threshold = sqrts**2 - four * mtop**2
     if (s_minus_threshold > zero) then
        scale_factor = sqrt (s_minus_threshold) / 2
-       unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
-       ptop_ons(1) = [sqrts / 2, scale_factor * unit_vec]
-       ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
+    else
+       scale_factor = tiny_10
     end if
+    unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
+    ptop_ons(1) = [sqrts / 2, scale_factor * unit_vec]
+    ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
     ptop_ons_rest(1) = [mtop, zero, zero, zero]
     ptop_ons_rest(2) = [mtop, zero, zero, zero]
-    if (s_minus_threshold > zero) then
-       lt = boost_to_cms (ptop_ons(1), mtop)
-    else
-       lt = identity
-    end if
+    lt = boost_to_cms (ptop_ons(1), mtop)
     if (debug_active (D_THRESHOLD)) then
        u = output_unit
-       if (sqrts > 2 * mtop) then
+       if (s_minus_threshold > zero) then
           tmp = apply_boost (inverse (lt), ptop_ons(1))
           test = ptop_ons_rest(1)
           call assert_equal (u, tmp, test, &
@@ -803,9 +803,9 @@ contains
           call assert_equal (u, ptop_ons(2) * ptop_ons(2), mtop**2, &
                "mass onshell", abs_smallness=tiny_07, &
                 rel_smallness=tiny_07, exit_on_fail=.true.)
+          call assert_equal (u, dot_product(unit_vec, unit_vec), one, &
+              "unit vector length", exit_on_fail=.true.)
        end if
-       call assert_equal (u, dot_product(unit_vec, unit_vec), one, &
-            "unit vector length", exit_on_fail=.true.)
     end if
   end subroutine compute_projected_top_momenta
 
