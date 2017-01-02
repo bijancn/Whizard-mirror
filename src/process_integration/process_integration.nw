@@ -10607,33 +10607,37 @@ stored in the kinematics subobject to their source.  This is a side effect.
 <<Instances: term instance: TBP>>=
   procedure :: apply_damping_factor => term_instance_apply_damping_factor
 <<Instances: procedures>>=
-  subroutine term_instance_apply_damping_factor (term, component_type)
+  subroutine term_instance_apply_damping_factor (term, process)
     class(term_instance_t), intent(inout) :: term
-    integer, intent(in) :: component_type
+    type(process_t), intent(in) :: process
     real(default) :: E_gluon, sqme
-    integer :: nlegs
-    sqme = real (term%connected%trace%get_matrix_element (1))
-    call msg_debug2 (D_PROCESS_INTEGRATION, "term_instance_apply_damping_factor")
-    select type (pcm => term%pcm_instance%config)
-    type is (pcm_nlo_t)
-       select case (component_type)
-       case (COMP_REAL_FIN, COMP_REAL_SING)
-          nlegs = pcm%region_data%n_legs_real
-          select case (component_type)
-          case (COMP_REAL_FIN)
-             call msg_debug2 (D_PROCESS_INTEGRATION, "Real finite")
-             E_gluon = energy (term%p_hard(nlegs))
-             sqme = sqme * (one - pcm%powheg_damping%get_f (E_gluon**2))
-          case (COMP_REAL_SING)
-             if (term%k_term%emitter < 0) return
-             call msg_debug2 (D_PROCESS_INTEGRATION, "Real singular")
-             E_gluon = energy (term%pcm_instance%real_kinematics%p_real_lab%phs_point(1)%p(nlegs))
-             sqme = sqme * pcm%powheg_damping%get_f (E_gluon**2)
+    integer :: i_component, nlegs
+    i_component = term%config%i_component
+    if (process%component_is_selected (i_component) .and. &
+           process%get_component_nlo_type (i_component) == NLO_REAL) then
+       sqme = real (term%connected%trace%get_matrix_element (1))
+       call msg_debug2 (D_PROCESS_INTEGRATION, "term_instance_apply_damping_factor")
+       select type (pcm => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          select case (process%get_component_type (i_component))
+          case (COMP_REAL_FIN, COMP_REAL_SING)
+             nlegs = pcm%region_data%n_legs_real
+             select case (process%get_component_type (i_component))
+             case (COMP_REAL_FIN)
+                call msg_debug2 (D_PROCESS_INTEGRATION, "Real finite")
+                E_gluon = energy (term%p_hard(nlegs))
+                sqme = sqme * (one - pcm%powheg_damping%get_f (E_gluon**2))
+             case (COMP_REAL_SING)
+                if (term%k_term%emitter < 0) return
+                call msg_debug2 (D_PROCESS_INTEGRATION, "Real singular")
+                E_gluon = energy (term%pcm_instance%real_kinematics%p_real_lab%phs_point(1)%p(nlegs))
+                sqme = sqme * pcm%powheg_damping%get_f (E_gluon**2)
+             end select
           end select
        end select
-    end select
-    call msg_debug2 (D_PROCESS_INTEGRATION, "apply_damping: sqme", sqme)
-    call term%connected%trace%set_matrix_element (cmplx (sqme, zero, default))
+       call msg_debug2 (D_PROCESS_INTEGRATION, "apply_damping: sqme", sqme)
+       call term%connected%trace%set_only_matrix_element (1, cmplx (sqme, zero, default))
+    end if
   end subroutine term_instance_apply_damping_factor
 
 @ %def term_instance_apply_damping_factor
@@ -10873,7 +10877,8 @@ The quantum numbers mask of the incoming particle
        end select
     end associate
     if (term%connected%has_trace) &
-         call term%connected%trace%set_matrix_element (cmplx (sum(sqme), 0, default))
+         call term%connected%trace%set_only_matrix_element &
+              (1, cmplx (sum(sqme), 0, default))
     select type (config => term%pcm_instance%config)
     type is (pcm_nlo_t)
        is_subtraction = term%k_term%emitter < 0
@@ -10912,8 +10917,8 @@ The quantum numbers mask of the incoming particle
      call term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
           term%connected%trace%get_matrix_element (), &
           term%connected%has_matrix, sqme_virt)
-     call term%connected%trace%set_matrix_element &
-          (cmplx (sum(sqme_virt) * term%weight, 0, default))
+     call term%connected%trace%set_only_matrix_element &
+          (1, cmplx (sum(sqme_virt) * term%weight, 0, default))
      if (term%connected%has_matrix) then
         select type (config => term%pcm_instance%config)
         type is (pcm_nlo_t)
@@ -12468,6 +12473,12 @@ terms, iterating over all active process components.
                end select
             end if
             core_sub => null ()
+            if (instance%process%uses_powheg_damping_factors ()) &
+                 call term%apply_damping_factor (instance%process)
+            instance%sqme = instance%sqme + real (sum (&
+               term%connected%trace%get_matrix_element () * &
+               term%weight))
+
           end associate
        end do
 
@@ -12478,11 +12489,6 @@ terms, iterating over all active process components.
           instance%evaluation_status = STAT_FAILED_KINEMATICS
        end if
 
-       call instance%apply_powheg_dampings ()
-
-       instance%sqme = instance%sqme + real (sum (&
-          instance%term%connected%trace%get_matrix_element (1) * &
-          instance%term%weight))
     else
        !!! Failed kinematics or failed cuts: set sqme to zero
        instance%sqme = zero
@@ -12510,28 +12516,21 @@ terms, iterating over all active process components.
 <<Instances: process instance: TBP>>=
   procedure :: apply_powheg_dampings => process_instance_apply_powheg_dampings
 <<Instances: procedures>>=
-  subroutine process_instance_apply_powheg_dampings (instance, only_component)
+  subroutine process_instance_apply_powheg_dampings (instance, i_component)
     class(process_instance_t), intent(inout) :: instance
-    integer, intent(in), optional :: only_component
-    integer :: i, i_term
+    integer, intent(in) :: i_component
+    integer :: i_term
     integer, dimension(:), allocatable :: i_terms
-    integer :: i_skip
-    i_skip = 0; if (present (only_component)) i_skip = only_component
     associate (process => instance%process)
-       if (.not. process%uses_powheg_damping_factors ()) return
-       do i = 1, process%get_n_components ()
-          if (i_skip > 0 .and. i /= i_skip) cycle
-          if (instance%process%component_is_selected (i) .and. &
-             process%get_component_nlo_type (i) == NLO_REAL) then
-             allocate (i_terms (size (process%get_component_i_terms (i))))
-             i_terms = process%get_component_i_terms (i)
-             do i_term = 1, size (i_terms)
-                call instance%term(i_terms(i_term))%apply_damping_factor &
-                   (process%get_component_type (i))
-             end do
-          end if
-          if (allocated (i_terms)) deallocate (i_terms)
-       end do
+       if (process%component_is_selected (i_component) .and. &
+              process%get_component_nlo_type (i_component) == NLO_REAL) then
+          allocate (i_terms (size (process%get_component_i_terms (i_component))))
+          i_terms = process%get_component_i_terms (i_component)
+          do i_term = 1, size (i_terms)
+             call instance%term(i_terms(i_term))%apply_damping_factor (process)
+          end do
+       end if
+       if (allocated (i_terms)) deallocate (i_terms)
     end associate
   end subroutine process_instance_apply_powheg_dampings
 
