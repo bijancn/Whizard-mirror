@@ -1123,8 +1123,15 @@ contains
     integer, intent(in) :: n_tot
     real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
     real(c_default_float), dimension(0:3,n_tot), intent(out) :: p_ofs_out
+    type(spinor) :: test_psi, test_spinor1, test_spinor2
+    type(momentum) :: p
+    type(vector) :: vp
+    complex(kind=default) :: c_one
+    real(default) :: mtop
+    integer :: i
     p_ofs_out(:,1:n_tot) = p_ofs(:,1:n_tot)
     if (test_onshell) then
+       !!! This is above threshold: sqrts = 350 GeV
        p_ofs_out(:,3) =  [  95.237818224532234, -39.152407665077284, &
                             28.564227360034039,  15.943661703665313]
        p_ofs_out(:,4) =  [ 101.19883586743811,   39.626666946167894, &
@@ -1133,11 +1140,30 @@ contains
                           -28.767162575206349,  -32.979705643001502]
        p_ofs_out(:,6) =  [ 73.801164132561894,  -67.026156434029716, &
                            10.352881882757050,  -28.797291847046992]
+       test_psi%a = [one, two, three, four]
+       c_one = one
+       mtop = mass(6)     !!! We assume a fixed mtpole = m1S
+       p = p_ofs_out(:,3) + p_ofs_out(:,5)
+       call check_spinor_sum ()
+       p = p_ofs_out(:,4) + p_ofs_out(:,6)
+       call check_spinor_sum ()
     end if
+  contains
+    subroutine check_spinor_sum ()
+      vp = p
+      test_spinor1 = f_vf (c_one, vp, test_psi) + mtop * test_psi
+      test_spinor2 = u (mtop, p, +1) * (ubar (mtop, p, +1) * test_psi) + &
+                     u (mtop, p, -1) * (ubar (mtop, p, -1) * test_psi)
+      do i = 1, 4
+        call assert_equal (output_unit, test_spinor1%a(i), test_spinor2%a(i), &
+             "(p+m)1=(sum u ubar)1", abs_smallness = tiny_07, &
+             rel_smallness = tiny_07, exit_on_fail = .true.)
+      end do
+    end subroutine check_spinor_sum
   end subroutine handle_onshell_test_point
 
-
 end module @ID@_threshold
+
 
 subroutine @ID@_threshold_init (par, scheme) bind(C)
   use iso_c_binding
