@@ -97,6 +97,7 @@ module_lists = \
   ../blha/Modules \
   ../gosam/Modules \
   ../openloops/Modules \
+  ../recola/Modules \
   ../fks/Modules \
   ../variables/Modules \
   ../parsing/Modules \
