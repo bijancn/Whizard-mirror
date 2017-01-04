@@ -1212,6 +1212,7 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
   use kinds
   use constants
   use numeric_utils
+  use, intrinsic :: iso_fortran_env, only: output_unit
   use opr_@ID@, full_proc_new_event => new_event
   use opr_@ID@, full_proc_get_amplitude => get_amplitude
   use opr_@ID@, full_proc_number_spin_states => number_spin_states
@@ -1270,6 +1271,14 @@ contains
        end do
     end if
     call threshold%formfactor%activate ()
+    if (test_onshell) then
+       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
+       do hi = 1, size(amp_omega_full)
+          call assert_equal (output_unit, amp_omega_full(hi), &
+               amp_no_FF(hi), "Signal \= Factorized", exit_on_fail=.true.)
+       end do
+       stop
+    end if
     select case (FF)
     case (EXPANDED_HARD, EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
             EXPANDED_SOFT_HARD)
