@@ -118,7 +118,7 @@ module @ID@_threshold
   implicit none
   private
   public :: init, calculate_blob, compute_born, &
-       init_workspace, compute_production_owfs, &
+       compute_production_owfs, &
        compute_decay_owfs, table_spin_states, compute_production_me, &
        top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2, &
        apply_boost, compute_projected_momenta, convert_to_mom_and_invert_sign, &
@@ -134,7 +134,7 @@ module @ID@_threshold
   integer, parameter, public :: n_cindex = 2
   integer, parameter, public :: n_flv = 1
   integer, parameter, public :: n_hel = 144
-  integer, parameter :: n_hel_OS = 16
+  integer, parameter, public :: n_hel_OS = 16
 
   integer, public :: process_mode = PROC_MODE_UNDEFINED
 
@@ -315,7 +315,6 @@ module @ID@_threshold
   data table_spin_states(:, 143) /  1,  1,  1,  1,  1, -1 /
   data table_spin_states(:, 144) /  1,  1,  1,  1,  1,  1 /
 
-  complex(default), dimension(:), allocatable, save, public :: amp_blob
   integer, public :: nhel_max
 
   type(spinor) :: owf_t_4, owf_b_6, owf_e_1
@@ -394,7 +393,8 @@ contains
     complex(default) :: amp
     integer, intent(in) :: ffi
     type(momentum), intent(in) :: p12
-    type(momentum), intent(in), dimension(2) :: ptop_ons, ptop_ofs
+    type(momentum), intent(in), dimension(2) :: ptop_ofs
+    type(momentum), intent(in), dimension(2), optional :: ptop_ons
     integer, intent(in), optional :: h_t, h_tbar
     complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
     real(default) :: mtop, top_width, extra_tree
@@ -516,10 +516,11 @@ contains
          f_vlf (gccq33, owf_Wm_4, owf_b_6)
   end function anti_top_decay_born
 
-  subroutine compute_born (n_tot, p_ofs, ffi)
+  subroutine compute_born (n_tot, p_ofs, ffi, amp)
     integer, intent(in) :: n_tot
     real(default), dimension(0:3,*), intent(in) :: p_ofs
     integer, intent(in) :: ffi
+    complex(default), dimension(:), intent(inout) :: amp
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
     complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
     complex(default) :: prod, dec1, dec2
@@ -530,11 +531,12 @@ contains
     type(momentum) :: p12
     type(lorentz_transformation_t), dimension(2) :: lt
     integer :: i
-    call init_workspace ()
+    amp = zero
     allocate (mom_ofs (n_tot), mom_ons (n_tot), mom_ons_rest (n_tot), p_decay(n_tot))
     call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     p12 = mom_ofs(1) + mom_ofs(2)
     if (threshold%settings%onshell_projection%active ()) then
+       !!! compute projections
        call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
        ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
        ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
@@ -546,6 +548,7 @@ contains
     end if
     ptop_ofs = get_top_momenta_offshell (p_ofs)
     if (threshold%settings%factorized_computation) then
+       !!! compute_partial_matrix_elements
        production_me = compute_production_me (ffi, mom_ofs, ptop_ofs, ptop_ons)
        select case (momentum_mode ())
        case (OFS)
@@ -573,7 +576,7 @@ contains
              prod = production_me(s(1), s(2), h_t, h_tbar)
              dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
              dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-             amp_blob(hi) = amp_blob(hi) + &
+             amp(hi) = amp(hi) + &
                   abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
                   abs2 (dec1) * abs2 (dec2)
           else if (threshold%settings%helicity_approximation%simple) then
@@ -592,7 +595,7 @@ contains
                 do h_tbar = -1, 1, 2
                    dec2 = dec2 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2))
                 end do
-                amp_blob(hi) = amp_blob(hi) + &
+                amp(hi) = amp(hi) + &
                      prod * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
                      dec1 * dec2 / 4
              else
@@ -601,7 +604,7 @@ contains
                       prod = production_me(s(1), s(2), h_t, h_tbar)
                       dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
                       dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-                      amp_blob(hi) = amp_blob(hi) + &
+                      amp(hi) = amp(hi) + &
                            abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
                            abs2 (dec1) * abs2 (dec2)
                    end do
@@ -613,7 +616,7 @@ contains
                    prod = production_me(s(1), s(2), h_t, h_tbar)
                    dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
                    dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-                   amp_blob(hi) = amp_blob(hi) + &
+                   amp(hi) = amp(hi) + &
                         prod * top_propagators (ffi, p12, ptop_ofs) * &
                         dec1 * dec2
                 end do
@@ -622,11 +625,10 @@ contains
        else
           call compute_production_owfs (mom_ofs, hi)
           if (process_mode == PROC_MODE_WBWB) call compute_decay_owfs (mom_ofs, hi)
-          amp_blob(hi) = - calculate_blob (ffi, p12, ptop_ofs, ptop_ons = ptop_ons)
+          amp(hi) = - calculate_blob (ffi, p12, ptop_ofs)
        end if
     end do
   contains
-
     function ass_leg (i_particle)
       integer :: ass_leg
       integer, intent(in) :: i_particle
@@ -638,7 +640,7 @@ contains
          call msg_fatal ("ass_leg called with invalid argument!")
       end if
     end function ass_leg
-
+    ! TODO: (bcn 2017-01-04) make this a separate subroutine
     subroutine check_rest_frame (mtop)
       real(default), intent(in) :: mtop
       integer :: u
@@ -675,15 +677,6 @@ contains
        end do
     end do
   end function compute_decay_me
-
-  subroutine init_workspace ()
-    if (process_mode == PROC_MODE_TT) then
-       nhel_max = n_hel_OS
-    else
-       nhel_max = n_hel
-    end if
-    if (allocated (amp_blob))  amp_blob = zero
-  end subroutine init_workspace
 
   function get_top_momenta_offshell (k, leg) result (p_top)
      type(momentum), dimension(2) :: p_top
@@ -951,7 +944,6 @@ contains
               threshold%settings%helicity_approximation%ultra)) &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
-    call init_workspace ()
     call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     call convert_to_mom_and_invert_sign (p_ons, n_tot, mom_ons)
     call compute_real_amplitudes (ffi, mom_ofs, mom_ons, leg, &
@@ -1190,9 +1182,15 @@ subroutine @ID@_set_process_mode (mode) bind(C)
   use iso_c_binding
   use kinds
   use @ID@_threshold
+  use physics_defs, only: PROC_MODE_TT
   implicit none
   integer, intent(in) :: mode
   process_mode = mode
+  if (process_mode == PROC_MODE_TT) then
+     nhel_max = n_hel_OS
+  else
+     nhel_max = n_hel
+  end if
 end subroutine @ID@_set_process_mode
 
 !!! p_ons is supplied correctly for the real computation
@@ -1229,7 +1227,7 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
   if (real_computation) then
      amp2 = compute_real (n_tot, p_ofs, p_ons, leg, FF)
   else
-     amp2 = handle_born_special_cases (n_tot, p_ofs)
+     amp2 = compute_born_special_cases (n_tot, p_ofs)
   end if
   amp2 = amp2 * production_factors
 
@@ -1237,17 +1235,15 @@ contains
 
   subroutine allocate_amps ()
     !!! We use the `save` attribute to avoid reallocation for every PS point
-    allocate (amp_blob(n_total_hel))
     allocate (amp_omega_full(n_total_hel))
     allocate (amp_with_FF(n_total_hel))
     allocate (amp_no_FF(n_total_hel))
-    amp_blob = zero
     amp_omega_full = zero
     amp_with_FF = zero
     amp_no_FF = zero
   end subroutine allocate_amps
 
-  function handle_born_special_cases (n_tot, p_ofs) result (amp2)
+  function compute_born_special_cases (n_tot, p_ofs) result (amp2)
     real(c_default_float) :: amp2
     integer, intent(in) :: n_tot
     real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
@@ -1261,28 +1257,24 @@ contains
        end do
     end if
     call threshold%formfactor%activate ()
-    call compute_born (n_tot, p_ofs_work, FF)
     select case (FF)
     case (EXPANDED_HARD, EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
             EXPANDED_SOFT_HARD)
-       amp_with_FF = amp_blob
-       call compute_born (n_tot, p_ofs_work, TREE)
-       amp_no_FF = amp_blob
+       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF)
+       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
        amp2 = real (sum (abs2 (amp_no_FF))) + &
             2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
     case (MATCHED)
-       amp2 = real (sum (abs2 (amp_blob)))       !!! Resummed amp_squared
-       call compute_born (n_tot, p_ofs_work, TREE)
-       amp_no_FF = amp_blob
-       call compute_born (n_tot, p_ofs_work, MATCHED_EXPANDED)
-       amp_with_FF = amp_blob
+       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF)
+       amp2 = real (sum (abs2 (amp_with_FF)))       !!! Resummed amp_squared
+       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
+       call compute_born (n_tot, p_ofs_work, MATCHED_EXPANDED, amp_with_FF)
        amp2 = amp2 + 2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
     case default
+       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF)
        if (threshold%settings%interference) then
-          amp_with_FF = amp_blob
           if (threshold%settings%factorized_interference_term) then
-             call compute_born (n_tot, p_ofs_work, TREE)
-             amp_no_FF = amp_blob
+             call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
           else
              amp_no_FF = amp_omega_full
           end if
@@ -1292,24 +1284,22 @@ contains
                2 * real (amp_no_FF * conjg (amp_with_FF))))
        else
           if (threshold%settings%helicity_approximation%simple) then
-             amp2 = real (sum (amp_blob))
+             amp2 = real (sum (amp_with_FF))
           else
-             amp2 = real (sum (abs2 (amp_blob)))
+             amp2 = real (sum (abs2 (amp_with_FF)))
           end if
        end if
     end select
     if (test_ward)  amp2 = 0
     if (threshold%settings%only_interference_term) then
-       call compute_born (n_tot, p_ofs_work, FF)
-       amp_with_FF = amp_blob
+       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF)
        if (threshold%settings%factorized_interference_term) then
-          call compute_born (n_tot, p_ofs_work, TREE)
-          amp_no_FF = amp_blob
+          call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
        else
           amp_no_FF = amp_omega_full
        end if
        amp2 = sum (2 * real (amp_no_FF * conjg (amp_with_FF)))
     end if
-  end function handle_born_special_cases
+  end function compute_born_special_cases
 
 end subroutine @ID@_get_amp_squared

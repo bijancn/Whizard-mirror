@@ -87,7 +87,6 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   mu = mu_c
   allocate (mom_ofs(6), mom_ons(6), mom_ons_rest(6))
   call convert_to_mom_and_invert_sign (p_ofs, 6, mom_ofs)
-  call init_workspace ()
   call set_parameter("alpha_s", alpha_s)
   call set_parameter("mu", mu)
   total = 0
