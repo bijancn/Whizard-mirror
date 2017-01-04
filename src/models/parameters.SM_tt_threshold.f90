@@ -273,9 +273,6 @@ contains
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     this_FF = FF; if (present (FF_mode))  this_FF = FF_mode
     c = threshold%formfactor%compute (ps, i, this_FF)
-    !!! form factors include tree level: FF = 1 + O(alphas)
-    !!! subtract tree level contribution (1) already included in SM couplings
-    c = c - 1.0_default
   end function ttv_formfactor
 
 

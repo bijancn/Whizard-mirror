@@ -121,9 +121,11 @@ module @ID@_threshold
        init_workspace, compute_production_owfs, &
        compute_decay_owfs, table_spin_states, compute_production_me, &
        top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2, &
-       apply_boost, compute_projected_momenta, convert_to_mom_and_invert_sign
+       apply_boost, compute_projected_momenta, convert_to_mom_and_invert_sign, &
+       handle_onshell_test_point
 
   logical, parameter, public :: test_ward = .false.
+  logical, parameter, public :: test_onshell = .false.
 
   integer, parameter, public :: n_prt = 6
   integer, parameter :: n_prt_OS = 4
@@ -1121,7 +1123,51 @@ contains
 
   end subroutine compute_real_amplitudes
 
+  subroutine handle_onshell_test_point (n_tot, p_ofs, p_ofs_out)
+    integer, intent(in) :: n_tot
+    real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
+    real(c_default_float), dimension(0:3,n_tot), intent(out) :: p_ofs_out
+    type(spinor) :: test_psi, test_spinor1, test_spinor2
+    type(momentum) :: p
+    type(vector) :: vp
+    complex(kind=default) :: c_one
+    real(default) :: mtop
+    integer :: i
+    p_ofs_out(:,1:n_tot) = p_ofs(:,1:n_tot)
+    if (test_onshell) then
+       !!! This is above threshold: sqrts = 350 GeV
+       p_ofs_out(:,3) =  [  95.237818224532234, -39.152407665077284, &
+                            28.564227360034039,  15.943661703665313]
+       p_ofs_out(:,4) =  [ 101.19883586743811,   39.626666946167894, &
+                           -10.149946667584741,  45.833335786383174]
+       p_ofs_out(:,5) =  [ 79.762181775467766,   66.551897152939105, &
+                          -28.767162575206349,  -32.979705643001502]
+       p_ofs_out(:,6) =  [ 73.801164132561894,  -67.026156434029716, &
+                           10.352881882757050,  -28.797291847046992]
+       test_psi%a = [one, two, three, four]
+       c_one = one
+       mtop = mass(6)     !!! We assume a fixed mtpole = m1S
+       p = p_ofs_out(:,3) + p_ofs_out(:,5)
+       call check_spinor_sum ()
+       p = p_ofs_out(:,4) + p_ofs_out(:,6)
+       call check_spinor_sum ()
+    end if
+  contains
+    subroutine check_spinor_sum ()
+      vp = p
+      test_spinor1 = f_vf (c_one, vp, test_psi) + mtop * test_psi
+      test_spinor2 = u (mtop, p, +1) * (ubar (mtop, p, +1) * test_psi) + &
+                     u (mtop, p, -1) * (ubar (mtop, p, -1) * test_psi)
+      do i = 1, 4
+        call assert_equal (output_unit, test_spinor1%a(i), test_spinor2%a(i), &
+             "(p+m)1=(sum u ubar)1", abs_smallness = tiny_07, &
+             rel_smallness = tiny_07, exit_on_fail = .true.)
+      end do
+    end subroutine check_spinor_sum
+  end subroutine handle_onshell_test_point
+
 end module @ID@_threshold
+
 
 subroutine @ID@_threshold_init (par, scheme) bind(C)
   use iso_c_binding
@@ -1142,6 +1188,7 @@ subroutine @ID@_set_process_mode (mode) bind(C)
   process_mode = mode
 end subroutine @ID@_set_process_mode
 
+!!! p_ons is supplied correctly for the real computation
 subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
   use iso_c_binding
   use kinds
@@ -1159,82 +1206,103 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
   real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
   real(c_default_float), dimension(0:3,*), intent(in) :: p_ons
   integer, intent(in) :: leg, n_tot
-  complex(default), dimension(:), allocatable, save :: amp_with_FF, amp_no_FF, amp_omega_full
+  complex(default), dimension(:), save, allocatable :: amp_with_FF, &
+       amp_no_FF, amp_omega_full
   logical :: real_computation
   integer :: hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
   if (.not. allocated (amp_omega_full)) then
      if (real_computation) then
-        n_total_hel = n_hel * 2 ! times 2 helicities due to the gluon
+        n_total_hel = n_hel * 2 ! times 2 due to the gluon
      else
         n_total_hel = n_hel
      end if
      call allocate_amps ()
   end if
-  amp_omega_full = zero
-  amp_with_FF = zero
-  amp_no_FF = zero
   if (real_computation) then
-     call threshold%formfactor%activate ()
      amp2 = compute_real (n_tot, p_ofs, p_ons, leg, FF)
   else
-     if (threshold%settings%interference) then
-        call threshold%formfactor%disable ()
-        call full_proc_new_event (p_ofs)
-        do hi = 1, full_proc_number_spin_states()
-           amp_omega_full(hi) = full_proc_get_amplitude (1, hi, 1)
-        end do
-     end if
-     call threshold%formfactor%activate ()
-     call compute_born (n_tot, p_ofs, FF)
-     select case (FF)
-     case (EXPANDED_HARD, EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
-             EXPANDED_SOFT_HARD)
-        amp_with_FF = amp_blob
-        call compute_born (n_tot, p_ofs, TREE)
-        amp_no_FF = amp_blob
-        ! amp2 = expanded_amp2 (amp_omega_full, amp_blob)
-        amp2 = real (sum (abs2 (amp_no_FF))) + &
-             2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
-     case (MATCHED)
-        amp2 = real (sum (abs2 (amp_blob)))       !!! Resummed amp_squared
-        call compute_born (n_tot, p_ofs, TREE)
-        amp_no_FF = amp_blob
-        call compute_born (n_tot, p_ofs, MATCHED_EXPANDED)
-        amp_with_FF = amp_blob
-        amp2 = amp2 + 2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
-     case default
-        if (threshold%settings%interference) then
-           amp_with_FF = amp_blob
-           if (threshold%settings%factorized_interference_term) then
-              call compute_born (n_tot, p_ofs, TREE)
-              amp_no_FF = amp_blob
-           else
-              amp_no_FF = amp_omega_full
-           end if
-           if (threshold%settings%flip_relative_sign) &
-               amp_no_FF = - amp_no_FF
-           amp2 = real (sum (abs2 (amp_omega_full) + abs2 (amp_with_FF) + &
-                2 * real (amp_no_FF * conjg (amp_with_FF))))
-        else
-           if (threshold%settings%helicity_approximation%simple) then
-              amp2 = real (sum (amp_blob))
-           else
-              amp2 = real (sum (abs2 (amp_blob)))
-           end if
-        end if
-     end select
-     if (test_ward)  amp2 = 0
+     amp2 = handle_born_special_cases (n_tot, p_ofs)
   end if
   amp2 = amp2 * production_factors
 
 contains
 
   subroutine allocate_amps ()
+    !!! We use the `save` attribute to avoid reallocation for every PS point
     allocate (amp_blob(n_total_hel))
     allocate (amp_omega_full(n_total_hel))
     allocate (amp_with_FF(n_total_hel))
     allocate (amp_no_FF(n_total_hel))
+    amp_blob = zero
+    amp_omega_full = zero
+    amp_with_FF = zero
+    amp_no_FF = zero
   end subroutine allocate_amps
+
+  function handle_born_special_cases (n_tot, p_ofs) result (amp2)
+    real(c_default_float) :: amp2
+    integer, intent(in) :: n_tot
+    real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
+    real(c_default_float), dimension(0:3,n_tot) :: p_ofs_work
+    call handle_onshell_test_point (n_tot, p_ofs, p_ofs_work)
+    if (threshold%settings%interference) then
+       call threshold%formfactor%disable ()
+       call full_proc_new_event (p_ofs_work)
+       do hi = 1, full_proc_number_spin_states()
+          amp_omega_full(hi) = full_proc_get_amplitude (1, hi, 1)
+       end do
+    end if
+    call threshold%formfactor%activate ()
+    call compute_born (n_tot, p_ofs_work, FF)
+    select case (FF)
+    case (EXPANDED_HARD, EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
+            EXPANDED_SOFT_HARD)
+       amp_with_FF = amp_blob
+       call compute_born (n_tot, p_ofs_work, TREE)
+       amp_no_FF = amp_blob
+       amp2 = real (sum (abs2 (amp_no_FF))) + &
+            2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
+    case (MATCHED)
+       amp2 = real (sum (abs2 (amp_blob)))       !!! Resummed amp_squared
+       call compute_born (n_tot, p_ofs_work, TREE)
+       amp_no_FF = amp_blob
+       call compute_born (n_tot, p_ofs_work, MATCHED_EXPANDED)
+       amp_with_FF = amp_blob
+       amp2 = amp2 + 2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
+    case default
+       if (threshold%settings%interference) then
+          amp_with_FF = amp_blob
+          if (threshold%settings%factorized_interference_term) then
+             call compute_born (n_tot, p_ofs_work, TREE)
+             amp_no_FF = amp_blob
+          else
+             amp_no_FF = amp_omega_full
+          end if
+          if (threshold%settings%flip_relative_sign) &
+              amp_no_FF = - amp_no_FF
+          amp2 = real (sum (abs2 (amp_omega_full) + abs2 (amp_with_FF) + &
+               2 * real (amp_no_FF * conjg (amp_with_FF))))
+       else
+          if (threshold%settings%helicity_approximation%simple) then
+             amp2 = real (sum (amp_blob))
+          else
+             amp2 = real (sum (abs2 (amp_blob)))
+          end if
+       end if
+    end select
+    if (test_ward)  amp2 = 0
+    if (threshold%settings%only_interference_term) then
+       call compute_born (n_tot, p_ofs_work, FF)
+       amp_with_FF = amp_blob
+       if (threshold%settings%factorized_interference_term) then
+          call compute_born (n_tot, p_ofs_work, TREE)
+          amp_no_FF = amp_blob
+       else
+          amp_no_FF = amp_omega_full
+       end if
+       amp2 = sum (2 * real (amp_no_FF * conjg (amp_with_FF)))
+    end if
+  end function handle_born_special_cases
 
 end subroutine @ID@_get_amp_squared

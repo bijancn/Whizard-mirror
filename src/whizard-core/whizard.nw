@@ -2690,6 +2690,7 @@ module dispatch_me_methods
   use prc_user_defined
   use prc_gosam
   use prc_openloops
+  use prc_recola
   use prc_threshold
 
 <<Standard module head>>
@@ -2807,6 +2808,18 @@ intent(out).
              call msg_fatal ("Dispatch OpenLoops def: No id!")
           end if
        end select
+    case ("recola")
+       call abort_if_recola_not_active ()
+       allocate (recola_def_t :: core_def)
+       select type (core_def)
+       type is (recola_def_t)
+          if (present (id)) then
+             call core_def%init (id, model_name, prt_in, &
+                prt_out, nlo)
+          else
+             call msg_fatal ("Dispatch RECOLA def: No id!")
+          end if
+       end select
     case ("dummy")
        allocate (user_defined_test_def_t :: core_def)
        select type (core_def)
@@ -2879,6 +2892,12 @@ grab it from the model.
       select type (core)
       type is (prc_openloops_t)
          call core%set_parameters (qcd)
+      end select
+    type is (recola_def_t)
+      if (.not. allocated (core)) allocate (prc_recola_t :: core)
+      select type (core)
+      type is (prc_recola_t)
+         call core%set_parameters (qcd, model)
       end select
     type is (user_defined_test_def_t)
       if (.not. allocated (core)) allocate (prc_user_defined_test_t :: core)
@@ -8655,7 +8674,7 @@ information about how many entries to associate from [[region_data]].
   subroutine entry_setup_additional_entries (entry)
     class(entry_t), intent(inout), target :: entry
     type(entry_t), pointer :: current_entry
-    integer :: i, n_phs, n_flv
+    integer :: i, n_phs
     type(evt_nlo_t), pointer :: evt
     integer :: mode
     evt => null ()
@@ -8664,7 +8683,6 @@ information about how many entries to associate from [[region_data]].
        select type (config => pcm%config)
        type is (pcm_nlo_t)
           n_phs = config%region_data%n_phs
-          n_flv = config%region_data%n_flv_real
        end select
     end select
     select type (entry)
@@ -8673,10 +8691,10 @@ information about how many entries to associate from [[region_data]].
        current_entry%first => entry
        call get_nlo_evt_ptr (current_entry, evt, mode)
        if (mode > EVT_NLO_SEPARATE_BORNLIKE) then
-          allocate (evt%particle_set_radiated (n_phs * n_flv + 1))
+          allocate (evt%particle_set_radiated (n_phs + 1))
           evt%event_deps%n_phs = n_phs
           evt%qcd => entry%qcd
-          do i = 1, n_phs * n_flv
+          do i = 1, n_phs
              allocate (current_entry%next)
              current_entry%next%first => current_entry%first
              current_entry => current_entry%next
@@ -9478,7 +9496,7 @@ we may only read and rescan events.
           call simulation%entry(i)%determine_if_powheg_matching ()
           if (signal_is_pending ())  return
           if (simulation%entry(i)%is_nlo ()) &
-             call simulation%entry(i)%setup_additional_entries ()
+               call simulation%entry(i)%setup_additional_entries ()
        end do
        simulation%valid = any (simulation%entry%valid)
        if (.not. simulation%valid) then
@@ -20697,7 +20715,7 @@ Also here, after each command we set a breakpoint.
     call ifile_append (ifile, "ALT strfun_id = " &
           // "none | lhapdf | lhapdf_photon | pdf_builtin | pdf_builtin_photon | " &
           // "isr | epa | ewa | circe1 | circe2 | energy_scan | " &
-          // "gaussian | beam_events | user_sf_spec")
+          // "gaussian | beam_events")
     call ifile_append (ifile, "KEY none")
     call ifile_append (ifile, "KEY lhapdf")
     call ifile_append (ifile, "KEY lhapdf_photon")
@@ -20711,8 +20729,6 @@ Also here, after each command we set a breakpoint.
     call ifile_append (ifile, "KEY energy_scan")
     call ifile_append (ifile, "KEY gaussian")
     call ifile_append (ifile, "KEY beam_events")
-    call ifile_append (ifile, "SEQ user_sf_spec = user_strfun user_arg")
-    call ifile_append (ifile, "KEY user_strfun")
     call ifile_append (ifile, "SEQ cmd_integrate = " &
          // "integrate proc_arg options?")
     call ifile_append (ifile, "KEY integrate")
@@ -24834,6 +24850,17 @@ end module features
      help = "external NLO matrix element provider"
 @
 <<Features: print>>=
+  call print_check ("Recola")
+<<Features: dependencies>>=
+  use system_dependencies, only: RECOLA_AVAILABLE
+<<Features: cases>>=
+  case ("recola")
+     if (RECOLA_AVAILABLE) then
+        result = "yes"
+     end if
+     help = "external NLO matrix element provider"
+@
+<<Features: print>>=
   call print_check ("LHAPDF")
 <<Features: dependencies>>=
   use system_dependencies, only: LHAPDF5_AVAILABLE
@@ -26242,6 +26269,15 @@ This is for developers only, but needs a well-defined interface.
      call fks_regions_test (u, results)
 <<Main: all tests>>=
   call fks_regions_test (u, results)
+@
+\subsubsection{RECOLA}
+<<Main: use tests>>=
+  use prc_recola_ut, only: prc_recola_test
+<<Main: test cases>>=
+  case ("prc_recola")
+     call prc_recola_test (u, results)
+<<Main: all tests>>=
+  call prc_recola_test (u, results)
 @
 \subsubsection{NLO Color data}
 <<Main: use tests>>=

@@ -154,7 +154,10 @@ UNIT_TESTS_REQ_OCAML = \
     prc_omega.run \
     compilations.run \
     compilations_static.run
-
+    
+UNIT_TESTS_REQ_RECOLA = \
+   prc_recola.run
+    
 UNIT_TESTS_REQ_LHAPDF5 = \
     sf_lhapdf5.run 
 UNIT_TESTS_REQ_LHAPDF6 = \
@@ -168,8 +171,8 @@ TEST_DRIVERS_RUN = \
     $(UNIT_TESTS_REQ_FASTJET) \
     $(UNIT_TESTS_REQ_LHAPDF5) \
     $(UNIT_TESTS_REQ_LHAPDF6) \
-    $(UNIT_TESTS_REQ_OCAML)
-
+    $(UNIT_TESTS_REQ_OCAML) \
+    $(UNIT_TESTS_REQ_RECOLA)
 TEST_DRIVERS_SH = $(TEST_DRIVERS_RUN:.run=.sh)
 
 ########################################################################
@@ -186,6 +189,7 @@ UNIT_TESTS += $(UNIT_TESTS_REQ_LHAPDF5)
 UNIT_TESTS += $(UNIT_TESTS_REQ_LHAPDF6)
 UNIT_TESTS += $(UNIT_TESTS_REQ_OCAML)
 UNIT_TESTS += $(UNIT_TESTS_REQ_EV_ANA)
+UNIT_TESTS += $(UNIT_TESTS_REQ_RECOLA)
 
 TESTS += $(UNIT_TESTS)
 XFAIL_TESTS += $(XFAIL_UNIT_TESTS)
@@ -246,6 +250,7 @@ BUILT_SOURCES = \
     GAMELAN_FLAG \
     EVENT_ANALYSIS_FLAG \
     OCAML_FLAG \
+    RECOLA_FLAG \
     PYTHIA6_FLAG \
     STATIC_FLAG \
     ref-output \
@@ -292,6 +297,11 @@ if OCAML_AVAILABLE
 	touch $@
 endif
 
+RECOLA_FLAG:
+if RECOLA_AVAILABLE
+	touch $@
+endif
+
 PYTHIA6_FLAG:
 if PYTHIA6_AVAILABLE
 	touch $@
@@ -328,14 +338,14 @@ notestflag:
 clean-local:
 	rm -f gamelan.sty
 	rm -f TESTFLAG GAMELAN_FLAG 
-	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
+	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG RECOLA_FLAG
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
 	rm -f core* 
 	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
-	rm -f *.grid
+	rm -f *.grid output.rcl
 	rm -rf err-output
 	rm -rf ref-output
 	rm -f *.sin *.hbc 
