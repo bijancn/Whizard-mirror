@@ -559,6 +559,7 @@ contains
           p_decay = mom_ons
        end select
        if (.not. threshold%settings%onshell_projection%boost_decay &
+              .and. threshold%settings%onshell_projection%decay &
               .and. debug2_active (D_THRESHOLD)) &
             call check_rest_frame (ttv_mtpole (p12 * p12))
        born_decay_me = compute_decay_me (p_decay)
@@ -567,9 +568,11 @@ contains
        s = table_spin_states(:,hi)
        if (threshold%settings%factorized_computation) then
           if (threshold%settings%helicity_approximation%ultra) then
-             prod = production_me(s(1), s(2), 1, 1)
-             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), 1, 1)
-             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), 1, 2)
+             h_t = threshold%settings%sel_hel_top
+             h_tbar = threshold%settings%sel_hel_topbar
+             prod = production_me(s(1), s(2), h_t, h_tbar)
+             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
              amp_blob(hi) = amp_blob(hi) + &
                   abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
                   abs2 (dec1) * abs2 (dec2)
@@ -643,11 +646,11 @@ contains
       u = output_unit
       p_test = p_decay (THR_POS_WP) + p_decay (THR_POS_B)
       call assert_equal (u, mtop, sqrt (p_test * p_test), &
-           "Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
+           "Born phase-space: Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
            rel_smallness = tiny_07, exit_on_fail = .true.)
       p_test = p_decay (THR_POS_WM) + p_decay (THR_POS_BBAR)
       call assert_equal (u, mtop, sqrt (p_test * p_test), &
-           "Check if anti-top quark is in rest frame: ", abs_smallness = tiny_07, &
+           "Born phase-space: Check if anti-top quark is in rest frame: ", abs_smallness = tiny_07, &
            rel_smallness = tiny_07, exit_on_fail = .true.)
     end subroutine check_rest_frame
   end subroutine compute_born
@@ -724,13 +727,13 @@ contains
      integer, intent(in) :: leg
      type(momentum), intent(in), dimension(:) :: p_ofs
      type(momentum), intent(out), dimension(:) :: p_ons, p_ons_rest
-     type(momentum), dimension(2) :: ptop_ons, ptop_ons_rest
+     type(momentum), dimension(2) :: ptop_ons
      real(default), dimension(4) :: tmp, test
      type(momentum) :: p12, p35
      type(lorentz_transformation_t) :: lt
      if (threshold%settings%onshell_projection%active ()) then
         p12 = p_ofs(1) + p_ofs(2); p35 = p_ofs(3) + p_ofs(5)
-        call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest, lt)
+        call compute_projected_top_momenta (p12, p35, ptop_ons, lt)
         call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
@@ -759,9 +762,17 @@ contains
     lt = boost (v4_tmp, mtop)
   end function boost_to_cms
 
-  subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest, lt)
+  !!! The boost to the center-of-mass system only has a reasonable meaning
+  !!! above the threshold. Below the threshold, we do not apply boost at all, so
+  !!! that the top quarks stay in the rest frame. However, with top quarks exactly
+  !!! at rest, problems arise in the matrix elements (e.g. in the computation
+  !!! of angles). Therefore, we apply a boost which is not exactly 1, but has a
+  !!! tiny value differing from that.
+
+  subroutine compute_projected_top_momenta (p12, p35, ptop_ons, lt)
     type(momentum), intent(in) :: p12, p35
-    type(momentum), intent(out), dimension(2) :: ptop_ons, ptop_ons_rest
+    type(momentum), intent(out), dimension(2) :: ptop_ons
+    type(momentum), dimension(2) :: ptop_ons_rest
     type(lorentz_transformation_t), intent(out) :: lt
     real(default) :: sqrts, scale_factor, mtop, s_minus_threshold
     real(default), dimension(1:3) :: unit_vec
@@ -772,20 +783,18 @@ contains
     s_minus_threshold = sqrts**2 - four * mtop**2
     if (s_minus_threshold > zero) then
        scale_factor = sqrt (s_minus_threshold) / 2
-       unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
-       ptop_ons(1) = [sqrts / 2, scale_factor * unit_vec]
-       ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
+    else
+       scale_factor = tiny_10
     end if
+    unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
+    ptop_ons(1) = [sqrts / 2, scale_factor * unit_vec]
+    ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
     ptop_ons_rest(1) = [mtop, zero, zero, zero]
     ptop_ons_rest(2) = [mtop, zero, zero, zero]
-    if (s_minus_threshold > zero) then
-       lt = boost_to_cms (ptop_ons(1), mtop)
-    else
-       lt = identity
-    end if
+    lt = boost_to_cms (ptop_ons(1), mtop)
     if (debug_active (D_THRESHOLD)) then
        u = output_unit
-       if (sqrts > 2 * mtop) then
+       if (s_minus_threshold > zero) then
           tmp = apply_boost (inverse (lt), ptop_ons(1))
           test = ptop_ons_rest(1)
           call assert_equal (u, tmp, test, &
@@ -803,9 +812,9 @@ contains
           call assert_equal (u, ptop_ons(2) * ptop_ons(2), mtop**2, &
                "mass onshell", abs_smallness=tiny_07, &
                 rel_smallness=tiny_07, exit_on_fail=.true.)
+          call assert_equal (u, dot_product(unit_vec, unit_vec), one, &
+              "unit vector length", exit_on_fail=.true.)
        end if
-       call assert_equal (u, dot_product(unit_vec, unit_vec), one, &
-            "unit vector length", exit_on_fail=.true.)
     end if
   end subroutine compute_projected_top_momenta
 
@@ -975,8 +984,10 @@ contains
     function skip (h_t, h_tbar)
       logical :: skip
       integer, intent(in) :: h_t, h_tbar
-      skip = threshold%settings%helicity_approximation%ultra &
-           .and. (h_t /= 1 .or. h_tbar /= 1)
+      associate (s => threshold%settings)
+         skip = s%helicity_approximation%ultra &
+              .and. (h_t /= s%sel_hel_top .or. h_tbar /= s%sel_hel_topbar)
+      end associate
     end function skip
 
   end function compute_real
