@@ -526,11 +526,11 @@ contains
     complex(default) :: propagators
     integer :: hi
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons
-    type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest, p_decay
+    type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, p_decay
     type(momentum) :: p12
     type(lorentz_transformation_t), dimension(2) :: lt
     amp = zero
-    allocate (mom_ofs (n_tot), mom_ons (n_tot), mom_ons_rest (n_tot), p_decay(n_tot))
+    allocate (mom_ofs (n_tot), mom_ons (n_tot), p_decay(n_tot))
     call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     p12 = mom_ofs(1) + mom_ofs(2)
     ptop_ofs = get_top_momenta_offshell (p_ofs)
@@ -551,7 +551,7 @@ contains
     end do
   contains
     subroutine compute_projections ()
-      call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
+      call compute_projected_momenta (0, mom_ofs, mom_ons)
       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
       if (.not. threshold%settings%onshell_projection%boost_decay) then
@@ -729,10 +729,10 @@ contains
     end do
   end subroutine convert_to_mom_and_invert_sign
 
-  subroutine compute_projected_momenta (leg, p_ofs, p_ons, p_ons_rest)
+  subroutine compute_projected_momenta (leg, p_ofs, p_ons)
      integer, intent(in) :: leg
      type(momentum), intent(in), dimension(:) :: p_ofs
-     type(momentum), intent(out), dimension(:) :: p_ons, p_ons_rest
+     type(momentum), intent(out), dimension(:) :: p_ons
      type(momentum), dimension(2) :: ptop_ons
      real(default), dimension(4) :: tmp, test
      type(momentum) :: p12, p35
@@ -740,7 +740,7 @@ contains
      if (threshold%settings%onshell_projection%active ()) then
         p12 = p_ofs(1) + p_ofs(2); p35 = p_ofs(3) + p_ofs(5)
         call compute_projected_top_momenta (p12, p35, ptop_ons, lt)
-        call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
+        call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
               !!! No sum (...) function for type(momentum), need to do this explicitly
@@ -748,7 +748,7 @@ contains
               test = - p12
               call assert_equal (output_unit, tmp, test, &
                    "overall: momentum conservation", &
-                   abs_smallness=tiny_07, &
+                   abs_smallness=10*tiny_07, &
                    rel_smallness=tiny_07, &
                    exit_on_fail=.true.)
            end if
@@ -824,11 +824,12 @@ contains
     end if
   end subroutine compute_projected_top_momenta
 
-  subroutine compute_projected_top_decay_products (p12, lt, p_ofs, p_ons, p_ons_rest)
+  subroutine compute_projected_top_decay_products (p12, lt, p_ofs, p_ons)
     type(momentum), intent(in) :: p12
     type(lorentz_transformation_t), intent(in) :: lt
     type(momentum), intent(in), dimension(:) :: p_ofs
-    type(momentum), intent(out), dimension(*) :: p_ons, p_ons_rest
+    type(momentum), intent(out), dimension(*) :: p_ons
+    type(momentum), dimension(3:6) :: p_ons_rest
     real(default) :: mtop, mw2, mb2, en_w, en_b
     type(vector4_t) :: p_tmp_1, p_tmp_2
     type(vector4_t), dimension(3) :: p_decay
@@ -868,7 +869,7 @@ contains
     else
        p_ons(3:6) = p_ofs(3:6)
     end if
-    if (debug_active (D_THRESHOLD)) then
+    if (debug_active (D_THRESHOLD) .and. .not. momenta_already_onshell) then
        call assert_equal (u, en_w + en_b, mtop, "top energy", &
             exit_on_fail=.true.)
        call assert_equal (u, en_w + en_b, mtop, "top energy", &
