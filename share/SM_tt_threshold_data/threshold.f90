@@ -523,97 +523,26 @@ contains
     complex(default), dimension(:), intent(inout) :: amp
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
     complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
-    complex(default) :: prod, dec1, dec2
-    integer, dimension(n_prt) :: s
-    integer :: hi, h_t, h_tbar
+    complex(default) :: propagators
+    integer :: hi
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest, p_decay
     type(momentum) :: p12
     type(lorentz_transformation_t), dimension(2) :: lt
-    integer :: i
     amp = zero
     allocate (mom_ofs (n_tot), mom_ons (n_tot), mom_ons_rest (n_tot), p_decay(n_tot))
     call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     p12 = mom_ofs(1) + mom_ofs(2)
-    if (threshold%settings%onshell_projection%active ()) then
-       call compute_projections ()
-    end if
     ptop_ofs = get_top_momenta_offshell (p_ofs)
-    if (threshold%settings%factorized_computation) then
-       !!! compute_partial_matrix_elements
-       production_me = compute_production_me (ffi, mom_ofs, ptop_ofs, ptop_ons)
-       select case (momentum_mode ())
-       case (OFS)
-          p_decay = mom_ofs
-       case (ONS)
-          p_decay(1:2) = mom_ons(1:2)
-          do i = 3, n_tot
-             p_decay(i) = apply_boost ((lt(ass_leg(i))), mom_ons(i))
-          end do
-       case (ONS_BOOST)
-          p_decay = mom_ons
-       end select
-       if (.not. threshold%settings%onshell_projection%boost_decay &
-              .and. threshold%settings%onshell_projection%decay &
-              .and. debug2_active (D_THRESHOLD)) &
-            call check_rest_frame (ttv_mtpole (p12 * p12), p_decay)
-       born_decay_me = compute_decay_me (p_decay)
-    end if
+    if (threshold%settings%onshell_projection%active ()) &
+         call compute_projections ()
+    if (threshold%settings%factorized_computation) &
+         propagators = top_propagators (ffi, p12, ptop_ofs)
+         call compute_partial_matrix_elements ()
     do hi = 1, nhel_max
-       s = table_spin_states(:,hi)
        if (threshold%settings%factorized_computation) then
-          if (threshold%settings%helicity_approximation%ultra) then
-             h_t = threshold%settings%sel_hel_top
-             h_tbar = threshold%settings%sel_hel_topbar
-             prod = production_me(s(1), s(2), h_t, h_tbar)
-             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-             amp(hi) = amp(hi) + &
-                  abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
-                  abs2 (dec1) * abs2 (dec2)
-          else if (threshold%settings%helicity_approximation%simple) then
-             if (threshold%settings%helicity_approximation%extra) then
-                prod = zero
-                do h_t = -1, 1, 2
-                   do h_tbar = -1, 1, 2
-                      prod = prod + abs2(production_me(s(1), s(2), h_t, h_tbar))
-                   end do
-                end do
-                dec1 = zero
-                do h_t = -1, 1, 2
-                   dec1 = dec1 + abs2(born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1))
-                end do
-                dec2 = zero
-                do h_tbar = -1, 1, 2
-                   dec2 = dec2 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2))
-                end do
-                amp(hi) = amp(hi) + &
-                     prod * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
-                     dec1 * dec2 / 4
-             else
-                do h_t = -1, 1, 2
-                   do h_tbar = -1, 1, 2
-                      prod = production_me(s(1), s(2), h_t, h_tbar)
-                      dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-                      dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-                      amp(hi) = amp(hi) + &
-                           abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
-                           abs2 (dec1) * abs2 (dec2)
-                   end do
-                end do
-             end if
-          else
-             do h_t = -1, 1, 2
-                do h_tbar = -1, 1, 2
-                   prod = production_me(s(1), s(2), h_t, h_tbar)
-                   dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-                   dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-                   amp(hi) = amp(hi) + &
-                        prod * top_propagators (ffi, p12, ptop_ofs) * &
-                        dec1 * dec2
-                end do
-             end do
-          end if
+          amp(hi) = multiply_partial_matrix_elements ( &
+               production_me, born_decay_me, propagators, hi)
        else
           call compute_production_owfs (mom_ofs, hi)
           if (process_mode == PROC_MODE_WBWB) call compute_decay_owfs (mom_ofs, hi)
@@ -622,28 +551,108 @@ contains
     end do
   contains
     subroutine compute_projections ()
-       call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
-       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
-       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
-       if (.not. threshold%settings%onshell_projection%boost_decay) then
-          lt = inverse (boost_to_cms (ptop_ons, ttv_mtpole (p12 * p12)))
-       else
-          lt = identity
-       end if
-    end subroutine compute_projections
-    function ass_leg (i_particle)
-      integer :: ass_leg
-      integer, intent(in) :: i_particle
-      if (i_particle == 3 .or. i_particle == 5) then
-         ass_leg = 1
-      else if (i_particle == 4 .or. i_particle == 6) then
-         ass_leg = 2
+      call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
+      ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
+      ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
+      if (.not. threshold%settings%onshell_projection%boost_decay) then
+         lt = inverse (boost_to_cms (ptop_ons, ttv_mtpole (p12 * p12)))
       else
-         call msg_fatal ("ass_leg called with invalid argument!")
+         lt = identity
       end if
-    end function ass_leg
-    ! TODO: (bcn 2017-01-04) make this a separate subroutine
+    end subroutine compute_projections
+    subroutine compute_partial_matrix_elements ()
+      integer :: i
+      production_me = compute_production_me (ffi, mom_ofs, ptop_ofs, ptop_ons)
+      select case (momentum_mode ())
+      case (OFS)
+         p_decay = mom_ofs
+      case (ONS)
+         p_decay(1:2) = mom_ons(1:2)
+         do i = 3, n_tot
+            p_decay(i) = apply_boost ((lt(ass_leg(i))), mom_ons(i))
+         end do
+      case (ONS_BOOST)
+         p_decay = mom_ons
+      end select
+      if (.not. threshold%settings%onshell_projection%boost_decay &
+             .and. threshold%settings%onshell_projection%decay &
+             .and. debug2_active (D_THRESHOLD)) &
+           call check_rest_frame (ttv_mtpole (p12 * p12), p_decay)
+      born_decay_me = compute_decay_me (p_decay)
+    end subroutine compute_partial_matrix_elements
   end subroutine compute_born
+
+  function multiply_partial_matrix_elements ( &
+         production_me, born_decay_me, propagators, hi) result (amp)
+    complex(default) :: amp
+    complex(default), dimension(-1:1,-1:1,-1:1,-1:1), intent(in) :: production_me
+    complex(default), dimension(-1:1,-1:1,-1:1,1:2), intent(in) :: born_decay_me
+    complex(default), intent(in) :: propagators
+    integer, intent(in) :: hi
+    complex(default) :: prod, dec1, dec2
+    integer :: h_t, h_tbar
+    integer, dimension(n_prt) :: s
+    s = table_spin_states(:,hi)
+    if (threshold%settings%helicity_approximation%ultra) then
+       h_t = threshold%settings%sel_hel_top
+       h_tbar = threshold%settings%sel_hel_topbar
+       prod = production_me(s(1), s(2), h_t, h_tbar)
+       dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+       dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+       amp = abs2 (prod) * abs2 (propagators) * abs2 (dec1) * abs2 (dec2)
+    else if (threshold%settings%helicity_approximation%simple) then
+       if (threshold%settings%helicity_approximation%extra) then
+          prod = zero
+          do h_t = -1, 1, 2
+             do h_tbar = -1, 1, 2
+                prod = prod + abs2(production_me(s(1), s(2), h_t, h_tbar))
+             end do
+          end do
+          dec1 = zero
+          do h_t = -1, 1, 2
+             dec1 = dec1 + abs2(born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1))
+          end do
+          dec2 = zero
+          do h_tbar = -1, 1, 2
+             dec2 = dec2 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2))
+          end do
+          amp = prod * abs2 (propagators) * dec1 * dec2 / 4
+       else
+          amp = zero
+          do h_t = -1, 1, 2
+             do h_tbar = -1, 1, 2
+                prod = production_me(s(1), s(2), h_t, h_tbar)
+                dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+                amp = amp + abs2 (prod) * abs2 (propagators) * &
+                     abs2 (dec1) * abs2 (dec2)
+             end do
+          end do
+       end if
+    else
+       amp = zero
+       do h_t = -1, 1, 2
+          do h_tbar = -1, 1, 2
+             prod = production_me(s(1), s(2), h_t, h_tbar)
+             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+             amp = amp + prod * propagators * dec1 * dec2
+          end do
+       end do
+    end if
+  end function multiply_partial_matrix_elements
+
+  function ass_leg (i_particle)
+    integer :: ass_leg
+    integer, intent(in) :: i_particle
+    if (i_particle == 3 .or. i_particle == 5) then
+       ass_leg = 1
+    else if (i_particle == 4 .or. i_particle == 6) then
+       ass_leg = 2
+    else
+       call msg_fatal ("ass_leg called with invalid argument!")
+    end if
+  end function ass_leg
 
   subroutine check_rest_frame (mtop, p_decay)
     real(default), intent(in) :: mtop
