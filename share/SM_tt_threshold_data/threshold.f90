@@ -762,6 +762,13 @@ contains
     lt = boost (v4_tmp, mtop)
   end function boost_to_cms
 
+  !!! The boost to the center-of-mass system only has a reasonable meaning
+  !!! above the threshold. Below the threshold, we do not apply boost at all, so
+  !!! that the top quarks stay in the rest frame. However, with top quarks exactly
+  !!! at rest, problems arise in the matrix elements (e.g. in the computation
+  !!! of angles). Therefore, we apply a boost which is not exactly 1, but has a
+  !!! tiny value differing from that.
+
   subroutine compute_projected_top_momenta (p12, p35, ptop_ons, lt)
     type(momentum), intent(in) :: p12, p35
     type(momentum), intent(out), dimension(2) :: ptop_ons
