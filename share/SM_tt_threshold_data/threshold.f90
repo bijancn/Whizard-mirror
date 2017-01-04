@@ -536,15 +536,7 @@ contains
     call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     p12 = mom_ofs(1) + mom_ofs(2)
     if (threshold%settings%onshell_projection%active ()) then
-       !!! compute projections
-       call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
-       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
-       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
-       if (.not. threshold%settings%onshell_projection%boost_decay) then
-          lt = inverse (boost_to_cms (ptop_ons, ttv_mtpole (p12 * p12)))
-       else
-          lt = identity
-       end if
+       call compute_projections ()
     end if
     ptop_ofs = get_top_momenta_offshell (p_ofs)
     if (threshold%settings%factorized_computation) then
@@ -564,7 +556,7 @@ contains
        if (.not. threshold%settings%onshell_projection%boost_decay &
               .and. threshold%settings%onshell_projection%decay &
               .and. debug2_active (D_THRESHOLD)) &
-            call check_rest_frame (ttv_mtpole (p12 * p12))
+            call check_rest_frame (ttv_mtpole (p12 * p12), p_decay)
        born_decay_me = compute_decay_me (p_decay)
     end if
     do hi = 1, nhel_max
@@ -629,6 +621,16 @@ contains
        end if
     end do
   contains
+    subroutine compute_projections ()
+       call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
+       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
+       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
+       if (.not. threshold%settings%onshell_projection%boost_decay) then
+          lt = inverse (boost_to_cms (ptop_ons, ttv_mtpole (p12 * p12)))
+       else
+          lt = identity
+       end if
+    end subroutine compute_projections
     function ass_leg (i_particle)
       integer :: ass_leg
       integer, intent(in) :: i_particle
@@ -641,21 +643,23 @@ contains
       end if
     end function ass_leg
     ! TODO: (bcn 2017-01-04) make this a separate subroutine
-    subroutine check_rest_frame (mtop)
-      real(default), intent(in) :: mtop
-      integer :: u
-      type(momentum) :: p_test
-      u = output_unit
-      p_test = p_decay (THR_POS_WP) + p_decay (THR_POS_B)
-      call assert_equal (u, mtop, sqrt (p_test * p_test), &
-           "Born phase-space: Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
-           rel_smallness = tiny_07, exit_on_fail = .true.)
-      p_test = p_decay (THR_POS_WM) + p_decay (THR_POS_BBAR)
-      call assert_equal (u, mtop, sqrt (p_test * p_test), &
-           "Born phase-space: Check if anti-top quark is in rest frame: ", abs_smallness = tiny_07, &
-           rel_smallness = tiny_07, exit_on_fail = .true.)
-    end subroutine check_rest_frame
   end subroutine compute_born
+
+  subroutine check_rest_frame (mtop, p_decay)
+    real(default), intent(in) :: mtop
+    type(momentum), dimension(:), intent(in) :: p_decay
+    integer :: u
+    type(momentum) :: p_test
+    u = output_unit
+    p_test = p_decay (THR_POS_WP) + p_decay (THR_POS_B)
+    call assert_equal (u, mtop, sqrt (p_test * p_test), &
+         "Born phase-space: Check if top quark is in rest frame: ", abs_smallness = tiny_07, &
+         rel_smallness = tiny_07, exit_on_fail = .true.)
+    p_test = p_decay (THR_POS_WM) + p_decay (THR_POS_BBAR)
+    call assert_equal (u, mtop, sqrt (p_test * p_test), &
+         "Born phase-space: Check if anti-top quark is in rest frame: ", abs_smallness = tiny_07, &
+         rel_smallness = tiny_07, exit_on_fail = .true.)
+  end subroutine check_rest_frame
 
   function compute_decay_me (p_decay) result (born_decay_me)
     complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
