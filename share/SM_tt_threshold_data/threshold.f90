@@ -1042,6 +1042,7 @@ contains
          p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
     mtop = ttv_mtpole (p12 * p12)
     if (.not. threshold%settings%onshell_projection%boost_decay) then
+       p_ons_full([1,2]) = p_ons([1,2])
        lt = inverse (boost_to_cms (ptop_ons(leg), mtop))
        p_ons_real_decay = apply_boost (lt, p_ons_real_decay)
        p_ons_full([ass_boson(leg), ass_quark(leg), THR_POS_GLUON]) = &
