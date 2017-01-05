@@ -179,7 +179,14 @@ AC_SUBST([OBJ_EXT])
 AC_DEFUN([WO_FC_LIBRARY_LDFLAGS],
 [dnl
 AC_REQUIRE([AC_PROG_FC])
-  AC_FC_LIBRARY_LDFLAGS
+case "$FC" in
+nagfor*)
+  WO_NAGFOR_LIBRARY_LDFLAGS()
+  ;;
+*)
+  AC_FC_LIBRARY_LDFLAGS()
+  ;;
+esac
 ])
 
 ### Check the NAG Fortran compiler
@@ -190,11 +197,17 @@ AC_DEFUN([WO_NAGFOR_LIBRARY_LDFLAGS],
   AC_CACHE_CHECK([Fortran libraries of $FC],
   [wo_cv_fc_libs],
   [dnl
+  AC_REQUIRE([WO_FC_CHECK_OPENMP])
+  AC_REQUIRE([WO_FC_SET_OPENMP])
   if test -z "$FCLIBS"; then
     AC_LANG([Fortran])
     AC_LANG_CONFTEST([AC_LANG_PROGRAM([])])
     wo_save_fcflags=$FCFLAGS
-    FCFLAGS="-dryrun"
+    if test "$wo_cv_fc_use_openmp" = "yes"; then
+      FCFLAGS="-dryrun $wo_cv_fcflags_openmp" 
+    else  
+      FCFLAGS="-dryrun"
+    fi 
     eval "set x $ac_link"
     echo "set x $ac_link"
     shift
@@ -202,7 +215,7 @@ AC_DEFUN([WO_NAGFOR_LIBRARY_LDFLAGS],
     wo_nagfor_output=`eval $ac_link AS_MESSAGE_LOG_FD>&1 2>&1`
     echo "$wo_nagfor_output" >&AS_MESSAGE_LOG_FD
     FCFLAGS=$wo_save_fcflags
-    wo_cv_fc_libs=`echo $wo_nagfor_output | $SED -e 's/.* -o conftest \(.*\)$/\1/' | $SED -e "s/conftest.$ac_objext //"`
+    wo_cv_fc_libs=`echo $wo_nagfor_output | $SED -e 's/.* -o conftest \(.*\)$/\1/' | $SED -e 's/conftest.$ac_objext //' | $SED -e 's/\/tmp\/conftest.[[0-9]]*\.o/ /'`
   else
     wo_cv_fc_libs=$FCLIBS
   fi
