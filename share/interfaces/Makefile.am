@@ -28,7 +28,12 @@
 #
 ########################################################################
 
+### For some compilers (NAG), linking OPENMP libraries is difficult
+if FC_USE_OPENMP
+noinst_programs = 
+else
 noinst_PROGRAMS = c_example cpp_example
+endif
 
 c_example_SOURCES = c_test.c
 c_example_LDADD  = $(FCLIBS)
