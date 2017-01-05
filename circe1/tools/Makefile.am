@@ -126,7 +126,7 @@ circe1_minuit2.sh: $(top_srcdir)/circe1/src/minuit.nw $(BRACKET)
 	cat $(TRIPLE) | $(NOTANGLE) -R'[[$@]]' > $@
 
 circe1_int.f90: $(top_srcdir)/circe1/src/interpol.nw $(BRACKET)
-	cat $(TRIPLE) | $(NOTANGLE) -R'[[$@]]' > @
+	cat $(TRIPLE) | $(NOTANGLE) -R'[[$@]]' > $@
 
 circe1_int.sh: $(top_srcdir)/circe1/src/interpol.nw $(BRACKET)
 	cat $(TRIPLE) | $(NOTANGLE) -R'[[$@]]' > $@
