@@ -538,9 +538,10 @@ contains
     ptop_ofs = get_top_momenta_offshell (p_ofs)
     if (threshold%settings%onshell_projection%active ()) &
          call compute_projections ()
-    if (threshold%settings%factorized_computation) &
+    if (threshold%settings%factorized_computation) then
          propagators = top_propagators (ffi, p12, ptop_ofs)
          call compute_partial_matrix_elements ()
+    end if
     do hi = 1, nhel_max
        if (threshold%settings%factorized_computation) then
           amp(hi) = multiply_partial_matrix_elements ( &
