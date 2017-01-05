@@ -1055,7 +1055,6 @@ contains
     end if
     if (debug2_active (D_THRESHOLD)) call check_phase_space_point ()
     do h_t = -1, 1, 2
-    if (threshold%settings%helicity_approximation%ultra .and. h_t == -1) cycle
     do h_W = -1, 1, 1
     do h_b = -1, 1, 2
        born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons_full, h_t, h_W, h_b)
