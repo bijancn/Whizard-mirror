@@ -634,8 +634,11 @@ contains
        do h_t = -1, 1, 2
           do h_tbar = -1, 1, 2
              prod = production_me(s(1), s(2), h_t, h_tbar)
-             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+             !!!!!!! this is also wrong in the other approximations !!!!!!!!!!
+             ! dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+             ! dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_tbar, 1)
+             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_t, 2)
              amp = amp + prod * propagators * dec1 * dec2
           end do
        end do
