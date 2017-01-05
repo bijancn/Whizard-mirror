@@ -37,14 +37,10 @@ subroutine @ID@_start_openloops () bind(C)
   ! 11 for loop, 12 for loop^2
   id(1) = register_process("6(-1) -> 24 5", 11)
   id(2) = register_process("6(+1) -> 24 5", 11)
-  !id(1) = register_process("6 -> 24 5", 11)
-  !id(2) = register_process("6 -> 24 5", 11)
   !!! Anti-particles need opposite sign for the helicity
   !!! Different conventions in OMega and OpenLoops
   id(3) = register_process("-6(+1) -> -24 -5", 11)
   id(4) = register_process("-6(-1) -> -24 -5", 11)
-  !id(3) = register_process("-6 -> -24 -5", 11)
-  !id(4) = register_process("-6 -> -24 -5", 11)
   call start()
   call olp_printparameter ("parameters.ol")
 end subroutine @ID@_start_openloops
@@ -65,7 +61,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   real(c_default_float), intent(in) :: mu_c
   real(c_default_float), dimension(4), intent(out) :: sqme_c
   real(c_default_float), intent(out) :: acc_c
-  type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest
+  type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons
   type(momentum), dimension(2) :: ptop_ofs, ptop_ons
   type(momentum) :: p12
   complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
@@ -85,13 +81,13 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
        call msg_fatal ("@ID@_olp_eval2: OFFSHELL_STRATEGY is not factorized")
   alpha_s = alpha_s_c
   mu = mu_c
-  allocate (mom_ofs(6), mom_ons(6), mom_ons_rest(6))
+  allocate (mom_ofs(6), mom_ons(6))
   call convert_to_mom_and_invert_sign (p_ofs, 6, mom_ofs)
   call set_parameter("alpha_s", alpha_s)
   call set_parameter("mu", mu)
   total = 0
 
-  call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
+  call compute_projected_momenta (0, mom_ofs, mom_ons)
   call set_parameter("width(6)", zero)
   call set_parameter("width(24)", zero)
   ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
@@ -159,8 +155,10 @@ contains
   function skip (h_t, h_tbar)
     logical :: skip
     integer, intent(in) :: h_t, h_tbar
-    skip = threshold%settings%helicity_approximation%ultra &
-         .and. (h_t /= 1 .or. h_tbar /= 1)
+    associate (s => threshold%settings)
+         skip = s%helicity_approximation%ultra &
+              .and. (h_t /= s%sel_hel_top .or. h_tbar /= s%sel_hel_topbar)
+    end associate
   end function skip
 
   subroutine check_rest_frame (mtop)
