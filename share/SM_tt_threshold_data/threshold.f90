@@ -1141,6 +1141,7 @@ contains
     real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
     real(c_default_float), dimension(0:3,n_tot), intent(out) :: p_ofs_out
     type(spinor) :: test_psi, test_spinor1, test_spinor2
+    type(conjspinor) :: test_psibar, test_conjspinor1, test_conjspinor2
     type(momentum) :: p
     type(vector) :: vp
     complex(kind=default) :: c_one
@@ -1174,6 +1175,29 @@ contains
       do i = 1, 4
         call assert_equal (output_unit, test_spinor1%a(i), test_spinor2%a(i), &
              "(p+m)1=(sum u ubar)1", abs_smallness = tiny_07, &
+             rel_smallness = tiny_07, exit_on_fail = .true.)
+      end do
+      !!! top
+      test_psibar%a = [one, two, three, four]
+      test_conjspinor1 = pr_psibar (p,mtop,wd_tl(p,width(6)),.false., test_psibar)
+      test_conjspinor2 = (test_psibar * u (mtop, p, +1)) * ubar (mtop, p, +1) + &
+                         (test_psibar * u (mtop, p, -1)) * ubar (mtop, p, -1)
+      test_conjspinor2 = test_conjspinor2 * (one / cmplx (p*p - mtop**2, &
+           mtop*width(6), kind=default))
+      do i = 1, 4
+        call assert_equal (output_unit, test_conjspinor1%a(i), test_conjspinor2%a(i), &
+             "(p+m)/(p^2-m^2)=(sum u ubar)/(p^2-m^2)", abs_smallness = tiny_07, &
+             rel_smallness = tiny_07, exit_on_fail = .true.)
+      end do
+      !!! topbar
+      test_spinor1 = - pr_psi (p,mtop,wd_tl(p,width(6)),.false., test_psi)
+      test_spinor2 = v (mtop, p, +1) * (vbar (mtop, p, +1) * test_psi) + &
+                     v (mtop, p, -1) * (vbar (mtop, p, -1) * test_psi)
+      test_spinor2 = test_spinor2 * (one / cmplx (p*p - mtop**2, &
+           mtop*width(6), kind=default))
+      do i = 1, 4
+        call assert_equal (output_unit, test_spinor1%a(i), test_spinor2%a(i), &
+             "- (-p+m)/(p^2-m^2)=(sum v vbar)/(p^2-m^2)", abs_smallness = tiny_07, &
              rel_smallness = tiny_07, exit_on_fail = .true.)
       end do
     end subroutine check_spinor_sum
