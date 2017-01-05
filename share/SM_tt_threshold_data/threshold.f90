@@ -421,9 +421,11 @@ contains
        if (threshold%settings%onshell_projection%production) then
           if (debug_active (D_THRESHOLD)) then
              call assert_equal (u, sqrt (ptop_ons(1) * ptop_ons(1)), &
-                  mtop, "Production: ptop is projected", exit_on_fail=.true.)
+                  mtop, "Production: ptop is projected", exit_on_fail=.true., &
+                  rel_smallness=tiny_07)
              call assert_equal (u, sqrt (ptop_ons(2) * ptop_ons(2)), &
-                  mtop, "Production: ptopbar is projected", exit_on_fail=.true.)
+                  mtop, "Production: ptopbar is projected", exit_on_fail=.true., &
+                  rel_smallness=tiny_07)
           end if
           ptop = ptop_ons(1)
           ptopbar = ptop_ons(2)
@@ -1145,7 +1147,7 @@ contains
     real(c_default_float), dimension(0:3,n_tot), intent(out) :: p_ofs_out
     type(spinor) :: test_psi, test_spinor1, test_spinor2
     type(conjspinor) :: test_psibar, test_conjspinor1, test_conjspinor2
-    type(momentum) :: p
+    type(momentum) :: p35, p46, p3, p4, p5, p6
     type(vector) :: vp
     complex(kind=default) :: c_one
     real(default) :: mtop
@@ -1161,48 +1163,60 @@ contains
                           -28.767162575206349,  -32.979705643001502]
        p_ofs_out(:,6) =  [ 73.801164132561894,  -67.026156434029716, &
                            10.352881882757050,  -28.797291847046992]
-       test_psi%a = [one, two, three, four]
        c_one = one
        mtop = mass(6)     !!! We assume a fixed mtpole = m1S
-       p = p_ofs_out(:,3) + p_ofs_out(:,5)
-       call check_spinor_sum ()
-       p = p_ofs_out(:,4) + p_ofs_out(:,6)
+       p3 = p_ofs_out(:,3)
+       p4 = p_ofs_out(:,4)
+       p5 = p_ofs_out(:,5)
+       p6 = p_ofs_out(:,6)
+       p35 = p_ofs_out(:,3) + p_ofs_out(:,5)
+       p46 = p_ofs_out(:,4) + p_ofs_out(:,6)
        call check_spinor_sum ()
     end if
   contains
     subroutine check_spinor_sum ()
-      vp = p
+      integer :: s3, s4, s5, s6
+      vp = p35
       test_spinor1 = f_vf (c_one, vp, test_psi) + mtop * test_psi
-      test_spinor2 = u (mtop, p, +1) * (ubar (mtop, p, +1) * test_psi) + &
-                     u (mtop, p, -1) * (ubar (mtop, p, -1) * test_psi)
+      test_spinor2 = u (mtop, p35, +1) * (ubar (mtop, p35, +1) * test_psi) + &
+                     u (mtop, p35, -1) * (ubar (mtop, p35, -1) * test_psi)
       do i = 1, 4
         call assert_equal (output_unit, test_spinor1%a(i), test_spinor2%a(i), &
              "(p+m)1=(sum u ubar)1", abs_smallness = tiny_07, &
              rel_smallness = tiny_07, exit_on_fail = .true.)
       end do
       !!! top
-      test_psibar%a = [one, two, three, four]
-      test_conjspinor1 = pr_psibar (p,mtop,wd_tl(p,width(6)),.false., test_psibar)
-      test_conjspinor2 = (test_psibar * u (mtop, p, +1)) * ubar (mtop, p, +1) + &
-                         (test_psibar * u (mtop, p, -1)) * ubar (mtop, p, -1)
-      test_conjspinor2 = test_conjspinor2 * (one / cmplx (p*p - mtop**2, &
-           mtop*width(6), kind=default))
-      do i = 1, 4
-        call assert_equal (output_unit, test_conjspinor1%a(i), test_conjspinor2%a(i), &
-             "(p+m)/(p^2-m^2)=(sum u ubar)/(p^2-m^2)", abs_smallness = tiny_07, &
-             rel_smallness = tiny_07, exit_on_fail = .true.)
-      end do
+      do s3 = -1, 1 ; do s5 = -1, 1, 2
+         test_psibar = + f_fvl(gccq33,ubar (mass(5), p5, s5),conjg (eps (mass(24), p3, s3)))
+         test_conjspinor1 = pr_psibar (p35,mtop,wd_tl(p35,width(6)),.false., test_psibar)
+         test_conjspinor2 = (test_psibar * u (mtop, p35, +1)) * ubar (mtop, p35, +1) + &
+                            (test_psibar * u (mtop, p35, -1)) * ubar (mtop, p35, -1)
+         print *, '+ h_W, h_b, top decay ME:', s3, s5, test_psibar * u (mtop, p35, +1)
+         print *, '- h_W, h_b, top decay ME:', s3, s5, test_psibar * u (mtop, p35, -1)
+         test_conjspinor2 = test_conjspinor2 * (one / cmplx (p35*p35 - mtop**2, &
+              mtop*width(6), kind=default))
+         do i = 1, 4
+            call assert_equal (output_unit, test_conjspinor1%a(i), test_conjspinor2%a(i), &
+                 "(p+m)/(p^2-m^2)=(sum u ubar)/(p^2-m^2)", abs_smallness = tiny_07, &
+                 rel_smallness = tiny_07, exit_on_fail = .true.)
+         end do
+      end do; end do
       !!! topbar
-      test_spinor1 = - pr_psi (p,mtop,wd_tl(p,width(6)),.false., test_psi)
-      test_spinor2 = v (mtop, p, +1) * (vbar (mtop, p, +1) * test_psi) + &
-                     v (mtop, p, -1) * (vbar (mtop, p, -1) * test_psi)
-      test_spinor2 = test_spinor2 * (one / cmplx (p*p - mtop**2, &
-           mtop*width(6), kind=default))
-      do i = 1, 4
-        call assert_equal (output_unit, test_spinor1%a(i), test_spinor2%a(i), &
-             "- (-p+m)/(p^2-m^2)=(sum v vbar)/(p^2-m^2)", abs_smallness = tiny_07, &
-             rel_smallness = tiny_07, exit_on_fail = .true.)
-      end do
+      do s4 = -1, 1 ; do s6 = -1, 1, 2
+         test_psi = + f_vlf(gccq33,conjg (eps (mass(24), p4, s4)), v (mass(5), p6, s6))
+         test_spinor1 = - pr_psi (p46,mtop,wd_tl(p46,width(6)),.false., test_psi)
+         test_spinor2 = v (mtop, p46, +1) * (vbar (mtop, p46, +1) * test_psi) + &
+                        v (mtop, p46, -1) * (vbar (mtop, p46, -1) * test_psi)
+         print *, '+ h_W, h_b, topbar decay ME:', s4, s6, (vbar (mtop, p46, +1) * test_psi)
+         print *, '- h_W, h_b, topbar decay ME:', s4, s6, (vbar (mtop, p46, -1) * test_psi)
+         test_spinor2 = test_spinor2 * (one / cmplx (p46*p46 - mtop**2, &
+              mtop*width(6), kind=default))
+         do i = 1, 4
+           call assert_equal (output_unit, test_spinor1%a(i), test_spinor2%a(i), &
+                "- (-p+m)/(p^2-m^2)=(sum v vbar)/(p^2-m^2)", abs_smallness = tiny_07, &
+                rel_smallness = tiny_07, exit_on_fail = .true.)
+         end do
+      end do; end do
     end subroutine check_spinor_sum
   end subroutine handle_onshell_test_point
 
@@ -1303,7 +1317,8 @@ contains
        call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
        do hi = 1, size(amp_omega_full)
           call assert_equal (output_unit, amp_omega_full(hi), &
-               amp_no_FF(hi), "Signal \= Factorized", exit_on_fail=.true.)
+               amp_no_FF(hi), "Signal \= Factorized", exit_on_fail=.true., &
+               rel_smallness=tiny_07)
        end do
        stop
     end if
