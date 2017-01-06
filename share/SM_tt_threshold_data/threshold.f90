@@ -600,48 +600,43 @@ contains
        h_t = threshold%settings%sel_hel_top
        h_tbar = threshold%settings%sel_hel_topbar
        prod = production_me(s(1), s(2), h_t, h_tbar)
-       dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-       dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+       dec1 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 1)
+       dec2 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 2)
        amp = abs2 (prod) * abs2 (propagators) * abs2 (dec1) * abs2 (dec2)
-    else if (threshold%settings%helicity_approximation%simple) then
-       if (threshold%settings%helicity_approximation%extra) then
-          prod = zero
-          do h_t = -1, 1, 2
-             do h_tbar = -1, 1, 2
-                prod = prod + abs2(production_me(s(1), s(2), h_t, h_tbar))
-             end do
-          end do
-          dec1 = zero
-          do h_t = -1, 1, 2
-             dec1 = dec1 + abs2(born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1))
-          end do
-          dec2 = zero
+    else if (threshold%settings%helicity_approximation%extra) then
+       prod = zero
+       do h_t = -1, 1, 2
           do h_tbar = -1, 1, 2
-             dec2 = dec2 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2))
+             prod = prod + abs2(production_me(s(1), s(2), h_t, h_tbar))
           end do
-          amp = prod * abs2 (propagators) * dec1 * dec2 / 4
-       else
-          amp = zero
-          do h_t = -1, 1, 2
-             do h_tbar = -1, 1, 2
-                prod = production_me(s(1), s(2), h_t, h_tbar)
-                dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-                dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-                amp = amp + abs2 (prod) * abs2 (propagators) * &
-                     abs2 (dec1) * abs2 (dec2)
-             end do
+       end do
+       dec1 = zero
+       do h_t = -1, 1, 2
+          dec1 = dec1 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 1))
+       end do
+       dec2 = zero
+       do h_tbar = -1, 1, 2
+          dec2 = dec2 + abs2(born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 2))
+       end do
+       amp = prod * abs2 (propagators) * dec1 * dec2 / 4
+    else if (threshold%settings%helicity_approximation%simple) then
+       amp = zero
+       do h_t = -1, 1, 2
+          do h_tbar = -1, 1, 2
+             prod = production_me(s(1), s(2), h_t, h_tbar)
+             dec1 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 1)
+             dec2 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 2)
+             amp = amp + abs2 (prod) * abs2 (propagators) * &
+                  abs2 (dec1) * abs2 (dec2)
           end do
-       end if
+       end do
     else
        amp = zero
        do h_t = -1, 1, 2
           do h_tbar = -1, 1, 2
              prod = production_me(s(1), s(2), h_t, h_tbar)
-             !!!!!!! this is also wrong in the other approximations !!!!!!!!!!
-             ! dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-             ! dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-             dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_tbar, 1)
-             dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_t, 2)
+             dec1 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 1)
+             dec2 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 2)
              amp = amp + prod * propagators * dec1 * dec2
           end do
        end do
@@ -1192,8 +1187,6 @@ contains
          test_conjspinor1 = pr_psibar (p35,mtop,wd_tl(p35,width(6)),.false., test_psibar)
          test_conjspinor2 = (test_psibar * u (mtop, p35, +1)) * ubar (mtop, p35, +1) + &
                             (test_psibar * u (mtop, p35, -1)) * ubar (mtop, p35, -1)
-         print *, '+ h_W, h_b, top decay ME:', s3, s5, test_psibar * u (mtop, p35, +1)
-         print *, '- h_W, h_b, top decay ME:', s3, s5, test_psibar * u (mtop, p35, -1)
          test_conjspinor2 = test_conjspinor2 * (one / cmplx (p35*p35 - mtop**2, &
               mtop*width(6), kind=default))
          do i = 1, 4
@@ -1208,8 +1201,6 @@ contains
          test_spinor1 = - pr_psi (p46,mtop,wd_tl(p46,width(6)),.false., test_psi)
          test_spinor2 = v (mtop, p46, +1) * (vbar (mtop, p46, +1) * test_psi) + &
                         v (mtop, p46, -1) * (vbar (mtop, p46, -1) * test_psi)
-         print *, '+ h_W, h_b, topbar decay ME:', s4, s6, (vbar (mtop, p46, +1) * test_psi)
-         print *, '- h_W, h_b, topbar decay ME:', s4, s6, (vbar (mtop, p46, -1) * test_psi)
          test_spinor2 = test_spinor2 * (one / cmplx (p46*p46 - mtop**2, &
               mtop*width(6), kind=default))
          do i = 1, 4
