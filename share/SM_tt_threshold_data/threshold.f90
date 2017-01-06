@@ -1173,6 +1173,7 @@ contains
     subroutine check_spinor_sum ()
       integer :: s3, s4, s5, s6
       vp = p35
+      test_psi%a = [one, two, three, four]
       test_spinor1 = f_vf (c_one, vp, test_psi) + mtop * test_psi
       test_spinor2 = u (mtop, p35, +1) * (ubar (mtop, p35, +1) * test_psi) + &
                      u (mtop, p35, -1) * (ubar (mtop, p35, -1) * test_psi)
