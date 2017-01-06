@@ -127,6 +127,7 @@ FC_IS_GFORTRAN_4567="yes"
 FC_IS_GFORTRAN_4567="no"
 fi
 AC_SUBST([FC_IS_GFORTRAN_4567])
+AC_SUBST([FC_IS_NAG])
 
 AC_CACHE_CHECK([the major version],
 [wo_cv_fc_major_version],
