@@ -30,7 +30,11 @@
 
 ### For some compilers (NAG), linking OPENMP libraries is difficult
 if FC_USE_OPENMP
+if FC_IS_NAG
 noinst_programs = 
+else
+noinst_PROGRAMS = c_example cpp_example
+endif
 else
 noinst_PROGRAMS = c_example cpp_example
 endif
