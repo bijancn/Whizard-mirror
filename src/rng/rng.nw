@@ -1205,7 +1205,188 @@ contains
 
 end module rng_stream
 @ %def rng_stream
+@ We store the current state of the stream, the starting state of the current
+SubStream, and the starting state of the stream.
+<<RNG stream: types>>=
+  type, extends(rng_base_t) :: rng_stream_t
+     private
+     logical :: antithetic = .false.
+     logical :: increased_precision = .false.
+
+     real(default), dimension(3, 2) :: seed = 0._default
+     real(dp), dimension(3, 2) :: current_position
+     real(dp), dimension(3, 2) :: beginning_substream
+     real(dp), dimension(3, 2) :: initial_stream
+   contains
+   <<RNG stream: rng_stream_t: TBP>>
+  end type rng_stream_t
+
+@ %def rng_stream_t
+@ Output. Display all positions and seed.
+<<RNG stream: rng_stream_t: TBP>>=
+  procedure, public :: write => rng_stream_write
 @
+<<RNG stream: procedures>>=
+  subroutine rng_stream_write (rng, unit, indent)
+    class(rng_stream_t), intent(in) :: rng
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: indent
+    integer :: j, u, ind
+    u = given_output_unit (unit)
+    ind = 0; if (present (indent)) ind = indent
+    call write_indent (u, ind)
+    write (u, "(A)") "RNG Stream generator"
+    call write_indent (u, ind)
+  end subroutine rng_stream_write
+
+@ %def rng_stream_write
+@ Initialise the generator. Set the states to the (optional) seed.
+The default seed ist 0.
+<<RNG stream: rng_stream_t: TBP>>=
+  procedure, public :: init => rng_stream_init
+<<RNG stream: procedures>>=
+  subroutine rng_stream_init (rng, seed)
+    class(rng_stream_t), intent(out) :: rng
+    integer, intent(in), optional :: seed
+    if (present (seed)) rng%seed = seed
+    self%beginning_position = self%seed
+    self%current_position = self%seed
+    self%initial_stream = self%seed
+  end subroutine rng_stream_init
+
+@ %def rng_stream_init
+@ Finalize. Nothing to do.
+<<RNG stream: rng_stream_t: TBP>>=
+  procedure, public :: final => rng_stream_final
+<<RNG stream: procedures>>=
+  subroutine rng_stream_final (rng)
+    class(rng_stream_t), intent(inout) :: rng
+    !
+  end subroutine rng_stream_final
+
+@ %def rng_stream_final
+@ Generate a single real random number from the current state of (sub-)stream.
+
+The machine representatio of the result can lead to negative numbers. We add
+$m_1$ or $m_2$ to the respective number to ensure they are all positive and are
+still congruent to $\mod m_1$ or $\mod m_2$.
+
+The final formula $u = x(3, 1) - x(3, 2) \pmod{m_1}$ can lead to negative random
+numbers. Instead of directly calculating the modulo, we check whether $x(3,1)$
+is larger than $x(3, 2)$, or not. If p1 > p2, then p1 - p2 is congruent to (p1 -
+p2) mod m1. If p1 < p2, then p1 - p2 + m1 is congruent to (p1 - p2) mod m1.
+<<RNG stream: rng_stream_t: TBP>>=
+  procedure, public :: generate_single => rng_tao_generate_single
+<<RNG stream: procedures>>=
+  subroutine rng_stream_generate_single (rng, x)
+    class(rng_stream_t), intent(inout) :: rng
+    real(default), intent(out) :: x
+
+    associate (x => self%current_position)
+      x(:, 1) = mod (matmul (A1p0, x(:, 1)), m1)
+      if (x(3, 1) < 0.) x(3, 1) = x(3, 1) + m1
+      x(:, 2) = mod (matmul (A2p0, x(:, 2)), m2)
+      if (x(3, 2) < 0.) x(3, 2) = x(3, 2) + m2
+
+      u = x(3, 1) - x(3, 2)
+      if (u < 0.) u = u + m1
+      u = u * norm
+    end associate
+
+    if (self%antithetic) u = 1. - u
+  end subroutine rng_stream_generate_single
+
+@ %def rng_stream_generate_single
+@ Generate an array of real random numbers.
+<<RNG stream: rng_stream_t: TBP>>=
+  procedure, public :: generate_array => rng_stream_generate_array
+<<RNG stream: procedures>>=
+  subroutine rng_stream_generate_array (rng, x)
+    class(rng_stream_t), intent(inout) :: rng
+    real(default), dimension(:), intent(out) :: x
+    integer :: j
+    do j = 1, size (x)
+       call rng%generate_single(x(j))
+    end do
+  end subroutine rng_stream_generate_array
+
+@ %def rng_stream_generate_array
+@
+\subsection{Factory}
+We utilize the streams proposed by L'Ecuyer where we use precalulated transition
+matrices to jump between differen (sub-)streams.
+
+The random generator has the period $\rho$ and the transition function $T: s_n
+\righarrow s_{n+1}$ whereas $s_n$ is the generator's state after $n$ steps.
+Furthermore, it is $T^{\rho}(s) = s$. The stream of random number then is
+disjoint into streams and substreams. The length of the streams, which divide
+the overall stream, should be $Z = 2^$$ and partition those streams again in $V
+= 2^v$ substreams of length $W = 2^w$.
+
+We store the seed and the initial stream, and as far it went, the beginning
+substream.
+<<RNG stream: public>>=
+  public :: rng_stream_factory_t
+<<RNG stream: types>>=
+  type, extend(rng_factory_t) :: rng_stream_factory_t
+     real(default), dimension(3, 2) :: seed
+
+     real(default), dimension(3, 2) :: current_position
+     real(default), dimension(3, 2) :: beginning_substream
+     real(default), dimension(3, 2) :: initial_stream
+   contains
+   <<RNG stream: rng_stream_factory_t: TBP
+  end type rng_stream_factory_t
+
+@ %def rng_stream_factory_t
+@ Output.
+<<RNG stream: rng_stream_factory_t: TBP>>=
+  procedure, public :: write => rng_stream_factory_write
+<<RNG stream: procedures>>=
+  subroutine rng_stream_factory_write (object, unit)
+    class(rng_stream_factory_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(1x, A)") "RNG Stream factory"
+    write (u, "(A,6(F20.1,',',1X),A)") "Next seed = [ ", &
+         & seed(1), &
+         & seed(2), &
+         & seed(3), &
+         & seed(4), &
+         & seed(5), &
+         & seed(61), " ]"
+    write (u, "(A,6(F20.1,',',1X),A)") "Beginning substream = [ ", &
+         & beginning_substream(1), &
+         & beginning_substream(2), &
+         & beginning_substream(3), &
+         & beginning_substream(4), &
+         & beginning_substream(5), &
+         & beginning_substream(61), " ]"
+    write (u, "(A,6(F20.1,',',1X),A)") "Initial stream = [ ", &
+         & initial_stream(1), &
+         & initial_stream(2), &
+         & initial_stream(3), &
+         & initial_stream(4), &
+         & initial_stream(5), &
+         & initial_stream(61), " ]"
+  end subroutine rng_stream_factory_write
+  
+@ %def rng_stream_factory_write
+@ Initialize. Default seed is 123456.
+<<RNG stream: rng_stream_factory: TBP>>=
+  procedure, public :: init => rng_stream_factory_init
+<<RNG stream: procedures>>=
+  subroutine rng_stream_factory_init (factory, seed)
+    class(rng_stream_factory_t), intent(out) :: factory
+    integer(i16), intent(in), optional :: seed
+    if (present (seed)) factory%seed = seed
+    factory%beginning_position = factory%seed
+    factory%current_position = factory%seed
+    factory%initial_stream = factory%seed
+  end subroutine rng_stream_factory_init
+  
+@ %def rng_stream_factory_init
 \subsection{Unit tests}
 Test module, followed by the corresponding implementation module.
 <<[[rng_stream_ut.f90]]>>=
