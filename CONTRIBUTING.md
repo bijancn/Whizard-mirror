@@ -20,6 +20,18 @@
   (though fairly unlikely) to break the `master`. This might change in a future
   version of `gitlab` to create an unbreakable system.
 
+# bugs and issues
+
+We are using two issue/bug tracking systems:
+- The public tickets on Hepforge have to contain all bugs that are reported by
+  the users
+- The private issues on Gitlab have the benefit of being directly connected to
+  branches and can be closed when the branch is merged
+- Duplication of issues and tickets is possible when it is convenient but not
+  necessary
+- Bugs encountered by developers can be reported in the private issues
+- Small tasks are usually better situated in private issues
+
 # Development infrastructure
 
 - Files ending with `.nw` are [noweb](https://www.cs.tufts.edu/~nr/noweb/)
