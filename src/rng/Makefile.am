@@ -35,14 +35,14 @@ librng_la_SOURCES = \
   rng_base.f90 \
   selectors.f90 \
   rng_tao.f90 \
-	rng_stream.f90 \
+  rng_stream.f90 \
   dispatch_rng.f90
 
 librng_ut_la_SOURCES = \
   rng_base_uti.f90 rng_base_ut.f90 \
   selectors_uti.f90 selectors_ut.f90 \
   rng_tao_uti.f90 rng_tao_ut.f90 \
-	rng_stream_uti.f90 rng_stream_ut.f90 \
+  rng_stream_uti.f90 rng_stream_ut.f90 \
   dispatch_rng_uti.f90 dispatch_rng_ut.f90
 
 ## Omitting this would exclude it from the distribution
