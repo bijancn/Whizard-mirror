@@ -2713,7 +2713,7 @@ intent(out).
   public :: dispatch_core_def
 <<Dispatch me methods: procedures>>=
   subroutine dispatch_core_def (core_def, prt_in, prt_out, &
-           model, var_list, id, nlo_type)
+       model, var_list, id, nlo_type)
     class(prc_core_def_t), allocatable, intent(inout) :: core_def
     type(string_t), dimension(:), intent(in) :: prt_in
     type(string_t), dimension(:), intent(in) :: prt_out
@@ -3738,7 +3738,7 @@ polarization flag and names of decay processes, where applicable.
     forall (i = 1:size (prt_out)) prt_str_out(i) = prt_out(i)%get_name ()
 
     call dispatch_core_def (core_def, prt_str_in, prt_str_out, &
-                            model, var_list, config%id, nlo_type)
+         model, var_list, config%id, nlo_type)
     select type (core_def)
     class is (user_defined_def_t)
        if (present (can_be_integrated)) then
@@ -13847,6 +13847,7 @@ or arrays which would make the expansion ambiguous.
     type(string_t) :: real_tree_me_method
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
+    type(string_t) :: soft_mismatch_me_method
     integer, dimension(:), allocatable :: i_list
     logical :: powheg_use_damping
     logical :: gks_active
@@ -13888,6 +13889,7 @@ or arrays which would make the expansion ambiguous.
        real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
        loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
        correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
+       soft_mismatch_me_method = var_list%get_sval (var_str ("$soft_mismatch_me_method"))
        call check_nlo_options (cmd%local)
     end if
     if (any (cmd%local%selected_nlo_parts))  &
@@ -13920,6 +13922,30 @@ or arrays which would make the expansion ambiguous.
 @ %def override_local_me_method
 @
 <<Commands: cmd process execute procedures>>=
+  elemental function is_threshold (method)
+    logical :: is_threshold
+    type(string_t), intent(in) :: method
+    is_threshold = method == var_str ("threshold")
+  end function is_threshold
+
+  subroutine check_threshold_consistency (threshold)
+    logical, intent(out) :: threshold
+    threshold = is_threshold (born_me_method)
+    if (nlo_fixed_order .and. threshold) then
+       if (.not. (is_threshold (real_tree_me_method) .and. is_threshold (loop_me_method) &
+            .and. is_threshold (correlation_me_method) .and. is_threshold (soft_mismatch_me_method))) then
+            print *, 'born: ', char (born_me_method)
+            print *, 'real: ', char (real_tree_me_method)
+            print *, 'loop: ', char (loop_me_method)
+            print *, 'soft_mismatch: ', char (soft_mismatch_me_method)
+            print *, 'correlation: ', char (correlation_me_method)
+            call msg_fatal ("Inconsistent methods: All components need to be threshold")
+       end if
+    end if
+  end subroutine check_threshold_consistency
+
+@ %def check_threshold_consistency
+<<Commands: cmd process execute procedures>>=
   subroutine check_for_nlo_corrections ()
     if (nlo_fixed_order .or. gks_active) &
        call setup_radiation_generator ()
@@ -13937,6 +13963,7 @@ or arrays which would make the expansion ambiguous.
 <<Commands: cmd process execute procedures>>=
   subroutine determine_needed_components ()
     type(string_t) :: fks_method
+    logical :: threshold
 
     if (powheg_use_damping) then
        call radiation_generator%get_emitter_indices (emitters)
@@ -13945,7 +13972,9 @@ or arrays which would make the expansion ambiguous.
 
     if (nlo_fixed_order) then
        fks_method = var_list%get_sval (var_str ('$fks_mapping_type'))
-       requires_soft_mismatch = fks_method == var_str ('resonances')
+       call check_threshold_consistency (threshold)
+       requires_soft_mismatch = &
+            fks_method == var_str ('resonances') .or. threshold
        n_components_extra = needed_extra_components (initial_state_colored, &
             has_structure_functions, requires_soft_mismatch, &
             powheg_use_damping, n_emitters)
@@ -14115,12 +14144,10 @@ or arrays which would make the expansion ambiguous.
              end if
 
              if (requires_soft_mismatch) then
-                ! TODO: (bcn 2016-01-26) why only omega here?
-                call override_local_me_method (var_str ("omega"))
+                call override_local_me_method (soft_mismatch_me_method)
                 i_comp = n_components * 4 + i
                 call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
                 call prc_config%setup_component (i_comp, &
-                   !new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
                    prt_spec_in, prt_spec_out, &
                    cmd%local%model, var_list, NLO_MISMATCH, &
                    can_be_integrated = selected_nlo_parts (NLO_MISMATCH))
