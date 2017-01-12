@@ -2,17 +2,17 @@
 ### Consider it safer to explicitly mention all files that contain
 ### email addresses or copyright tags.
 
-OLD_YEAR="Copyright (C) 1999-2015";
-NEW_YEAR="Copyright (C) 1999-2016";
-OLD_YEAR2="Copyright (C) 2001-2015";
-NEW_YEAR2="Copyright (C) 2001-2016";
+OLD_YEAR="Copyright (C) 1999-2016";
+NEW_YEAR="Copyright (C) 1999-2017";
+OLD_YEAR2="Copyright (C) 2001-2016";
+NEW_YEAR2="Copyright (C) 2001-2017";
 # OLD_ADDRESS="Soyoung Shim <soyoung.shim@desy.de>"
 # NEW_ADDRESS="So Young Shim <soyoung.shim@desy.de>"
 OLD_ADDRESS="Soyoung Shim"
 NEW_ADDRESS="So Young Shim"
 
-OLD_DATE="Nov 28 2016"
-NEW_DATE="Dec 31 2016"
+OLD_DATE="Dec 31 2016"
+NEW_DATE="Feb 28 2017"
 OLD_VERSION="2.4.0"
 NEW_VERSION="2.4.1"
 #OLD_STATUS="PACKAGE_STATUS=\"alpha\""
