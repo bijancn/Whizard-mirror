@@ -851,22 +851,20 @@ contains
     end if
     p_ons(1:2) = p_ofs(1:2)
     if (.not. momenta_already_onshell) then
-       p_tmp_1%p = p_ofs(THR_POS_B)
-       p_tmp_2%p = p_ofs(THR_POS_WP)
+       p_tmp_1%p = apply_boost (inverse (lt), p_ofs(THR_POS_B))
+       p_tmp_2%p = apply_boost (inverse (lt), p_ofs(THR_POS_WP))
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        p_ons_rest(THR_POS_B) = p_decay(2)%p
        p_ons_rest(THR_POS_WP) = p_decay(3)%p
        p_ons(THR_POS_WP) = apply_boost (lt, p_ons_rest(THR_POS_WP))
        p_ons(THR_POS_B) = apply_boost (lt, p_ons_rest(THR_POS_B))
-       p_tmp_1%p = p_ofs(THR_POS_BBAR)
-       p_tmp_2%p = p_ofs(THR_POS_WM)
+       p_tmp_1%p = apply_boost (lt, p_ofs(THR_POS_BBAR))
+       p_tmp_2%p = apply_boost (lt, p_ofs(THR_POS_WM))
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        p_ons_rest(THR_POS_BBAR) = p_decay(2)%p
        p_ons_rest(THR_POS_WM) = p_decay(3)%p
-       p_ons(THR_POS_WM) = apply_boost (lt, p_ons_rest(THR_POS_WM))
-       p_ons(THR_POS_BBAR) = apply_boost (lt, p_ons_rest(THR_POS_BBAR))
-       p_ons(THR_POS_WM)%x(1:3) = - p_ons(THR_POS_WM)%x(1:3)
-       p_ons(THR_POS_BBAR)%x(1:3) = - p_ons(THR_POS_BBAR)%x(1:3)
+       p_ons(THR_POS_WM) = apply_boost (inverse(lt), p_ons_rest(THR_POS_WM))
+       p_ons(THR_POS_BBAR) = apply_boost (inverse(lt), p_ons_rest(THR_POS_BBAR))
     else
        p_ons(3:6) = p_ofs(3:6)
     end if
