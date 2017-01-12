@@ -554,7 +554,7 @@ contains
     end do
   contains
     subroutine compute_projections ()
-      call compute_projected_momenta (0, mom_ofs, mom_ons)
+      call compute_projected_momenta (mom_ofs, mom_ons)
       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
       if (.not. threshold%settings%onshell_projection%boost_decay) then
@@ -730,8 +730,7 @@ contains
     end do
   end subroutine convert_to_mom_and_invert_sign
 
-  subroutine compute_projected_momenta (leg, p_ofs, p_ons)
-     integer, intent(in) :: leg
+  subroutine compute_projected_momenta (p_ofs, p_ons)
      type(momentum), intent(in), dimension(:) :: p_ofs
      type(momentum), intent(out), dimension(:) :: p_ons
      type(momentum), dimension(2) :: ptop_ons
@@ -743,7 +742,7 @@ contains
         call compute_projected_top_momenta (p12, p35, ptop_ons, lt)
         call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons)
         if (debug_active (D_THRESHOLD)) then
-           if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
+           if (- p12%t > 2 * ttv_mtpole (p12*p12)) then
               !!! No sum (...) function for type(momentum), need to do this explicitly
               tmp = p_ofs(THR_POS_WP) + p_ofs(THR_POS_WM) + p_ofs(THR_POS_B) + p_ofs(THR_POS_BBAR)
               test = - p12
