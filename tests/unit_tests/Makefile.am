@@ -85,6 +85,7 @@ UNIT_TESTS = \
     nlo_color_data.run \
     rng_base.run \
     rng_tao.run \
+    rng_stream.run \
     selectors.run \
     mci_base.run \
     mci_midpoint.run \

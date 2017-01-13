@@ -243,6 +243,8 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/rng_base_2.ref \
     unit_tests/ref-output/rng_tao_1.ref \
     unit_tests/ref-output/rng_tao_2.ref \
+    unit_tests/ref-output/rng_stream_1.ref \
+    unit_tests/ref-output/rng_stream_2.ref \
     unit_tests/ref-output/selectors_1.ref \
     unit_tests/ref-output/mci_base_1.ref \
     unit_tests/ref-output/mci_base_2.ref \
