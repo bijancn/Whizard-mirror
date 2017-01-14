@@ -554,7 +554,7 @@ contains
     end do
   contains
     subroutine compute_projections ()
-      call compute_projected_momenta (0, mom_ofs, mom_ons)
+      call compute_projected_momenta (mom_ofs, mom_ons)
       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
       if (.not. threshold%settings%onshell_projection%boost_decay) then
@@ -730,8 +730,7 @@ contains
     end do
   end subroutine convert_to_mom_and_invert_sign
 
-  subroutine compute_projected_momenta (leg, p_ofs, p_ons)
-     integer, intent(in) :: leg
+  subroutine compute_projected_momenta (p_ofs, p_ons)
      type(momentum), intent(in), dimension(:) :: p_ofs
      type(momentum), intent(out), dimension(:) :: p_ons
      type(momentum), dimension(2) :: ptop_ons
@@ -743,7 +742,7 @@ contains
         call compute_projected_top_momenta (p12, p35, ptop_ons, lt)
         call compute_projected_top_decay_products (p12, lt, p_ofs, p_ons)
         if (debug_active (D_THRESHOLD)) then
-           if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
+           if (- p12%t > 2 * ttv_mtpole (p12*p12)) then
               !!! No sum (...) function for type(momentum), need to do this explicitly
               tmp = p_ofs(THR_POS_WP) + p_ofs(THR_POS_WM) + p_ofs(THR_POS_B) + p_ofs(THR_POS_BBAR)
               test = - p12
@@ -933,6 +932,25 @@ contains
     end do
   end function compute_production_me
 
+  subroutine check_for_consistent_flags_for_real (settings)
+    type(settings_t), intent(in) :: settings
+    if (.not. settings%factorized_computation)  &
+         call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
+         &'factorized (activate with 2')
+    if (.not. (settings%helicity_approximation%simple .or. &
+              settings%helicity_approximation%ultra)) &
+         call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
+         &'helicity-approximated (activate with 32)')
+  end subroutine check_for_consistent_flags_for_real
+
+  function skip (settings, h_t, h_tbar)
+    logical :: skip
+    type(settings_t), intent(in) :: settings
+    integer, intent(in) :: h_t, h_tbar
+    skip = settings%helicity_approximation%ultra .and. &
+         (h_t /= settings%sel_hel_top .or. h_tbar /= settings%sel_hel_topbar)
+  end function skip
+
   function compute_real (n_tot, p_ofs, p_ons, leg, ffi) result (amp2)
     real(default) :: amp2
     integer, intent(in) :: n_tot
@@ -943,20 +961,14 @@ contains
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: real_decay_me
     complex(default), dimension(-1:1,-1:1,-1:1) :: born_decay_me
     complex(default) :: top_propagators_
-    complex(default) :: real_, born_, prod_
+    complex(default) :: real_dec, born_dec, prod
     real(default) :: total
     integer, dimension(2) :: h_ass_t
     integer, dimension(n_prt) :: s
     integer :: hi, h_t, h_tbar, h_gl
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons
     integer :: other_leg
-    if (.not. threshold%settings%factorized_computation)  &
-         call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
-         &'factorized (activate with 2')
-    if (.not. (threshold%settings%helicity_approximation%simple .or. &
-              threshold%settings%helicity_approximation%ultra)) &
-         call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
-         &'helicity-approximated (activate with 32)')
+    call check_for_consistent_flags_for_real (threshold%settings)
     call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     call convert_to_mom_and_invert_sign (p_ons, n_tot, mom_ons)
     call compute_real_amplitudes (ffi, mom_ofs, mom_ons, leg, &
@@ -966,16 +978,16 @@ contains
        s = table_spin_states(:,hi)
        do h_t = -1, 1, 2
        do h_tbar = -1, 1, 2
-          if (skip (h_t, h_tbar)) cycle
+          if (skip (threshold%settings, h_t, h_tbar)) cycle
           h_ass_t = [h_t, h_tbar]
           other_leg = 3 - leg
-          prod_ = production_me(s(1), s(2), h_t, h_tbar)
-          born_ = born_decay_me(s(ass_quark(other_leg)), &
+          prod = production_me(s(1), s(2), h_t, h_tbar)
+          born_dec = born_decay_me(s(ass_quark(other_leg)), &
                s(ass_boson(other_leg)), h_ass_t(other_leg))
           do h_gl = -1, 1, 2
-             real_ = real_decay_me(h_gl, s(ass_quark(leg)), &
+             real_dec = real_decay_me(h_gl, s(ass_quark(leg)), &
                   s(ass_boson(leg)), h_ass_t(leg))
-             total = total + abs2 (prod_) * abs2 (real_) * abs2 (born_) * &
+             total = total + abs2 (prod) * abs2 (real_dec) * abs2 (born_dec) * &
                   abs2(top_propagators_)
           end do
        end do
@@ -983,17 +995,6 @@ contains
     end do
     !!! Add color factor. Real ~ N^2 - 1; Born(has to be divided out) ~ N
     amp2 = total * (N_**2 - one) / N_
-
-  contains
-
-    function skip (h_t, h_tbar)
-      logical :: skip
-      integer, intent(in) :: h_t, h_tbar
-      associate (s => threshold%settings)
-         skip = s%helicity_approximation%ultra &
-              .and. (h_t /= s%sel_hel_top .or. h_tbar /= s%sel_hel_topbar)
-      end associate
-    end function skip
 
   end function compute_real
 
@@ -1010,8 +1011,7 @@ contains
     procedure(top_decay_born), pointer :: top_decay_born_
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons
     type(momentum) :: p12
-    !!! Need to have a copy of p_ons due to intent(in)
-    type(momentum), dimension(7) :: p_ons_full
+    type(momentum), dimension(7) :: p_ons_work
     type(momentum), dimension(4) :: p_ons_real_decay
     type(lorentz_transformation_t) :: lt
     integer :: h_t, h_b, h_W, h_gl
@@ -1036,23 +1036,23 @@ contains
          p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
     mtop = ttv_mtpole (p12 * p12)
     if (.not. threshold%settings%onshell_projection%boost_decay) then
-       p_ons_full([1,2]) = p_ons([1,2])
+       p_ons_work([1,2]) = p_ons([1,2])
        lt = inverse (boost_to_cms (ptop_ons(leg), mtop))
        p_ons_real_decay = apply_boost (lt, p_ons_real_decay)
-       p_ons_full([ass_boson(leg), ass_quark(leg), THR_POS_GLUON]) = &
+       p_ons_work([ass_boson(leg), ass_quark(leg), THR_POS_GLUON]) = &
                apply_boost (lt, p_ons([ass_boson(leg), ass_quark(leg), THR_POS_GLUON]))
        other_leg = 3 - leg
-       p_ons_full([ass_boson(other_leg), ass_quark(other_leg)]) = &
+       p_ons_work([ass_boson(other_leg), ass_quark(other_leg)]) = &
                apply_boost (inverse (lt), p_ons([ass_boson(other_leg), ass_quark(other_leg)]))
        if (debug2_active (D_THRESHOLd)) call check_rest_frame ()
     else
-       p_ons_full = p_ons
+       p_ons_work = p_ons
     end if
     if (debug2_active (D_THRESHOLD)) call check_phase_space_point ()
     do h_t = -1, 1, 2
     do h_W = -1, 1, 1
     do h_b = -1, 1, 2
-       born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons_full, h_t, h_W, h_b)
+       born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons_work, h_t, h_W, h_b)
        if (.not. test_ward) then
           do h_gl = -1, 1, 2
              real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
@@ -1077,7 +1077,7 @@ contains
            'Real top is in rest frame?', abs_smallness = tiny_07, &
            rel_smallness = tiny_07, exit_on_fail = .true.)
       other_leg = 3 - leg
-      p_test = p_ons_full (ass_boson(other_leg)) + p_ons_full (ass_quark(other_leg))
+      p_test = p_ons_work (ass_boson(other_leg)) + p_ons_work (ass_quark(other_leg))
       call assert_equal (u, mtop, p_test%t, 'Born top is in rest frame?', &
            abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
     end subroutine check_rest_frame
@@ -1110,22 +1110,22 @@ contains
               rel_smallness = tiny_07, exit_on_fail = .true.)
          other_leg = 3 - leg
          if (threshold%settings%onshell_projection%decay) then
-              p_test = p_ons_full(ass_quark(other_leg)) + p_ons_full(ass_boson(other_leg))
+              p_test = p_ons_work(ass_quark(other_leg)) + p_ons_work(ass_boson(other_leg))
               call assert_equal (u, mtop, sqrt (p_test * p_test), &
                    'Born-decay Top is on-shell', abs_smallness = tiny_07, &
                    rel_smallness = tiny_07, exit_on_fail = .true.)
          end if
-         p_test = p_ons_full(ass_quark(other_leg))
+         p_test = p_ons_work(ass_quark(other_leg))
          call assert_equal (u, mass(5), sqrt (p_test * p_test), &
               'Born-decay Bottom is on-shell', abs_smallness = tiny_07, &
               rel_smallness = tiny_07, exit_on_fail = .true.)
-         p_test = p_ons_full(ass_boson(other_leg))
+         p_test = p_ons_work(ass_boson(other_leg))
          call assert_equal (u, mass(24), sqrt (p_test * p_test), &
               'Born-decy W is on-shell', abs_smallness = tiny_07, &
               rel_smallness = tiny_07, exit_on_fail = .true.)
          do i = 1, 3
-            E = sum (p_ons_real_decay (2:4)%x(i)) + p_ons_full(ass_quark(other_leg))%x(i) &
-                 + p_ons_full(ass_boson(other_leg))%x(i)
+            E = sum (p_ons_real_decay (2:4)%x(i)) + p_ons_work(ass_quark(other_leg))%x(i) &
+                 + p_ons_work(ass_boson(other_leg))%x(i)
             call assert_equal (u, zero, E, 'Total momentum vanishes', &
                  abs_smallness = 1E-5_default, rel_smallness = 1E-5_default, &
                  exit_on_fail = .true.)

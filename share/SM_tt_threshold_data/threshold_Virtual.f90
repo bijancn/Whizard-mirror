@@ -87,7 +87,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   call set_parameter("mu", mu)
   total = 0
 
-  call compute_projected_momenta (0, mom_ofs, mom_ons)
+  call compute_projected_momenta (mom_ofs, mom_ons)
   call set_parameter("width(6)", zero)
   call set_parameter("width(24)", zero)
   ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)

@@ -5164,6 +5164,7 @@ module real_subtraction
   use phs_fks, only: real_kinematics_t, isr_kinematics_t
   use phs_fks, only: I_PLUS, I_MINUS
   use phs_fks, only: phs_point_set_t
+  use ttv_formfactors, only: m1s_to_mpole
 
   use fks_regions
   use nlo_data
@@ -5225,11 +5226,31 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(region_data_t), intent(in), target :: reg_data
     sub_soft%reg_data => reg_data
-    allocate (sub_soft%momentum_matrix &
-       (reg_data%n_legs_born, reg_data%n_legs_born))
+    allocate (sub_soft%momentum_matrix (reg_data%n_legs_born, &
+         reg_data%n_legs_born))
   end subroutine soft_subtraction_init
 
 @ %def soft_subtraction_init
+@
+<<real subtraction: soft sub: TBP>>=
+  procedure :: requires_boost => soft_subtraction_requires_boost
+<<real subtraction: procedures>>=
+  function soft_subtraction_requires_boost (sub_soft, sqrts) result (requires_boost)
+    logical :: requires_boost
+    class(soft_subtraction_t), intent(in) :: sub_soft
+    real(default), intent(in) :: sqrts
+    real(default) :: mtop
+    logical :: above_threshold
+    if (sub_soft%factorization_mode == FACTORIZATION_THRESHOLD) then
+       mtop = m1s_to_mpole (sqrts)
+       above_threshold = sqrts**2 - four * mtop**2 > zero
+    else
+       above_threshold = .false.
+    end if
+    requires_boost = sub_soft%use_resonance_mappings .or. above_threshold
+  end function soft_subtraction_requires_boost
+
+@ %def soft_subtraction_requires_boost
 @ The treatment of the momentum $k$ follows the discussion about the
 soft limit of the partition functions (ref????).  The parton momentum is
 pulled out, $k = E \hat{k}$. In fact, we will substitute $\hat{k}$ for
@@ -5258,8 +5279,7 @@ rotated about the corresponding angles $y$ and $\phi$.
     logical :: requires_boost
     associate (p_soft => sub_soft%p_soft)
        p_soft%p(0) = one
-       requires_boost = sub_soft%use_resonance_mappings .or. &
-            sub_soft%factorization_mode == FACTORIZATION_THRESHOLD
+       requires_boost = sub_soft%requires_boost (two * p_born(1)%p(0))
        if (requires_boost) then
           boost_to_rest_frame = inverse (boost (xi_ref_momentum, xi_ref_momentum**1))
           p_em = boost_to_rest_frame * p_born(emitter)
@@ -5275,8 +5295,7 @@ rotated about the corresponding angles $y$ and $\phi$.
          rot = rotation (cos(phi), sin(phi), dir)
          p_soft = rot * p_soft
        end if
-       if (requires_boost) &
-            p_soft = inverse (boost_to_rest_frame) * p_soft
+       if (requires_boost) p_soft = inverse (boost_to_rest_frame) * p_soft
     end associate
   end subroutine soft_subtraction_create_softvec_fsr
 
@@ -5386,7 +5405,7 @@ distinguished by the flag [[xi2_expanded]].
     call msg_debug2 (D_SUBTRACTION, 'KB', kb)
     sqme = four * pi * alpha_s * s_alpha_soft * kb
     if (sub_soft%xi2_expanded) then
-       xi2_factor = 4 / q2
+       xi2_factor = four / q2
     else
        xi2_factor = one
     end if
@@ -6391,7 +6410,6 @@ the corresponding jacobians.
     real(default) :: sqme_rad, sqme_soft, sqme_coll_plus, sqme_coll_minus
     real(default) :: sqme_cs_plus, sqme_cs_minus
     real(default) :: sqme_remn
-    real(default) :: onemy, onepy
     logical :: proc_scatter
 
     proc_scatter = rsub%isr_kinematics%n_in == 2
@@ -6554,8 +6572,7 @@ the corresponding jacobians.
     integer, intent(in) :: i_phs
     logical, intent(in) :: isr, threshold
     integer, intent(in), optional :: emitter
-    real(default) :: xi, xi_max, xi_tilde, s
-    integer :: leg
+    real(default) :: xi, xi_tilde, s
     xi_tilde = real_kinematics%xi_tilde
     xi = xi_tilde * real_kinematics%xi_max (i_phs)
     select case (purpose)
@@ -6817,7 +6834,7 @@ to be more consistent with the evaluation of the Born phase space.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: alr, em, i_phs
     real(default), intent(in) :: alpha_s
-    real(default) :: xi, xi_max, xi_max_pm
+    real(default) :: xi, xi_max_pm
     real(default) :: sqme_sc
     integer :: i_con
     real(default) :: pfr
