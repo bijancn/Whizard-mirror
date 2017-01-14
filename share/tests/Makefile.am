@@ -701,6 +701,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/ewa_3.ref \
     functional_tests/ref-output-double/ilc.ref \
     functional_tests/ref-output-double/user_prc_threshold_2.ref \
+    functional_tests/ref-output-double/user_prc_threshold_3.ref \
     functional_tests/ref-output-double/beam_events_2.ref \
     functional_tests/ref-output-double/beam_events_3.ref
 
@@ -1017,6 +1018,7 @@ MISC_TESTS_SIN = \
     functional_tests/user_cuts.sin \
     functional_tests/user_prc_threshold_1.sin \
     functional_tests/user_prc_threshold_2.sin \
+    functional_tests/user_prc_threshold_3.sin \
     ilc_ext.sin
 
 MSSM_EXT_M4 = \
