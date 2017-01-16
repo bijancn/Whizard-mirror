@@ -525,6 +525,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/cuts.ref \
     functional_tests/ref-output/user_cuts.ref \
     functional_tests/ref-output/user_prc_threshold_1.ref \
+    functional_tests/ref-output/user_prc_threshold_3.ref \
     functional_tests/ref-output/qedtest_1.ref \
     functional_tests/ref-output/qedtest_2.ref \
     functional_tests/ref-output/qedtest_5.ref \
@@ -701,7 +702,6 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/ewa_3.ref \
     functional_tests/ref-output-double/ilc.ref \
     functional_tests/ref-output-double/user_prc_threshold_2.ref \
-    functional_tests/ref-output-double/user_prc_threshold_3.ref \
     functional_tests/ref-output-double/beam_events_2.ref \
     functional_tests/ref-output-double/beam_events_3.ref
 
