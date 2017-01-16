@@ -13848,19 +13848,19 @@ or arrays which would make the expansion ambiguous.
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
     type(string_t) :: soft_mismatch_me_method
+    type(string_t) :: dglap_me_method
     integer, dimension(:), allocatable :: i_list
     logical :: powheg_use_damping
     logical :: gks_active
     logical :: initial_state_colored
     logical :: has_structure_functions
-    logical :: requires_pdf
     integer :: n_components_extra
     integer :: gks_multiplicity
     integer :: n_emitters
     integer, dimension(:), allocatable :: emitters
     integer :: n_components_init
     integer :: alpha_power, alphas_power
-    logical :: requires_soft_mismatch
+    logical :: requires_soft_mismatch, requires_dglap_remnants
     call msg_debug (D_CORE, "cmd_process_execute")
     var_list => cmd%local%get_var_list_ptr ()
 
@@ -13890,10 +13890,11 @@ or arrays which would make the expansion ambiguous.
        loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
        correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
        soft_mismatch_me_method = var_list%get_sval (var_str ("$soft_mismatch_me_method"))
+       dglap_me_method = var_list%get_sval (var_str ("$dglap_me_method"))
        call check_nlo_options (cmd%local)
     end if
     if (any (cmd%local%selected_nlo_parts))  &
-       call override_local_me_method (born_me_method)
+         call override_local_me_method (born_me_method)
 
     call determine_needed_components ()
     call prc_config%init (cmd%id, n_in, n_components_init, cmd%local, nlo_fixed_order)
@@ -14000,8 +14001,8 @@ or arrays which would make the expansion ambiguous.
     call radiation_generator%set_n (n_in, n_out, 0)
     initial_state_colored = pdg_in%has_colored_particles()
     has_structure_functions = global%beam_structure%get_n_record () > 0
-    requires_pdf = initial_state_colored .and. has_structure_functions
-    if (requires_pdf)  call radiation_generator%set_initial_state_emissions ()
+    requires_dglap_remnants = initial_state_colored .and. has_structure_functions
+    if (requires_dglap_remnants)  call radiation_generator%set_initial_state_emissions ()
     call radiation_generator%set_constraints (.false., .false., .true., .true.)
     call radiation_generator%set_radiation_model (cmd%local%radiation_model)
     call radiation_generator%setup_if_table ()
@@ -14080,7 +14081,7 @@ or arrays which would make the expansion ambiguous.
        if (nlo_fixed_order) then
           associate (selected_nlo_parts => cmd%local%selected_nlo_parts)
              call set_component_list (i_list, i, n_components, &
-                  requires_pdf, requires_soft_mismatch, &
+                  requires_dglap_remnants, requires_soft_mismatch, &
                   powheg_use_damping, n_emitters)
 
              call override_local_me_method (born_me_method)
@@ -14127,9 +14128,8 @@ or arrays which would make the expansion ambiguous.
                      can_be_integrated = selected_nlo_parts (NLO_REAL))
              end if
 
-             if (requires_pdf) then
-                ! TODO: (bcn 2016-01-26) why only omega here?
-                call override_local_me_method (var_str ("omega"))
+             if (requires_dglap_remnants) then
+                call override_local_me_method (dglap_me_method)
                 i_comp = n_components * 4 + i
                 call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
                 call prc_config%setup_component (i_comp, &
@@ -14149,7 +14149,7 @@ or arrays which would make the expansion ambiguous.
              end if
 
              call prc_config%set_component_associations (i_list, &
-                  requires_pdf, powheg_use_damping, requires_soft_mismatch)
+                  requires_dglap_remnants, powheg_use_damping, requires_soft_mismatch)
           end associate
        else if (gks_active) then
           call override_local_me_method (var_str ("omega"))
@@ -14219,17 +14219,17 @@ Special components. The layout is a grouped one, i.e. at first there are
 all Borns, then all Reals, etc.
 <<Commands: procedures>>=
   pure subroutine set_component_list (i_list, i, n_components, &
-                  requires_pdf, requires_soft_mismatch, &
-             powheg_use_damping, n_emitters)
+         requires_dglap_remnants, requires_soft_mismatch, &
+         powheg_use_damping, n_emitters)
     integer, dimension(:), intent(out) :: i_list
     integer, intent(in) :: i, n_components, n_emitters
-    logical, intent(in) :: requires_pdf, powheg_use_damping, &
+    logical, intent(in) :: requires_dglap_remnants, powheg_use_damping, &
          requires_soft_mismatch
     i_list(1) = i
     i_list(2) = i + n_components
     i_list(3) = i + 2 * n_components
     i_list(4) = i + 3 * n_components
-    if (requires_pdf .or. requires_soft_mismatch .or. powheg_use_damping) then
+    if (requires_dglap_remnants .or. requires_soft_mismatch .or. powheg_use_damping) then
        i_list(5) = i + 4 * n_components
     end if
   end subroutine set_component_list
@@ -14238,8 +14238,8 @@ all Borns, then all Reals, etc.
 @
 <<Commands: procedures>>=
   pure function needed_extra_components (initial_state_colored, &
-            has_structure_functions, requires_soft_mismatch, &
-            powheg_use_damping, n_emitters) result (n)
+         has_structure_functions, requires_soft_mismatch, &
+         powheg_use_damping, n_emitters) result (n)
     integer :: n
     logical, intent(in) :: initial_state_colored, &
          has_structure_functions, powheg_use_damping, &
