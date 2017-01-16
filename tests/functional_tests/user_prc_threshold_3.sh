@@ -3,7 +3,6 @@
 echo "Running script $0"
 if test -f OCAML_FLAG; then
     name=`basename @script@`
-    rm -f SM_tt_threshold.grid
     ./run_whizard.sh @script@ --no-logging
     diff ref-output/$name.ref $name.log
 else
