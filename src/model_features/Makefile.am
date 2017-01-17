@@ -78,7 +78,8 @@ module_lists = \
   ../types/Modules \
   ../particles/Modules \
   ../user/Modules \
-  ../variables/Modules
+  ../variables/Modules \
+  ../threshold/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -125,7 +126,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../user -I../fastjet -I../variables
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../threshold -I../user -I../fastjet -I../variables
 
 
 ########################################################################
