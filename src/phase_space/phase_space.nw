@@ -4121,6 +4121,7 @@ module phs_trees
   use io_units
   use constants, only: twopi, twopi2, twopi5
   use format_defs, only: FMT_19
+  use numeric_utils, only: vanishes
   use diagnostics
   use lorentz
   use permutations, only: permutation_t, permutation_size
@@ -5481,7 +5482,7 @@ possible.
          else
             axis = axis_from_p_b3 (pf, -bg)
             LL = rotation_to_2nd (axis, vector3_canonical(3))
-            if (bg /= 0)  LL = LL * boost(-bg, 3)
+            if (.not. vanishes (bg))  LL = LL * boost(-bg, 3)
          end if
          n = space_part (LL * p1)
       else if (present (phi0)) then
@@ -12444,7 +12445,7 @@ module phs_fks
   use cascades
   use process_constants
   use process_libraries
-  use ttv_formfactors, only: generate_on_shell_decay_threshold
+  use ttv_formfactors, only: generate_on_shell_decay_threshold, m1s_to_mpole
 
 <<Standard module head>>
 
@@ -12828,7 +12829,7 @@ tiny value differing from that.
     if (arg > zero) then
        scale_factor = sqrt (arg) / two
     else
-       scale_factor = tiny_10
+       scale_factor = tiny_07*1000
     end if
     dir = scale_factor * create_unit_vector (p_tmp)
     p_tmp = [sqrts / two, dir%p]
@@ -12931,16 +12932,22 @@ tiny value differing from that.
     type(vector4_t), intent(in), dimension(:) :: p_in
     type(vector4_t), intent(out), dimension(:) :: p_onshell
     type(vector4_t), dimension(3) :: k_decay_onshell
+    type(vector4_t) :: p_tmp_1, p_tmp_2
+    type(lorentz_transformation_t) :: L_to_cms_inv
     p_onshell(1:2) = p_in(1:2)
+    L_to_cms_inv = inverse (L_to_cms)
+    p_tmp_1 = L_to_cms_inv * p_in(THR_POS_B)
+    p_tmp_2 = L_to_cms_inv * p_in(THR_POS_WP)
     k_decay_onshell = create_two_particle_decay (mtop**2, &
-         p_in(THR_POS_B), p_in(THR_POS_WP))
+         p_tmp_1, p_tmp_2)
     p_onshell([THR_POS_B, THR_POS_WP]) = k_decay_onshell([2, 3])
+    p_tmp_1 = L_to_cms * p_in(THR_POS_BBAR)
+    p_tmp_2 = L_to_cms * p_in(THR_POS_WM)
     k_decay_onshell = create_two_particle_decay (mtop**2, &
-         p_in(THR_POS_BBAR), p_in(THR_POS_WM))
+         p_tmp_1, p_tmp_2)
     p_onshell([THR_POS_BBAR, THR_POS_WM]) = k_decay_onshell([2, 3])
-    p_onshell (3:6) = L_to_cms * p_onshell (3:6)
-    call vector4_invert_direction (p_onshell (THR_POS_WM))
-    call vector4_invert_direction (p_onshell (THR_POS_BBAR))
+    p_onshell([THR_POS_WP, THR_POS_B]) = L_to_cms * p_onshell([THR_POS_WP, THR_POS_B])
+    p_onshell([THR_POS_WM, THR_POS_BBAR]) = L_to_cms_inv * p_onshell([THR_POS_WM, THR_POS_BBAR])
   end subroutine threshold_projection_born
 
 @ %def threshold_projection_born
@@ -14008,7 +14015,6 @@ recoiling momenta.
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_fsr_default (generator, emitter, i_phs, &
      p_born, p_real, xi_y_phi, no_jacobians)
-    !!! Important: Momenta must be input in the center-of-mass frame
     class(phs_fks_generator_t), intent(inout) :: generator
     integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
@@ -14155,6 +14161,7 @@ recoiling momenta.
     real(default) :: q0
     type(lorentz_transformation_t) :: boost_to_top
     integer :: leg, other_leg
+    real(default) :: sqrts, mtop
     call msg_debug2 (D_PHASESPACE, "phs_fks_generator_generate_fsr_resonances")
     nlegborn = size (p_born); nlegreal = nlegborn + 1
 
@@ -14168,7 +14175,13 @@ recoiling momenta.
     p_top = generator%real_kinematics%xi_ref_momenta(leg)
 
     q0 = p_top**1
-    boost_to_top = inverse (boost (p_top, q0))
+    sqrts = two * p_born(1)%p(0)
+    mtop = m1s_to_mpole (sqrts)
+    if (sqrts**2 - four * mtop**2 > zero) then
+       boost_to_top = inverse (boost (p_top, q0))
+    else
+       boost_to_top = identity
+    end if
     p_tmp_born = boost_to_top * p_tmp_born
 
     generator%i_fsr_first = 1
@@ -14222,7 +14235,7 @@ recoiling momenta.
     real(default) :: uk_n_born, uk, k2, k0_n
     real(default) :: cpsi, beta
     type(vector3_t) :: vec, vec_orth
-    type(lorentz_transformation_t) :: rot, lambda
+    type(lorentz_transformation_t) :: rot
     integer :: i, p_em
     logical :: compute_jac
     p_em = emitter; if (present (p_emitter_index)) p_em = p_emitter_index
@@ -14253,10 +14266,10 @@ recoiling momenta.
     uk_n_born = k_n_born**1
 
     generator%mrec2 = (q0 - p_born(p_em)%p(0))**2 &
-       - space_part_norm(p_born(p_em))**2
+         - space_part_norm(p_born(p_em))**2
     if (generator%is_massive(emitter)) then
-       call generator%compute_emitter_kinematics &
-          (y, emitter, i_phs, q0, k0_n, uk_n, uk, compute_jac)
+       call generator%compute_emitter_kinematics (y, emitter, &
+            i_phs, q0, k0_n, uk_n, uk, compute_jac)
     else
        call generator%compute_emitter_kinematics (y, q0, uk_n, uk)
        generator%real_kinematics%y_soft(i_phs) = y
@@ -14335,11 +14348,12 @@ is
 \end{equation*}
 <<phs fks: generator generate fsr out procedures>>=
   subroutine construct_recoiling_momenta ()
+    type(lorentz_transformation_t) :: lambda
     k_rec0 = q0 - p_real%p(p_em)%p(0) - p_real%p(nlegreal)%p(0)
     uk_rec = sqrt (k_rec0**2 - generator%mrec2)
     if (generator%is_massive(emitter)) then
        beta = compute_beta (q0**2, k_rec0, uk_rec, &
-          p_born(p_em)%p(0), uk_n_born)
+              p_born(p_em)%p(0), uk_n_born)
     else
        beta = compute_beta (q0**2, k_rec0, uk_rec)
     end if
@@ -14429,7 +14443,9 @@ $\xi$.
   pure function phs_fks_get_onshell_projected_momenta (phs) result (p)
     type(vector4_t), dimension(:), allocatable :: p
     class(phs_fks_t), intent(in) :: phs
-    p = phs%generator%real_kinematics%p_born_onshell%get_momenta (1)
+    !!! !!! !!! Workaround for standard-semantics ifort 16.0 bug
+    allocate(p (size (phs%generator%real_kinematics%p_born_onshell%phs_point(1)%p)))
+    p = phs%generator%real_kinematics%p_born_onshell%phs_point(1)%p
   end function phs_fks_get_onshell_projected_momenta
 
 @ %def phs_fks_get_onshell_projected_momenta
@@ -15887,7 +15903,7 @@ module phs_fks_uti
   use format_utils, only: write_separator, pac_fmt
   use format_defs, only: FMT_15, FMT_19
   use numeric_utils, only: nearly_equal
-  use constants, only: tiny_07, zero, two
+  use constants, only: tiny_07, zero, one, two
   use lorentz
 
   use physics_defs, only: THR_POS_B, THR_POS_BBAR, THR_POS_WP, THR_POS_WM, THR_POS_GLUON
@@ -16355,6 +16371,7 @@ end module phs_fks_uti
   public :: phs_fks_generator_5
 <<phs fks: tests>>=
   subroutine phs_fks_generator_5 (u)
+    use ttv_formfactors, only: init_parameters
     integer, intent(in) :: u
     type(phs_fks_generator_t) :: generator
     type(vector4_t), dimension(:), allocatable :: p_born
@@ -16367,6 +16384,7 @@ end module phs_fks_uti
     type(lorentz_transformation_t) :: L_to_cms
     real(default), parameter :: sqrts = 360._default
     real(default), parameter :: momentum_tolerance = 1E-10_default
+    real(default) :: mpole, gam_out
 
     write (u, "(A)") "* Test output: phs_fks_generator_5"
     write (u, "(A)") "* Puropse: Perform threshold on-shell projection of "
@@ -16405,6 +16423,12 @@ end module phs_fks_uti
     mtop = 172._default
 
     generator%sqrts = sqrts
+
+    !!! Dummy-initialization of the threshold model because generate_fsr_threshold
+    !!! uses m1s_to_mpole to determine if it is above or below threshold.
+    call init_parameters (mpole, gam_out, mtop, one, one / 1.5_default, 125._default, &
+         0.47_default, 0.118_default, 91._default, 80._default, 4.2_default, &
+         one, one, one, one, zero, zero, zero, zero, zero, zero, .false., zero)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
     call vector4_write_set (p_born, u, testflag = .true., ultra = .true.)

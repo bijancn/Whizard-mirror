@@ -232,7 +232,8 @@ TESTS_REQ_OCAML = \
     mlm_matching_fsr.run \
     user_cuts.run \
     user_prc_threshold_1.run \
-    user_prc_threshold_2.run
+    user_prc_threshold_2.run \
+    user_prc_threshold_3.run
 
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
