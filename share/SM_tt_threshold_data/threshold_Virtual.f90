@@ -72,8 +72,6 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   real(double) :: mu, alpha_s, dynamic_top_mass
   complex(default) :: born_decay_me, bw
   real(default) :: prod2, born_decay_me2
-  integer, dimension(2) :: reshuffle_momenta
-  integer, dimension(4) :: reshuffle_id
   call msg_debug (D_ME_METHODS, "@ID@_olp_eval2")
   if (i_flv /= 1)  call msg_fatal ("i_flv /= 1, threshold interface was not built for this")
   if (any (id <= 0))  call msg_fatal ("Could not register process in OpenLoops")
@@ -108,11 +106,6 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   bw = top_propagators (FF, mom_ofs(1) + mom_ofs(2), ptop_ofs)
   production_me = compute_production_me (FF, mom_ofs, ptop_ofs, ptop_ons)
   prod2 = zero
-  !!! We need these because OpenLoops does not reproduce the Omega results
-  !!! at the correct positions (but numerically correct).
-  !!! This is only a workaround and should be understood!
-  reshuffle_momenta = [2, 1]
-  reshuffle_id = [1,2,4,3]
   do h_t = -1, 1, 2
   do h_tbar = -1, 1, 2
      if (skip (h_t, h_tbar)) cycle
@@ -133,10 +126,9 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
               this_id = (3 + h_tbar) / 2 + 2
            end if
            born_decay_me2 = born_decay_me2 + abs2 (born_decay_me)
-           this_id = reshuffle_id (this_id)
         end do
         end do
-        call evaluate_loop (id(this_id), p_decay(:,:,reshuffle_momenta(leg)), &
+        call evaluate_loop (id(this_id), p_decay(:,:,leg), &
              virt_decay(3), virt_decay(0:2), acc)
         acc_c = max (acc_c, acc)
         total = total + prod2 * born_decay_me2 * virt_decay * abs2 (bw)
