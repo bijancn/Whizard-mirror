@@ -5602,22 +5602,9 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
     type(string_t) :: color_method
     select type (pcm => process%pcm)
     type is (pcm_nlo_t)
-       color_method = var_list%get_sval (var_str ('$correlation_me_method'))
-       associate (settings => pcm%settings)
-          if (present (fks_template)) settings%fks_template = fks_template
-          settings%use_internal_color_correlations = color_method == 'omega' &
-               .or. color_method == 'threshold'
-          settings%combined_integration = var_list%get_lval &
-               (var_str ("?combined_nlo_integration"))
-          settings%fixed_order_nlo = var_list%get_lval &
-               (var_str ("?fixed_order_nlo_events"))
-          settings%test_soft_limit = var_list%get_lval (var_str ('?test_soft_limit'))
-          settings%test_coll_limit = var_list%get_lval (var_str ('?test_coll_limit'))
-          settings%test_anti_coll_limit = var_list%get_lval (var_str ('?test_anti_coll_limit'))
-          settings%fixed_alr = var_list%get_ival (var_str ('fixed_alpha_region'))
-          settings%with_virtual_subtraction = &
-             .not. var_list%get_lval (var_str ('?switch_off_virtual_subtraction'))
-       end associate
+       call pcm%settings%init (var_list, fks_template)
+       if (debug_active (D_SUBTRACTION) .or. debug_active (D_VIRTUAL)) &
+              call pcm%settings%write ()
     class default
        call msg_fatal ("Attempt to set nlo_settings with a non-NLO pcm!")
     end select
@@ -5774,18 +5761,18 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
        call data_born%get_flv_state (flavor_born)
        call data_real%get_flv_state (flavor_real)
        call pcm%region_data%setup_fks_mappings &
-          (pcm%settings%fks_template, data_born%n_in)
+            (pcm%settings%fks_template, data_born%n_in)
        select type (model => process%config%model)
        type is (model_t)
           call pcm%region_data%init (data_born%n_in, model, &
-             flavor_born, flavor_real)
+               flavor_born, flavor_real)
           associate (template => pcm%settings%fks_template)
              if (template%mapping_type == FKS_RESONANCES) then
                 select type (phs_config => process%component(i_real)%phs_config)
                 type is (phs_fks_config_t)
                    call get_filtered_resonance_histories (phs_config, &
-                      data_born%n_in, flavor_born, model, template%excluded_resonances, &
-                      resonance_histories, success)
+                        data_born%n_in, flavor_born, model, template%excluded_resonances, &
+                        resonance_histories, success)
                 end select
                 if (.not. success) template%mapping_type = FKS_DEFAULT
              end if
@@ -8437,7 +8424,7 @@ module pcm
   use phs_fks, only: threshold_projection_born
   use phs_fks, only: dalitz_plot_t
   use real_subtraction, only: real_subtraction_t, soft_mismatch_t
-  use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG
+  use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG, this_purpose
   use virtual, only: virtual_t
   use dglap_remnant, only: dglap_remnant_t
   use ttv_formfactors, only: m1s_to_mpole
@@ -8889,8 +8876,6 @@ object and the squared matrix-element collector.
                 end if
              case (NLO_VIRTUAL)
                 call pcm_instance%init_virtual ()
-                if (.not. pcm%settings%with_virtual_subtraction) &
-                   call pcm_instance%disable_virtual_subtraction ()
              case (NLO_DGLAP)
                 call pcm_instance%init_dglap_remnant ()
              end select
@@ -8918,7 +8903,7 @@ object and the squared matrix-element collector.
     type is (pcm_nlo_t)
        associate (region_data => config%region_data)
           call pcm_instance%soft_mismatch%init (region_data, &
-             pcm_instance%real_kinematics, config%settings%factorization_mode)
+               pcm_instance%real_kinematics, config%settings%factorization_mode)
        end associate
     end select
   end subroutine pcm_instance_nlo_setup_real_component
@@ -8985,10 +8970,10 @@ object and the squared matrix-element collector.
        associate (region_data => config%region_data)
           call pcm_instance%real_sub%init (region_data)
           call pcm_instance%real_sub%set_resonance_mappings &
-             (config%settings%use_resonance_mappings)
+               (config%settings%use_resonance_mappings)
           pcm_instance%real_sub%fixed_alr = config%settings%fixed_alr
           pcm_instance%real_sub%sub_soft%factorization_mode &
-             = config%settings%factorization_mode
+               = config%settings%factorization_mode
        end associate
     end select
   end subroutine pcm_instance_nlo_init_real_subtraction
@@ -9177,7 +9162,8 @@ object and the squared matrix-element collector.
     type is (pcm_nlo_t)
        associate (region_data => config%region_data)
           call pcm_instance%virtual%init (region_data%get_flv_states_born (), &
-             region_data%n_in, config%settings%use_internal_color_correlations)
+               region_data%n_in, config%settings%use_internal_color_correlations, &
+               config%settings%virtual_selection)
           pcm_instance%virtual%factorization_mode = config%settings%factorization_mode
        end associate
     end select
@@ -9190,7 +9176,6 @@ object and the squared matrix-element collector.
 <<Pcm: procedures>>=
   subroutine pcm_instance_nlo_disable_virtual_subtraction (pcm_instance)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
-    pcm_instance%virtual%with_subtraction = .false.
   end subroutine pcm_instance_nlo_disable_virtual_subtraction
 
 @ %def pcm_instance_nlo_disable_virtual_subtraction
