@@ -9955,6 +9955,7 @@ module instances
   use variables
   use sf_base
   use physics_defs
+  use sm_physics, only: top_width_sm_qcd_nlo
   use process_constants
   use process_libraries
   use state_matrices
@@ -9968,7 +9969,7 @@ module instances
   use blha_olp_interfaces, only: prc_blha_t
   use blha_config, only: BLHA_AMP_CC
   use prc_user_defined, only: prc_user_defined_base_t, user_defined_state_t
-  use prc_threshold, only: prc_threshold_t
+  use prc_threshold, only: prc_threshold_t, threshold_state_t, threshold_driver_t
   use blha_olp_interfaces, only: blha_result_array_size
   use prc_recola, only: prc_recola_t
 
@@ -10182,11 +10183,15 @@ relevant for a NLO algorithm.
     select type (core)
     class is (prc_user_defined_base_t)
        call reduce_interaction (term%int_hard, &
-          core%includes_polarization (), .true., .false.)
+            core%includes_polarization (), .true., .false.)
        me_already_squared = .true.
        allocate (term%amp (term%int_hard%get_n_matrix_elements ()))
     class default
        allocate (term%amp (term%config%n_allowed))
+    end select
+    select type (core_state => term%core_state)
+    type is (threshold_state_t)
+       call core_state%set_parameters (process%get_model_ptr ())
     end select
     term%amp = cmplx (0, 0, default)
     decrease_n_tot = term%nlo_type == NLO_REAL .and. &
@@ -11163,9 +11168,9 @@ method may modify the [[core_state]] workspace object.
     integer :: i
     do i = 1, term%config%n_allowed
        term%amp(i) = core%compute_amplitude (term%config%i_term, term%p_hard, &
-          term%config%flv(i), term%config%hel(i), term%config%col(i), &
-          term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
-          term%core_state)
+            term%config%flv(i), term%config%hel(i), term%config%col(i), &
+            term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
+            term%core_state)
     end do
     if (associated (term%pcm_instance)) &
          call term%pcm_instance%set_fac_scale (term%fac_scale)
@@ -11198,6 +11203,7 @@ method may modify the [[core_state]] workspace object.
   contains
     subroutine evaluate_threshold_interaction ()
        integer :: leg
+       real(default) :: mtop, wtop
        select type (core)
        type is (prc_threshold_t)
           if (term%nlo_type > BORN) then
@@ -11215,6 +11221,23 @@ method may modify the [[core_state]] workspace object.
                         (pcm%real_kinematics%p_born_cms%get_momenta(1))
                 end if
              end associate
+             if (term%nlo_type == NLO_VIRTUAL) then
+                select type (core_state => term%core_state)
+                type is (threshold_state_t)
+                   mtop = m1s_to_mpole (term%pcm_instance%real_kinematics%p_born_cms%get_sqrts (1))
+                   !!! TODO(cw-2017-24-01): Distinguish for massless b
+                   wtop = top_width_sm_qcd_nlo (core_state%alpha_ew, &
+                          core_state%sinthw, mtop, core_state%mw, core_state%mb, &
+                          core_state%alpha_qcd)
+                   select type (driver => core%driver)
+                   type is (threshold_driver_t)
+                      call driver%set_top_mass_and_width (mtop, wtop)
+                   end select
+                   call core_state%write ()
+                class default
+                   call msg_fatal ("threshold_state required!")
+                end select
+             end if
           else
              call core%set_leg (0)
              call core%set_offshell_momenta (term%p_hard)

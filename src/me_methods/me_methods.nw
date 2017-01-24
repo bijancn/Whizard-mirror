@@ -5969,6 +5969,21 @@ end module prc_threshold
 @ %def threshold_init
 @
 <<Prc Threshold: public>>=
+  public :: threshold_set_parameter
+<<Prc Threshold: interfaces>>=
+  interface
+   subroutine threshold_set_parameter &
+          (variable_name, real_part, complex_part, success) bind(C)
+      import
+      character(kind = c_char,len = 1), intent(in) :: variable_name
+      real(kind = c_double), intent(in) :: real_part, complex_part
+      integer(kind = c_int), intent(out) :: success
+    end subroutine threshold_set_parameter
+  end interface
+
+@ %def threshold_set_parameter
+@
+<<Prc Threshold: public>>=
   public :: threshold_start_openloops
 <<Prc Threshold: interfaces>>=
   interface
@@ -5993,6 +6008,8 @@ end module prc_threshold
          start_openloops => null ()
     procedure(threshold_init), nopass, pointer :: &
          init => null ()
+    procedure(threshold_set_parameter), nopass, pointer :: &
+         set_parameter => null ()
     type(string_t) :: id
     integer :: nlo_type = BORN
   contains
@@ -6039,6 +6056,9 @@ end module prc_threshold
           c_fptr = dlaccess_get_c_funptr (dlaccess, lower_case_id // "_olp_eval2")
           call c_f_procpointer (c_fptr, threshold_driver%olp_eval2)
           call check_for_error (lower_case_id // "_olp_eval2")
+          c_fptr = dlaccess_get_c_funptr (dlaccess, lower_case_id // "_set_parameter")
+          call c_f_procpointer (c_fptr, threshold_driver%set_parameter)
+          call check_for_error (lower_case_id // "_set_parameter")
        end if
     end select
     call msg_message ("Loaded extra threshold functions")
@@ -6051,6 +6071,24 @@ end module prc_threshold
   end subroutine threshold_driver_load
 
 @ %def threshold_driver_load
+@
+<<Prc Threshold: threshold driver: TBP>>=
+  procedure :: set_top_mass_and_width => threshold_driver_set_top_mass_and_width
+<<Prc Threshold: procedures>>=
+  subroutine threshold_driver_set_top_mass_and_width (threshold_driver, mtop, wtop)
+    class(threshold_driver_t), intent(inout) :: threshold_driver
+    real(default), intent(in) :: mtop, wtop
+    character(kind=c_char,len=20) :: c_string
+    integer :: ierr
+    c_string = 'mass(6)' // c_null_char
+    call threshold_driver%set_parameter (c_string, dble(mtop), 0._double, ierr)
+    if (ierr == 0) call msg_fatal ("threshold driver: Failed to set top mass!")
+    c_string = 'width(6)' // c_null_char
+    call threshold_driver%set_parameter (c_string, dble(wtop), 0._double, ierr)
+    if (ierr == 0) call msg_fatal ("threshold driver: Failed to set top width")
+  end subroutine threshold_driver_set_top_mass_and_width
+
+@ %def threshold_driver_set_top_mass_and_width
 @
 \subsubsection{Configuration}
 <<Prc Threshold: public>>=
@@ -6163,6 +6201,56 @@ end module prc_threshold
 
 @ %def threshold_def_connect
 @
+\subsubsection{Core state}
+The [[threshold_state_t]] contains the physical parameters needed to
+compute the top width, except for the top mass, which is computed
+dynamically during the process evaluation.
+<<Prc Threshold: public>>=
+  public :: threshold_state_t
+<<Prc Threshold: types>>=
+  type, extends (user_defined_state_t) :: threshold_state_t
+    real(default) :: alpha_ew = -1
+    real(default) :: sinthw = -1
+    real(default) :: mw = -1
+    real(default) :: mb = -1
+  contains
+  <<Prc Threshold: threshold state: TBP>>
+  end type threshold_state_t
+
+@ %def threshold_state_t
+@
+<<Prc Threshold: threshold state: TBP>>=
+  procedure :: write => threshold_state_write
+<<Prc Threshold: procedures>>=
+  subroutine threshold_state_write (object, unit)
+    class(threshold_state_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, '(A)') "Threshold state: Parameters: "
+    write (u, '(A,1x,F8.4)') "alpha_s: ", object%alpha_qcd
+    write (u, '(A,1x,F8.4)') "alpha_ew: ", object%alpha_ew
+    write (u, '(A,1x,F8.4)') "sin(theta_w): ", object%sinthw
+    write (u, '(A,1x,F8.4)') "m_W: ", object%mw
+    write (u, '(A,1x,F8.4)') "m_b: ", object%mb
+  end subroutine threshold_state_write
+
+@ %def threshold_state_write
+@
+<<Prc Threshold: threshold state: TBP>>=
+  procedure :: set_parameters => threshold_state_set_parameters
+<<Prc Threshold: procedures>>=
+  subroutine threshold_state_set_parameters (object, model)
+    class(threshold_state_t), intent(inout) :: object
+    type(model_data_t), intent(in) :: model
+    object%alpha_ew = one / model%get_real (var_str ('alpha_em_i'))
+    object%sinthw = model%get_real (var_str ('sw'))
+    object%mw = model%get_real (var_str ('mW'))
+    object%mb = model%get_real (var_str ('mb'))
+  end subroutine threshold_state_set_parameters
+
+@ %def threshold_state_set_parameters
+@
 \subsubsection{Core}
 <<Prc Threshold: public>>=
   public :: prc_threshold_t
@@ -6230,7 +6318,7 @@ end module prc_threshold
   subroutine prc_threshold_allocate_workspace (object, core_state)
     class(prc_threshold_t), intent(in) :: object
     class(prc_core_state_t), intent(inout), allocatable :: core_state
-    allocate (user_defined_test_state_t :: core_state)
+    allocate (threshold_state_t :: core_state)
   end subroutine prc_threshold_allocate_workspace
 
 @ %def prc_threshold_allocate_workspace
