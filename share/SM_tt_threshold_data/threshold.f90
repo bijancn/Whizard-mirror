@@ -611,11 +611,11 @@ contains
           end do
        end do
        dec1 = zero
-       do h_t = -1, 1, 2
+       do h_tbar = -1, 1, 2
           dec1 = dec1 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 1))
        end do
        dec2 = zero
-       do h_tbar = -1, 1, 2
+       do h_t = -1, 1, 2
           dec2 = dec2 + abs2(born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 2))
        end do
        amp = prod * abs2 (propagators) * dec1 * dec2 / 4
