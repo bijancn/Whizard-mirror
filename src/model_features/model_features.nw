@@ -2096,16 +2096,16 @@ caller when this is a function.
 @ %def prt_queue_write
 @
 <<radiation generator: procedures>>=
-  subroutine sort_prt (prt, radiation_model)
+  subroutine sort_prt (prt, model)
     type(string_t), dimension(:), intent(inout) :: prt
-    class(model_data_t), intent(in), target :: radiation_model
+    class(model_data_t), intent(in), target :: model
     type(pdg_array_t), dimension(:), allocatable :: pdg
     type(flavor_t) :: flv
     integer :: i
-    call create_pdg_array (prt, radiation_model, pdg)
+    call create_pdg_array (prt, model, pdg)
     call sort_pdg (pdg)
     do i = 1, size (pdg)
-       call flv%init (pdg(i)%get(), radiation_model)
+       call flv%init (pdg(i)%get(), model)
        prt(i) = flv%get_name ()
     end do
   end subroutine sort_prt
@@ -2125,15 +2125,15 @@ caller when this is a function.
     end do
   end subroutine sort_pdg
 
-  subroutine create_pdg_array (prt, radiation_model, pdg)
+  subroutine create_pdg_array (prt, model, pdg)
     type (string_t), dimension(:), intent(in) :: prt
-    class (model_data_t), intent(in), target :: radiation_model
+    class (model_data_t), intent(in), target :: model
     type(pdg_array_t), dimension(:), allocatable, intent(out) :: pdg
     type(flavor_t) :: flv
     integer :: i
     allocate (pdg (size (prt)))
     do i = 1, size (prt)
-       call flv%init (prt(i), radiation_model)
+       call flv%init (prt(i), model)
        pdg(i) = flv%get_pdg ()
     end do
   end subroutine create_pdg_array
@@ -2296,7 +2296,7 @@ initialization phase (more precisely: at the moment only in the
     integer :: n_loops
     integer :: n_light_quarks
     real(default) :: mass_sum
-    class(model_data_t), pointer :: radiation_model
+    class(model_data_t), pointer :: model
     type(prt_queue_t) :: prt_queue
     type(pdg_states_t) :: pdg_raw
     type(pdg_array_t), dimension(:), allocatable :: pdg_in_born, pdg_out_born
@@ -2314,10 +2314,12 @@ initialization phase (more precisely: at the moment only in the
   procedure :: init_pdg_array => radiation_generator_init_pdg_array
 <<radiation generator: procedures>>=
   subroutine radiation_generator_init_pdg_list &
-       (generator, pl_in, pl_out, qcd, qed)
+       (generator, model, pl_in, pl_out, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
+    class(model_data_t), intent(in), target :: model
     type(pdg_list_t), intent(in) :: pl_in, pl_out
     logical, intent(in), optional :: qcd, qed
+    generator%model => model
     if (present (qcd))  generator%qcd_enabled = qcd
     if (present (qed))  generator%qed_enabled = qed
     generator%pl_in = pl_in
@@ -2331,12 +2333,14 @@ initialization phase (more precisely: at the moment only in the
   end subroutine radiation_generator_init_pdg_list
 
   subroutine radiation_generator_init_pdg_array &
-       (generator, pdg_in, pdg_out, qcd, qed)
+       (generator, model, pdg_in, pdg_out, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
+    class(model_data_t), intent(in), target :: model
     type(pdg_array_t), intent(in), dimension(:) :: pdg_in, pdg_out
     logical, intent(in), optional :: qcd, qed
     type(pdg_list_t) :: pl_in, pl_out
     integer :: i
+    generator%model => model
     call pl_in%init(size (pdg_in))
     call pl_out%init(size (pdg_out))
     do i = 1, size (pdg_in)
@@ -2345,7 +2349,7 @@ initialization phase (more precisely: at the moment only in the
     do i = 1, size (pdg_out)
        call pl_out%set (i, pdg_out(i))
     end do
-    call generator%init (pl_in, pl_out, qcd, qed)
+    call generator%init (model, pl_in, pl_out, qcd, qed)
   end subroutine radiation_generator_init_pdg_array
 
 @ %def radiation_generator_init_pdg_list radiation_generator_init_pdg_array
@@ -2374,7 +2378,7 @@ initialization phase (more precisely: at the moment only in the
     pl_out(1) = generator%pl_out
 
     call generator%if_table%init &
-       (generator%radiation_model, pl_in, pl_out, generator%constraints)
+       (generator%model, pl_in, pl_out, generator%constraints)
   end subroutine radiation_generator_setup_if_table
 
 @ %def radiation_generator_setup_if_table
@@ -2417,18 +2421,6 @@ initialization phase (more precisely: at the moment only in the
   end subroutine radiation_generator_reset_reshuffle_list
 
 @ %def radiation_generator_reset_reshuffle_list
-@
-<<radiation generator: radiation generator: TBP>>=
-  procedure :: set_radiation_model => &
-       radiation_generator_set_radiation_model
-<<radiation generator: procedures>>=
-  subroutine radiation_generator_set_radiation_model (generator, model)
-    class(radiation_generator_t), intent(inout) :: generator
-    class(model_data_t), intent(in), target :: model
-    generator%radiation_model => model
-  end subroutine radiation_generator_set_radiation_model
-
-@ %def radiation_generator_set_radiation_model
 @
 <<radiation generator: radiation generator: TBP>>=
   procedure :: set_n => radiation_generator_set_n
@@ -2798,7 +2790,7 @@ initialization phase (more precisely: at the moment only in the
        call generator%prt_queue%get (prt_fetched)
        current_multiplicity = size (prt_fetched)
        if (current_multiplicity == max_multiplicity) exit
-       call create_pdg_array (prt_fetched, generator%radiation_model, &
+       call create_pdg_array (prt_fetched, generator%model, &
             pdg_new_out)
        call generator%reset_particle_content (pdg_new_out)
        call generator%set_n (2, current_multiplicity, 0)
@@ -2806,11 +2798,11 @@ initialization phase (more precisely: at the moment only in the
        call generator%setup_if_table ()
        call generator%generate (prt_in, prt_out1)
        call separate_particles (prt_out1, prt_out2)
-       call sort_prt (prt_out2, generator%radiation_model)
+       call sort_prt (prt_out2, generator%model)
        if (.not. generator%prt_queue%contains (prt_out2)) &
             call generator%prt_queue%append (prt_out2)
        if (.not. any (prt_out1 == " ")) then
-          call sort_prt (prt_out1, generator%radiation_model)
+          call sort_prt (prt_out1, generator%model)
           if (.not. generator%prt_queue%contains (prt_out1)) &
              call generator%prt_queue%append (prt_out1)
        end if
@@ -3046,7 +3038,7 @@ end module radiation_generator_uti
     type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
-    type(model_t), pointer :: radiation_model => null ()
+    type(model_t), pointer :: model => null ()
 
     write (u, "(A)") "* Test output: radiation_generator_1"
     write (u, "(A)") "* Purpose: Create N+1-particle flavor structures from predefined N-particle flavor structures"
@@ -3058,8 +3050,8 @@ end module radiation_generator_uti
     call os_data_init (os_data)
     call model_list%read_model &
        (var_str ("SM"), var_str ("SM.mdl"), &
-        os_data, radiation_model)
-    call generator%set_radiation_model (radiation_model)
+        os_data, model)
+    generator%model => model
     write (u, "(A)") "* Success"
 
     allocate (pdg_in (2))
@@ -3132,7 +3124,7 @@ end module radiation_generator_uti
       write (u, "(A)", advance = 'no') '* Outgoing: '
       call write_pdg_array (pdg_out, u)
 
-      call generator%init (pdg_in, pdg_out, qcd = .true., qed = .false.)
+      call generator%init (model, pdg_in, pdg_out, qcd = .true., qed = .false.)
       call generator%set_n (2, size(pdg_out), 0)
       if (yorn) call generator%set_initial_state_emissions ()
       call generator%set_constraints (.false., .false., .true., .true.)
@@ -3160,7 +3152,7 @@ end module radiation_generator_uti
     type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
-    type(model_t), pointer :: radiation_model => null ()
+    type(model_t), pointer :: model => null ()
     integer, parameter :: max_multiplicity = 10
     type(string_t), dimension(:), allocatable :: prt_last
 
@@ -3174,8 +3166,8 @@ end module radiation_generator_uti
     call os_data_init (os_data)
     call model_list%read_model &
        (var_str ("SM"), var_str ("SM.mdl"), &
-        os_data, radiation_model)
-    call generator%set_radiation_model (radiation_model)
+        os_data, model)
+    generator%model => model
     write (u, "(A)") "* Success"
 
     allocate (pdg_in (2))
@@ -3189,7 +3181,7 @@ end module radiation_generator_uti
     write (u, "(A)", advance = 'no') "* Outgoing: "
     call write_pdg_array (pdg_out, u)
 
-    call generator%init (pdg_in, pdg_out, qcd = .true., qed = .false.)
+    call generator%init (model, pdg_in, pdg_out, qcd = .true., qed = .false.)
     call generator%set_n (2, 2, 0)
     call generator%set_constraints (.false., .false., .true., .true.)
 
