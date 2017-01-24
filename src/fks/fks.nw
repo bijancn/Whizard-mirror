@@ -4308,6 +4308,7 @@ end module fks_regions_uti
 module virtual
 
 <<Use kinds>>
+<<Use strings>>
   use numeric_utils
   use constants
   use diagnostics
@@ -4344,7 +4345,7 @@ end module virtual
     integer, dimension(:), allocatable :: n_is_neutrinos
     integer :: n_in, n_legs, n_flv
     logical :: bad_point = .false.
-    logical :: with_subtraction = .true.
+    type(string_t) :: selection
     integer :: factorization_mode = NO_FACTORIZATION
     real(default), dimension(:,:,:), allocatable :: sqme_cc
     logical :: use_internal_cc = .false.
@@ -4358,11 +4359,12 @@ end module virtual
 <<virtual: virtual: TBP>>=
   procedure :: init => virtual_init
 <<virtual: procedures>>=
- subroutine virtual_init (virt, flv_born, n_in, use_internal_cc)
+ subroutine virtual_init (virt, flv_born, n_in, use_internal_cc, selection)
     class(virtual_t), intent(inout) :: virt
     integer, intent(in), dimension(:,:) :: flv_born
     integer, intent(in) :: n_in
     logical, intent(in) :: use_internal_cc
+    type(string_t), intent(in) :: selection
     integer :: n_sub
     integer :: i_flv
     virt%n_legs = size (flv_born, 1); virt%n_flv = size (flv_born, 2)
@@ -4386,6 +4388,12 @@ end module virtual
     do i_flv = 1, virt%n_flv
        virt%me_index (i_flv) = blha_loop_positions (i_flv, n_sub)
     end do
+    select case (char (selection))
+    case ("Full", "OLP", "Subtraction")
+       virt%selection = selection
+    case default
+       call msg_fatal ('Virtual selection: Possible values are "Full", "OLP" or "Subtraction')
+    end select
   contains
 
     function is_neutrino (flv) result (neutrino)
@@ -4538,37 +4546,43 @@ particles involved in the radiation process are massive or massless.
        call vector4_write_set (p_born, show_mass = .true., &
             check_conservation = .true.)
        print *, 'Compute virtual component using alpha_s = ', alpha_s
+       print *, 'Virtual selection: ', char (virt%selection)
     end if
     s = sum (p_born(1 : virt%n_in))**2
     s_o_Q2 = s / virt%es_scale2
     do i_flv = 1, reg_data%n_flv_born
-       call virt%evaluate_initial_state (i_flv, sqrt(s), reg_data, sqme, QB)
-       call virt%compute_collinear_contribution (i_flv, p_born, sqrt(s), reg_data, sqme, QB)
-
-       select case (virt%factorization_mode)
-       case (FACTORIZATION_THRESHOLD)
-          call virt%compute_eikonals_threshold (i_flv, p_born, s, s_o_Q2, reg_data, sqme, QB, BI)
-       case default
-          call virt%compute_massive_self_eikonals (i_flv, p_born, s, reg_data, sqme, QB)
-          call virt%compute_eikonals (i_flv, p_born, s, s_o_Q2, reg_data, sqme, BI)
-       end select
-
-       if (debug2_active (D_VIRTUAL)) then
-          print *, 'Evaluate i_flv: ', i_flv
-          print *, 'Q * sqme_born: ', QB(i_flv)
-          print *, 'BI: ', BI(i_flv)
-          print *, 'vfin: ', sqme (virt%me_index(i_flv))
-       end if
 
        if (separate_alrs) then
           ii_flv = i_flv
        else
           ii_flv = 1
        end if
-       !!! A factor of alpha_s/twopi is assumed to be included in vfin
-       sqme_virt(ii_flv) = sqme_virt(ii_flv) + sqme(virt%me_index(i_flv))
-       if (virt%with_subtraction) &
-            sqme_virt(ii_flv) = sqme_virt(ii_flv) + alpha_s / twopi * (QB(i_flv) + BI(i_flv))
+
+       if (virt%selection == var_str ("Full") .or. virt%selection == var_str ("OLP")) then
+          !!! A factor of alpha_s/twopi is assumed to be included in vfin
+          sqme_virt(ii_flv) = sqme_virt(ii_flv) + sqme(virt%me_index(i_flv))
+       end if
+
+       if (virt%selection == var_str ("Full") .or. virt%selection == var_str ("Subtraction")) then
+          call virt%evaluate_initial_state (i_flv, sqrt(s), reg_data, sqme, QB)
+          call virt%compute_collinear_contribution (i_flv, p_born, sqrt(s), reg_data, sqme, QB)
+
+          select case (virt%factorization_mode)
+          case (FACTORIZATION_THRESHOLD)
+             call virt%compute_eikonals_threshold (i_flv, p_born, s, s_o_Q2, reg_data, sqme, QB, BI)
+          case default
+             call virt%compute_massive_self_eikonals (i_flv, p_born, s, reg_data, sqme, QB)
+             call virt%compute_eikonals (i_flv, p_born, s, s_o_Q2, reg_data, sqme, BI)
+          end select
+
+          if (debug2_active (D_VIRTUAL)) then
+             print *, 'Evaluate i_flv: ', i_flv
+             print *, 'Q * sqme_born: ', QB(i_flv)
+             print *, 'BI: ', BI(i_flv)
+             print *, 'vfin: ', sqme (virt%me_index(i_flv))
+          end if
+          sqme_virt(ii_flv) = sqme_virt(ii_flv) + alpha_s / twopi * (QB(i_flv) + BI(i_flv))
+       end if
     end do
 
     if (debug2_active (D_VIRTUAL)) then
@@ -5190,8 +5204,27 @@ end module real_subtraction
   integer, parameter, public :: FIXED_ORDER_EVENTS = 1
   integer, parameter, public :: POWHEG = 2
 
-
 @ %def real subtraction parameters
+@
+<<real subtraction: public>>=
+  public :: this_purpose
+<<real subtraction: procedures>>=
+  function this_purpose (purpose)
+    type(string_t) :: this_purpose
+    integer, intent(in) :: purpose
+    select case (purpose)
+    case (INTEGRATION)
+       this_purpose = var_str ("Integration")
+    case (FIXED_ORDER_EVENTS)
+       this_purpose = var_str ("Fixed order NLO events")
+    case (POWHEG)
+       this_purpose = var_str ("Powheg events")
+    case default
+       this_purpose = var_str ("Undefined!")
+    end select
+  end function this_purpose
+
+@ %def this_purpose
 @
 In the soft limit, the real matrix element behaves as
 \begin{equation*}
@@ -8642,7 +8675,6 @@ end module nlo_color_data_uti
      logical :: use_resonance_mappings = .false.
      logical :: combined_integration = .false.
      logical :: fixed_order_nlo = .false.
-     logical :: with_virtual_subtraction = .true.
      logical :: test_soft_limit = .false.
      logical :: test_coll_limit = .false.
      logical :: test_anti_coll_limit = .false.
@@ -8651,6 +8683,7 @@ end module nlo_color_data_uti
      !!! Probably not the right place for this. Revisit after refactoring
      real(default) :: powheg_damping_scale = zero
      type(fks_template_t) :: fks_template
+     type(string_t) :: virtual_selection
   contains
   <<nlo data: nlo settings: TBP>>
   end type nlo_settings_t
@@ -8660,28 +8693,26 @@ end module nlo_color_data_uti
 <<nlo data: nlo settings: TBP>>=
 procedure :: init => nlo_settings_init
 <<nlo data: procedures>>=
-  subroutine nlo_settings_init (nlo_settings, var_list, combined_integration)
-    class(nlo_settings_t), intent(out) :: nlo_settings
+  subroutine nlo_settings_init (nlo_settings, var_list, fks_template)
+    class(nlo_settings_t), intent(inout) :: nlo_settings
     type(var_list_t), intent(in) :: var_list
-    logical, intent(in), optional :: combined_integration
+    type(fks_template_t), intent(in), optional :: fks_template
     type(string_t) :: color_method
+    if (present (fks_template)) nlo_settings%fks_template = fks_template
     color_method = var_list%get_sval (var_str ('$correlation_me_method'))
     nlo_settings%use_internal_color_correlations = color_method == 'omega' &
-       .or. color_method == 'threshold'
-    if (present (combined_integration)) then
-       nlo_settings%combined_integration = combined_integration
-    else
-       nlo_settings%combined_integration = &
-             var_list%get_lval (var_str("?combined_nlo_integration"))
-    end if
+           .or. color_method == 'threshold'
+    nlo_settings%combined_integration = var_list%get_lval &
+           (var_str ("?combined_nlo_integration"))
+    nlo_settings%fixed_order_nlo = var_list%get_lval &
+           (var_str ("?fixed_order_nlo_events"))
     nlo_settings%test_soft_limit = var_list%get_lval (var_str ('?test_soft_limit'))
     nlo_settings%test_coll_limit = var_list%get_lval (var_str ('?test_coll_limit'))
     nlo_settings%test_anti_coll_limit = var_list%get_lval (var_str ('?test_anti_coll_limit'))
     nlo_settings%fixed_alr = var_list%get_ival (var_str ('fixed_alpha_region'))
-    nlo_settings%with_virtual_subtraction = &
-       .not. var_list%get_lval (var_str ('?switch_off_virtual_subtraction'))
+    nlo_settings%virtual_selection = var_list%get_sval (var_str ('$virtual_selection'))
     nlo_settings%powheg_damping_scale = &
-         var_list%get_rval (var_str ('powheg_damping_scale'))
+           var_list%get_rval (var_str ('powheg_damping_scale'))
   end subroutine nlo_settings_init
 
 @ %def nlo_settings_init
@@ -8703,8 +8734,6 @@ procedure :: init => nlo_settings_init
          nlo_settings%use_resonance_mappings
     write (u, '(3X,A,L1)') 'combined_integration = ', &
          nlo_settings%combined_integration
-    write (u, '(3X,A,L1)') 'with_virtual_subtraction = ', &
-         nlo_settings%with_virtual_subtraction
     write (u, '(3X,A,L1)') 'test_soft_limit = ', &
          nlo_settings%test_soft_limit
     write (u, '(3X,A,L1)') 'test_coll_limit = ', &
@@ -8713,10 +8742,25 @@ procedure :: init => nlo_settings_init
          nlo_settings%test_anti_coll_limit
     write (u, '(3X,A,I5)') 'fixed_alr = ', &
          nlo_settings%fixed_alr
-    write (u, '(3X,A,I2)') 'factorization_mode = ', &
-         nlo_settings%factorization_mode
     write (u, '(3X,A,' // FMT_15 // ')') 'powheg_damping_scale = ', &
          nlo_settings%powheg_damping_scale
+    write (u, '(3X,A,A)') 'virtual_selection = ', &
+         char (nlo_settings%virtual_selection)
+    write (u, '(3X,A,A)') 'Real factorization mode = ', &
+         char (factorization_mode (nlo_settings%factorization_mode))
+  contains
+    function factorization_mode (fm)
+      type(string_t) :: factorization_mode
+      integer, intent(in) :: fm
+      select case (fm)
+      case (NO_FACTORIZATION)
+         factorization_mode = var_str ("None")
+      case (FACTORIZATION_THRESHOLD)
+         factorization_mode = var_str ("Threshold")
+      case default
+         factorization_mode = var_str ("Undefined!")
+      end select
+    end function factorization_mode
   end subroutine nlo_settings_write
 
 @ %def nlo_settings_write
