@@ -762,8 +762,8 @@ end module blha_olp_interfaces
     integer, intent(out), dimension(:,:) :: helicities
     integer :: unit, filestat
     character(len=LEN_MAX_FLAVOR_STRING) :: rd_line
-    logical :: read_flavor, born_found
-    integer :: k, i_flv
+    logical :: read_flavor, give_warning
+    integer :: label_count, i_flv
     integer :: i_hel, n_in
     integer :: i_next, n_entries
     integer, dimension(size(flavors, 1) + 2) :: i_array
@@ -778,7 +778,7 @@ end module blha_olp_interfaces
     unit = free_unit ()
     open (unit, file = char (driver%contract_file), status="old")
     read_flavor = .false.
-    k = 1
+    label_count = 1
     i_hel = 0
     n_found = 0
     do
@@ -787,60 +787,64 @@ end module blha_olp_interfaces
          exit
       else
          if (rd_line(1:13) == 'AmplitudeType') then
-            print *, 'Get amp type! '
             if (i_hel > 2 * n_in - 1) i_hel = 0
             i_next = find_next_word_index (rd_line, 13)
             if (rd_line(i_next : i_next + 4) == 'Loop') then
-               amp_type(k) = BLHA_AMP_LOOP
+               amp_type(label_count) = BLHA_AMP_LOOP
             else if (rd_line(i_next : i_next + 4) == 'Tree') then
-               amp_type(k) = BLHA_AMP_TREE
+               amp_type(label_count) = BLHA_AMP_TREE
             else if (rd_line(i_next : i_next + 6) == 'ccTree') then
-               amp_type(k) = BLHA_AMP_CC
+               amp_type(label_count) = BLHA_AMP_CC
             else if (rd_line(i_next : i_next + 6) == 'scTree') then
-               amp_type(k) = BLHA_AMP_SC
+               amp_type(label_count) = BLHA_AMP_SC
             else
                call msg_fatal ("AmplitudeType present but &
                                &AmpType not known!")
             end if
             read_flavor = .true.
          else if (read_flavor) then
-            print *, 'Read flavor!'
             i_array = create_flavor_string (rd_line, n_entries)
-            print *, 'i_array: ', i_array
             if (driver%include_polarizations) then
                hel_array = create_helicity_string (rd_line, n_entries)
                call check_helicity_array (hel_array, n_entries, n_in)
             else
                hel_array = 0
             end if
-            print *, 'Check: ', all (i_array == PROC_NOT_FOUND)
             if (.not. all (i_array == PROC_NOT_FOUND)) then
                do i_flv = 1, size (flavors, 2)
                    if (all (i_array (1 : n_entries - 2) == flavors (:,i_flv))) then
-                      label(k) = i_array (n_entries)
-                      flv_index (k) = i_flv + i_hel
+                      label(label_count) = i_array (n_entries)
+                      flv_index (label_count) = i_flv + i_hel
                       if (driver%include_polarizations) then
-                         helicities (label(k), :) = hel_array (1:n_in)
+                         helicities (label(label_count), :) = hel_array (1:n_in)
                          i_hel = i_hel + 1
                       end if
                       n_found = n_found + 1
-                      k = k + 1
+                      label_count = label_count + 1
                       exit
                    end if
                end do
+            else
+               give_warning = .true.
             end if
             read_flavor = .false.
          end if
       end if
     end do
-    print *, 'n_found: ', n_found
-    if (n_found == 0) &
+    if (n_found == 0) then
        call msg_fatal ("The desired process has not been found ",  &
             [var_str ("by the OLP-Provider. Maybe the value of alpha_power "), &
              var_str ("or alphas_power does not correspond to the process. "), &
              var_str ("If you are using OpenLoops, you can set the option "), &
              var_str ("openloops_verbosity to a value larger than 1 to obtain "),  &
              var_str ("more information")])
+    else if (give_warning) then
+       call msg_warning ("Some processes have not been found in the OLC file.", &
+            [var_str ("This is because these processes do not fit the required "), &
+             var_str ("coupling alpha_power and alphas_power. Be aware that the "), &
+             var_str ("results of this calculation are not necessarily an accurate "), &
+             var_str ("description of the physics of interest.")])
+    end if
     close(unit)
 
   contains
