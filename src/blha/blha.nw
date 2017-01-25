@@ -770,6 +770,7 @@ end module blha_olp_interfaces
     integer, dimension(size(flavors, 1) + 2) :: hel_array
     integer, parameter :: NO_NUMBER = -1000
     integer, parameter :: PROC_NOT_FOUND = -1001
+    integer :: n_found
     amp_type = -1; flv_index = -1; label = -1
     helicities = 0
     n_in = size (helicities, dim = 2)
@@ -779,12 +780,14 @@ end module blha_olp_interfaces
     read_flavor = .false.
     k = 1
     i_hel = 0
+    n_found = 0
     do
       read (unit, "(A)", iostat = filestat) rd_line
       if (filestat == iostat_end) then
          exit
       else
          if (rd_line(1:13) == 'AmplitudeType') then
+            print *, 'Get amp type! '
             if (i_hel > 2 * n_in - 1) i_hel = 0
             i_next = find_next_word_index (rd_line, 13)
             if (rd_line(i_next : i_next + 4) == 'Loop') then
@@ -801,21 +804,17 @@ end module blha_olp_interfaces
             end if
             read_flavor = .true.
          else if (read_flavor) then
-            born_found = .false.
+            print *, 'Read flavor!'
             i_array = create_flavor_string (rd_line, n_entries)
+            print *, 'i_array: ', i_array
             if (driver%include_polarizations) then
                hel_array = create_helicity_string (rd_line, n_entries)
                call check_helicity_array (hel_array, n_entries, n_in)
             else
                hel_array = 0
             end if
-            if (all (i_array == PROC_NOT_FOUND)) &
-               call msg_fatal ("The desired process has not been found ",  &
-                    [var_str ("by the OLP-Provider. Maybe the value of alpha_power "), &
-                     var_str ("or alphas_power does not correspond to the process. "), &
-                     var_str ("If you are using OpenLoops, you can set the option "), &
-                     var_str ("openloops_verbosity to a value larger than 1 to obtain "),  &
-                     var_str ("more information")])
+            print *, 'Check: ', all (i_array == PROC_NOT_FOUND)
+            if (.not. all (i_array == PROC_NOT_FOUND)) then
                do i_flv = 1, size (flavors, 2)
                    if (all (i_array (1 : n_entries - 2) == flavors (:,i_flv))) then
                       label(k) = i_array (n_entries)
@@ -824,17 +823,24 @@ end module blha_olp_interfaces
                          helicities (label(k), :) = hel_array (1:n_in)
                          i_hel = i_hel + 1
                       end if
-                      born_found = .true.
+                      n_found = n_found + 1
                       k = k + 1
-                      read_flavor = .false.
                       exit
                    end if
                end do
-            if (.not. born_found) call msg_fatal &
-                     ("No underlying Born found")
+            end if
+            read_flavor = .false.
          end if
       end if
     end do
+    print *, 'n_found: ', n_found
+    if (n_found == 0) &
+       call msg_fatal ("The desired process has not been found ",  &
+            [var_str ("by the OLP-Provider. Maybe the value of alpha_power "), &
+             var_str ("or alphas_power does not correspond to the process. "), &
+             var_str ("If you are using OpenLoops, you can set the option "), &
+             var_str ("openloops_verbosity to a value larger than 1 to obtain "),  &
+             var_str ("more information")])
     close(unit)
 
   contains
@@ -1339,26 +1345,28 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
     real(double) :: acc_dble
     real(default) :: acc
     real(default) :: alpha_s
-    allocate (r (blha_result_array_size (object%n_particles, BLHA_AMP_LOOP)))
-    call msg_debug2 (D_VIRTUAL, "prc_blha_compute_sqme_virt")
-    call msg_debug2 (D_VIRTUAL, "i_flv", i_flv)
-    call msg_debug2 (D_VIRTUAL, "object%i_virt(i_flv)", object%i_virt(i_flv))
-    mom = object%create_momentum_array (p)
-    if (vanishes (ren_scale)) &
-         call msg_fatal ("prc_blha_compute_sqme_virt: ren_scale vanishes")
-    mu_dble = dble(ren_scale)
-    alpha_s = object%qcd%alpha%get (ren_scale)
-    select type (driver => object%driver)
-    class is (blha_driver_t)
-      call driver%set_alpha_s (alpha_s)
-      call driver%blha_olp_eval2 (object%i_virt(i_flv), mom, mu_dble, r, acc_dble)
-    end select
-    acc = acc_dble
-    sqme = r(1:4)
-    bad_point = acc > object%maximum_accuracy
-    !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
-    !!! GoSam does not support polarization
-    if (object%includes_polarization ()) sqme = four * sqme
+    if (object%i_virt(i_flv) > 0) then
+       allocate (r (blha_result_array_size (object%n_particles, BLHA_AMP_LOOP)))
+       call msg_debug2 (D_VIRTUAL, "prc_blha_compute_sqme_virt")
+       call msg_debug2 (D_VIRTUAL, "i_flv", i_flv)
+       call msg_debug2 (D_VIRTUAL, "object%i_virt(i_flv)", object%i_virt(i_flv))
+       mom = object%create_momentum_array (p)
+       if (vanishes (ren_scale)) &
+            call msg_fatal ("prc_blha_compute_sqme_virt: ren_scale vanishes")
+       mu_dble = dble(ren_scale)
+       alpha_s = object%qcd%alpha%get (ren_scale)
+       select type (driver => object%driver)
+       class is (blha_driver_t)
+         call driver%set_alpha_s (alpha_s)
+         call driver%blha_olp_eval2 (object%i_virt(i_flv), mom, mu_dble, r, acc_dble)
+       end select
+       acc = acc_dble
+       sqme = r(1:4)
+       bad_point = acc > object%maximum_accuracy
+       !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
+       !!! GoSam does not support polarization
+       if (object%includes_polarization ()) sqme = four * sqme
+    end if
   end subroutine prc_blha_compute_sqme_virt
 
 @ %def prc_blha_compute_sqme_virt
@@ -1378,23 +1386,25 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
     real(double), dimension(OLP_RESULTS_LIMIT) :: r
     real(double) :: mu_dble, acc_dble
     real(default) :: acc, alpha_s
-    mom = object%create_momentum_array (p)
-    if (vanishes (ren_scale)) &
-       call msg_fatal ("prc_blha_compute_sqme: ren_scale vanishes")
-    mu_dble = dble(ren_scale)
-    alpha_s = object%qcd%alpha%get (ren_scale)
-    select type (driver => object%driver)
-    class is (blha_driver_t)
-       call driver%set_alpha_s (alpha_s)
-       call driver%blha_olp_eval2 (object%i_tree(i_flv), mom, &
-          mu_dble, r, acc_dble)
-       sqme = r(object%sqme_tree_pos)
-    end select
-    acc = acc_dble
-    bad_point = acc > object%maximum_accuracy
-    !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
-    !!! GoSam does not support polarization
-    if (object%includes_polarization ()) sqme = four * sqme
+    if (object%i_tree(i_flv) > 0) then
+       mom = object%create_momentum_array (p)
+       if (vanishes (ren_scale)) &
+          call msg_fatal ("prc_blha_compute_sqme: ren_scale vanishes")
+       mu_dble = dble(ren_scale)
+       alpha_s = object%qcd%alpha%get (ren_scale)
+       select type (driver => object%driver)
+       class is (blha_driver_t)
+          call driver%set_alpha_s (alpha_s)
+          call driver%blha_olp_eval2 (object%i_tree(i_flv), mom, &
+               mu_dble, r, acc_dble)
+          sqme = r(object%sqme_tree_pos)
+       end select
+       acc = acc_dble
+       bad_point = acc > object%maximum_accuracy
+       !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
+       !!! GoSam does not support polarization
+       if (object%includes_polarization ()) sqme = four * sqme
+    end if
   end subroutine prc_blha_compute_sqme
 
 @ %def prc_blha_compute_sqme
@@ -1456,24 +1466,26 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
     real(double), dimension(size(rr)) :: r
     real(default) :: alpha_s, acc
     real(double) :: mu_dble, acc_dble
-    mom = object%create_momentum_array (p)
-    if (vanishes (ren_scale)) &
-       call msg_fatal ("prc_blha_compute_sqme_cc: ren_scale vanishes")
-    mu_dble = dble(ren_scale)
-    alpha_s = object%qcd%alpha%get (ren_scale)
+    if (object%i_cc(i_flv) > 0) then
+       mom = object%create_momentum_array (p)
+       if (vanishes (ren_scale)) &
+          call msg_fatal ("prc_blha_compute_sqme_cc: ren_scale vanishes")
+       mu_dble = dble(ren_scale)
+       alpha_s = object%qcd%alpha%get (ren_scale)
 
-    select type (driver => object%driver)
-    class is (blha_driver_t)
-       call driver%set_alpha_s (alpha_s)
-       call driver%blha_olp_eval2 (object%i_cc(i_flv), &
-          mom, mu_dble, r, acc_dble)
-    end select
-    rr = r
-    acc = acc_dble
-    bad_point = acc > object%maximum_accuracy
-    !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
-    !!! GoSam does not support polarization
-    if (object%includes_polarization ()) rr = four * rr
+       select type (driver => object%driver)
+       class is (blha_driver_t)
+          call driver%set_alpha_s (alpha_s)
+          call driver%blha_olp_eval2 (object%i_cc(i_flv), &
+               mom, mu_dble, r, acc_dble)
+       end select
+       rr = r
+       acc = acc_dble
+       bad_point = acc > object%maximum_accuracy
+       !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
+       !!! GoSam does not support polarization
+       if (object%includes_polarization ()) rr = four * rr
+    end if
   end subroutine prc_blha_compute_sqme_cc_raw
 
 @ %def prc_blha_compute_sqme_cc_raw
