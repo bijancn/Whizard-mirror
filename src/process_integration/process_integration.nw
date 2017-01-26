@@ -5602,22 +5602,9 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
     type(string_t) :: color_method
     select type (pcm => process%pcm)
     type is (pcm_nlo_t)
-       color_method = var_list%get_sval (var_str ('$correlation_me_method'))
-       associate (settings => pcm%settings)
-          if (present (fks_template)) settings%fks_template = fks_template
-          settings%use_internal_color_correlations = color_method == 'omega' &
-               .or. color_method == 'threshold'
-          settings%combined_integration = var_list%get_lval &
-               (var_str ("?combined_nlo_integration"))
-          settings%fixed_order_nlo = var_list%get_lval &
-               (var_str ("?fixed_order_nlo_events"))
-          settings%test_soft_limit = var_list%get_lval (var_str ('?test_soft_limit'))
-          settings%test_coll_limit = var_list%get_lval (var_str ('?test_coll_limit'))
-          settings%test_anti_coll_limit = var_list%get_lval (var_str ('?test_anti_coll_limit'))
-          settings%fixed_alr = var_list%get_ival (var_str ('fixed_alpha_region'))
-          settings%with_virtual_subtraction = &
-             .not. var_list%get_lval (var_str ('?switch_off_virtual_subtraction'))
-       end associate
+       call pcm%settings%init (var_list, fks_template)
+       if (debug_active (D_SUBTRACTION) .or. debug_active (D_VIRTUAL)) &
+              call pcm%settings%write ()
     class default
        call msg_fatal ("Attempt to set nlo_settings with a non-NLO pcm!")
     end select
@@ -5774,18 +5761,18 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
        call data_born%get_flv_state (flavor_born)
        call data_real%get_flv_state (flavor_real)
        call pcm%region_data%setup_fks_mappings &
-          (pcm%settings%fks_template, data_born%n_in)
+            (pcm%settings%fks_template, data_born%n_in)
        select type (model => process%config%model)
        type is (model_t)
           call pcm%region_data%init (data_born%n_in, model, &
-             flavor_born, flavor_real)
+               flavor_born, flavor_real)
           associate (template => pcm%settings%fks_template)
              if (template%mapping_type == FKS_RESONANCES) then
                 select type (phs_config => process%component(i_real)%phs_config)
                 type is (phs_fks_config_t)
                    call get_filtered_resonance_histories (phs_config, &
-                      data_born%n_in, flavor_born, model, template%excluded_resonances, &
-                      resonance_histories, success)
+                        data_born%n_in, flavor_born, model, template%excluded_resonances, &
+                        resonance_histories, success)
                 end select
                 if (.not. success) template%mapping_type = FKS_DEFAULT
              end if
@@ -5817,15 +5804,13 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
     integer :: i_core
     associate (cm => process%cm)
        do i_core = 1, cm%n_cores
-          if (cm%nlo_type (i_core) == NLO_REAL) then
-             select type (core => cm%cores(i_core)%core)
-             type is (prc_threshold_t)
-                select type (pcm => process%pcm)
-                type is (pcm_nlo_t)
-                   pcm%settings%factorization_mode = FACTORIZATION_THRESHOLD
-                end select
+          select type (core => cm%cores(i_core)%core)
+          type is (prc_threshold_t)
+             select type (pcm => process%pcm)
+             type is (pcm_nlo_t)
+                pcm%settings%factorization_mode = FACTORIZATION_THRESHOLD
              end select
-          end if
+          end select
        end do
     end associate
   end subroutine process_check_if_threshold_method
@@ -5903,7 +5888,7 @@ Could also be moved to the [[core_manager_t]].
     type(var_list_t), intent(in) :: var_list
     type(os_data_t), intent(in) :: os_data
     type(string_t) :: libname
-    integer :: i, i_component, i_term, i_core
+    integer :: i_component, i_core
     logical, dimension(process%cm%n_cores) :: loaded
 
     loaded = .false.
@@ -5911,7 +5896,9 @@ Could also be moved to the [[core_manager_t]].
          call process%create_blha_interface (beam_structure)
     do i_component = 1, process%meta%n_components
        associate (component => process%component(i_component))
-             i_core = process%get_i_core_nlo_type (component%get_nlo_type ())
+          i_core = process%get_i_core_nlo_type (component%get_nlo_type ())
+          if (component%can_be_integrated () .or. &
+               process%get_nlo_type (i_core) == NLO_SUBTRACTION) then
              if (.not. loaded (i_core)) then
                 select type (core => process%cm%cores(i_core)%core)
                 class is (prc_user_defined_base_t)
@@ -5921,7 +5908,7 @@ Could also be moved to the [[core_manager_t]].
                 end select
                 loaded(i_core) = .true.
              end if
-          !end do
+          end if
        end associate
     end do
   end subroutine process_create_and_load_extra_libraries
@@ -8419,8 +8406,8 @@ module pcm
 <<Use strings>>
   use constants, only: zero, two
   use diagnostics
+  use lorentz
   use io_units, only: free_unit
-  use lorentz, only: vector4_t, lorentz_transformation_t, identity
   use process_constants, only: process_constants_t
   use physics_defs
   use model_data, only: model_data_t
@@ -8437,7 +8424,7 @@ module pcm
   use phs_fks, only: threshold_projection_born
   use phs_fks, only: dalitz_plot_t
   use real_subtraction, only: real_subtraction_t, soft_mismatch_t
-  use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG
+  use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG, this_purpose
   use virtual, only: virtual_t
   use dglap_remnant, only: dglap_remnant_t
   use ttv_formfactors, only: m1s_to_mpole
@@ -8889,8 +8876,6 @@ object and the squared matrix-element collector.
                 end if
              case (NLO_VIRTUAL)
                 call pcm_instance%init_virtual ()
-                if (.not. pcm%settings%with_virtual_subtraction) &
-                   call pcm_instance%disable_virtual_subtraction ()
              case (NLO_DGLAP)
                 call pcm_instance%init_dglap_remnant ()
              end select
@@ -8918,7 +8903,7 @@ object and the squared matrix-element collector.
     type is (pcm_nlo_t)
        associate (region_data => config%region_data)
           call pcm_instance%soft_mismatch%init (region_data, &
-             pcm_instance%real_kinematics)
+               pcm_instance%real_kinematics, config%settings%factorization_mode)
        end associate
     end select
   end subroutine pcm_instance_nlo_setup_real_component
@@ -8967,10 +8952,6 @@ object and the squared matrix-element collector.
     class(pcm_instance_nlo_t), intent(inout), target :: pcm_instance
     type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
     real(default), intent(in) :: sqrts
-    integer :: i_phs, emitter, leg
-    logical :: boost_to_cms = .false.
-    real(default) :: mtop
-    type(lorentz_transformation_t) :: L
     call pcm_instance%real_sub%set_real_kinematics &
          (pcm_instance%real_kinematics)
     call pcm_instance%real_sub%set_isr_kinematics &
@@ -8989,10 +8970,10 @@ object and the squared matrix-element collector.
        associate (region_data => config%region_data)
           call pcm_instance%real_sub%init (region_data)
           call pcm_instance%real_sub%set_resonance_mappings &
-             (config%settings%use_resonance_mappings)
+               (config%settings%use_resonance_mappings)
           pcm_instance%real_sub%fixed_alr = config%settings%fixed_alr
           pcm_instance%real_sub%sub_soft%factorization_mode &
-             = config%settings%factorization_mode
+               = config%settings%factorization_mode
        end associate
     end select
   end subroutine pcm_instance_nlo_init_real_subtraction
@@ -9012,15 +8993,6 @@ object and the squared matrix-element collector.
     type(lorentz_transformation_t) :: L_to_cms
     select type (config => pcm_instance%config)
     type is (pcm_nlo_t)
-       if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
-          !!! Threshold implementation only for lepton collisions, so nothing to
-          !!! worry about here.
-          sqrts = two * p(1)%p(0); mtop = m1s_to_mpole (sqrts)
-          L_to_cms = get_boost_for_threshold_projection (p, sqrts, mtop)
-          associate (p_onshell => pcm_instance%real_kinematics%p_born_onshell%phs_point(1)%p)
-             call threshold_projection_born (mtop, L_to_cms, p, p_onshell)
-          end associate
-       end if
        associate (virtual => pcm_instance%virtual)
           call virtual%set_ren_scale (p, ren_scale)
           call virtual%set_fac_scale (p, fac_scale)
@@ -9190,7 +9162,8 @@ object and the squared matrix-element collector.
     type is (pcm_nlo_t)
        associate (region_data => config%region_data)
           call pcm_instance%virtual%init (region_data%get_flv_states_born (), &
-             region_data%n_in, config%settings%use_internal_color_correlations)
+               region_data%n_in, config%settings%use_internal_color_correlations, &
+               config%settings%virtual_selection)
           pcm_instance%virtual%factorization_mode = config%settings%factorization_mode
        end associate
     end select
@@ -9203,7 +9176,6 @@ object and the squared matrix-element collector.
 <<Pcm: procedures>>=
   subroutine pcm_instance_nlo_disable_virtual_subtraction (pcm_instance)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
-    pcm_instance%virtual%with_subtraction = .false.
   end subroutine pcm_instance_nlo_disable_virtual_subtraction
 
 @ %def pcm_instance_nlo_disable_virtual_subtraction
@@ -9396,6 +9368,7 @@ module kinematics
 <<Use kinds>>
   use format_utils, only: write_separator
   use diagnostics
+  use constants, only: two
   use io_units
   use lorentz
   use physics_defs
@@ -9407,6 +9380,7 @@ module kinematics
   use fks_regions
   use process_config
   use process_mci
+  use pcm, only: pcm_instance_nlo_t
   use ttv_formfactors, only: m1s_to_mpole
 
 <<Standard module head>>
@@ -9566,10 +9540,11 @@ Jacobian factors.
 <<Kinematics: kinematics: TBP>>=
   procedure :: evaluate_radiation_kinematics => kinematics_evaluate_radiation_kinematics
 <<Kinematics: procedures>>=
-  subroutine kinematics_evaluate_radiation_kinematics (k, r_in, reg_data)
+  subroutine kinematics_evaluate_radiation_kinematics (k, r_in, reg_data, nlo_type)
     class(kinematics_t), intent(inout) :: k
     real(default), intent(in), dimension(:) :: r_in
     type(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: nlo_type
     logical :: use_contributors
     use_contributors = allocated (reg_data%alr_contributors)
     select type (phs => k%phs)
@@ -9577,7 +9552,8 @@ Jacobian factors.
        if (use_contributors) then
           call phs%compute_xi_ref_momenta (reg_data%alr_contributors)
        else if (k%threshold) then
-          if (k%emitter > 0) call phs%compute_xi_ref_momenta_threshold ()
+          if (.not. is_subtraction_component (k%emitter, nlo_type)) &
+               call phs%compute_xi_ref_momenta_threshold ()
        else
           call phs%compute_xi_ref_momenta ()
        end if
@@ -9611,8 +9587,8 @@ parameter arrays for the selected channel.
     call k%phs%set_incoming_momenta (p(1:k%n_in))
     call k%phs%compute_flux ()
     call k%phs%select_channel (phs_channel)
-    call k%phs%evaluate_selected_channel &
-           (phs_channel, mci_work%get_x_process ())
+    call k%phs%evaluate_selected_channel (phs_channel, &
+         mci_work%get_x_process ())
 
     select type (phs => k%phs)
     type is (phs_fks_t)
@@ -9820,12 +9796,44 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 <<Kinematics: kinematics: TBP>>=
   procedure :: threshold_projection => kinematics_threshold_projection
 <<Kinematics: procedures>>=
-  subroutine kinematics_threshold_projection (k)
+  subroutine kinematics_threshold_projection (k, pcm_instance, nlo_type)
     class(kinematics_t), intent(inout) :: k
+    type(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    integer, intent(in) :: nlo_type
+    real(default) :: sqrts, mtop
+    type(lorentz_transformation_t) :: L_to_cms
+    type(vector4_t), dimension(:), allocatable :: p_tot
+    integer :: n_tot
+    n_tot = k%phs%get_n_tot ()
     select type (phs => k%phs)
     type is (phs_fks_t)
-       call phs%threshold_projection (m1s_to_mpole (phs%get_sqrts()))
+       if (nlo_type == NLO_REAL) then !!! Pure Real
+            n_tot = n_tot - 1
+            allocate (p_tot (n_tot))
+            p_tot(1 : k%n_in) = phs%p_born
+            p_tot(k%n_in + 1 : n_tot) = phs%q_born
+       else !!! Mismatch
+          allocate (p_tot (n_tot))
+          p_tot(1 : k%n_in) = k%phs%p
+          p_tot(k%n_in + 1 : n_tot) = phs%q
+       end if
+       sqrts = two * energy (phs%p_born(1))
+    class default !!! Virtual, Born must be checked before
+       allocate (p_tot (n_tot))
+       p_tot(1 : k%n_in) = k%phs%p
+       p_tot(k%n_in + 1 : n_tot) = phs%q
+       sqrts = two * energy (phs%p(1))
     end select
+    mtop = m1s_to_mpole (sqrts)
+    L_to_cms = get_boost_for_threshold_projection (p_tot, sqrts, mtop)
+    call pcm_instance%real_kinematics%p_born_cms%set_momenta (1, p_tot)
+    associate (p_onshell => pcm_instance%real_kinematics%p_born_onshell%phs_point(1)%p)
+       call threshold_projection_born (mtop, L_to_cms, p_tot, p_onshell)
+       if (debug2_active (D_THRESHOLD)) then
+          print *, 'On-shell projected Born: '
+          call vector4_write_set (p_onshell)
+       end if
+    end associate
   end subroutine kinematics_threshold_projection
 
 @ %def kinematics_threshold_projection
@@ -9867,9 +9875,11 @@ Relevant for using the proper momenta input for BLHA matrix elements.
                 xi_offshell = xi_max_offshell * phs%generator%real_kinematics%xi_tilde
                 phi = phs%generator%real_kinematics%phi
                 call phs%generate_fsr (k%emitter, k%i_phs, p, &
-                     xi_y_phi = [xi_offshell, y_offshell, phi])
+                     xi_y_phi = [xi_offshell, y_offshell, phi], no_jacobians = .true.)
                 call phs%generator%real_kinematics%p_real_cms%set_momenta (k%i_phs, p)
                 call phs%generate_fsr_threshold (k%emitter, k%i_phs, p)
+                if (debug2_active (D_SUBTRACTION)) &
+                     call generate_fsr_threshold_for_other_emitters (k%emitter, k%i_phs)
              else if (k%i_con > 0) then
                 call phs%generate_fsr (k%emitter, k%i_phs, p, k%i_con)
              else
@@ -9885,6 +9895,19 @@ Relevant for using the proper momenta input for BLHA matrix elements.
           allocate (p_out (size (p_in))); p_out = p_in
        end if
     end select
+  contains
+    subroutine generate_fsr_threshold_for_other_emitters (emitter, i_phs)
+      integer, intent(in) :: emitter, i_phs
+      integer :: ii_phs, this_emitter
+      select type (phs => k%phs)
+      type is (phs_fks_t)
+         do ii_phs = 1, size (phs%phs_identifiers)
+            this_emitter = phs%phs_identifiers(ii_phs)%emitter
+            if (ii_phs /= i_phs .and. this_emitter /= emitter) &
+                 call phs%generate_fsr_threshold (this_emitter, i_phs)
+         end do
+      end select
+    end subroutine
   end subroutine kinematics_evaluate_radiation
 
 @ %def kinematics_evaluate_radiation
@@ -9925,18 +9948,16 @@ module instances
   use prc_core, only: prc_core_t, prc_core_state_t
 
   !!! We should depend less on these modules (move it to pcm_nlo_t e.g.)
-  use phs_wood, only: phs_wood_t
-  use phs_fks, only: phs_fks_t, phs_fks_config_t
-  use phs_fks, only: GEN_REAL_PHASE_SPACE, GEN_SOFT_MISMATCH
-  use phs_fks, only: GEN_SOFT_LIMIT_TEST, GEN_COLL_LIMIT_TEST, GEN_ANTI_COLL_LIMIT_TEST
-  use phs_fks, only: PHS_MODE_UNDEFINED, GEN_SOFT_COLL_LIMIT_TEST, GEN_SOFT_ANTI_COLL_LIMIT_TEST
-  use phs_fks, only: PHS_MODE_ADDITIONAL_PARTICLE, PHS_MODE_COLLINEAR_REMNANT
+  use phs_wood, only: phs_wood_t, phs_wood_config_t
+  use phs_fks
   use blha_olp_interfaces, only: prc_blha_t
   use blha_config, only: BLHA_AMP_CC
   use prc_user_defined, only: prc_user_defined_base_t, user_defined_state_t
   use prc_threshold, only: prc_threshold_t
   use blha_olp_interfaces, only: blha_result_array_size
   use prc_recola, only: prc_recola_t
+
+  use ttv_formfactors, only: m1s_to_mpole
 
   !!! local modules
   use parton_states
@@ -10334,9 +10355,9 @@ relevant for a NLO algorithm.
        select type (phs => term_instance%k_term%phs)
        type is (phs_fks_t)
           call term_instance%set_emitter (process%get_pcm_ptr ())
-          call term_instance%set_threshold (process%get_pcm_ptr ())
           call term_instance%setup_fks_kinematics (process%get_var_list_ptr ())
        end select
+       call term_instance%set_threshold (process%get_pcm_ptr ())
        call term_instance%setup_expressions (process%get_meta (), process%get_config ())
     end if
   end subroutine term_instance_init_from_process
@@ -10442,7 +10463,7 @@ postpone until we know the factorization scale), and we have a valid
     type(mci_work_t), intent(in) :: mci_work
     integer, intent(in) :: phs_channel
     logical, intent(out) :: success
-     call term%k_term%compute_selected_channel &
+    call term%k_term%compute_selected_channel &
         (mci_work, phs_channel, term%p_seed, success)
   end subroutine term_instance_compute_seed_kinematics
 
@@ -10460,7 +10481,7 @@ postpone until we know the factorization scale), and we have a valid
           select type (config => term%pcm_instance%config)
           type is (pcm_nlo_t)
              call term%k_term%evaluate_radiation_kinematics &
-                  (mci_work%get_x_process (), config%region_data)
+                    (mci_work%get_x_process (), config%region_data, term%nlo_type)
           end select
        end if
     end select
@@ -10473,12 +10494,13 @@ postpone until we know the factorization scale), and we have a valid
 <<Instances: procedures>>=
   subroutine term_instance_evaluate_projections (term)
     class(term_instance_t), intent(inout) :: term
-    select type (phs => term%k_term%phs)
-    type is (phs_fks_t)
-       if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) then
-          if (term%k_term%threshold) call term%k_term%threshold_projection ()
-       end if
-    end select
+    real(default) :: sqrts, mtop
+    type(lorentz_transformation_t) :: L_to_cms
+    if (term%k_term%threshold .and. term%nlo_type > BORN) then
+       if (debug2_active (D_THRESHOLD)) &
+            print *, 'Evaluate on-shell projection: ', char (component_status (term%nlo_type))
+       call term%k_term%threshold_projection (term%pcm_instance, term%nlo_type)
+    end if
   end subroutine term_instance_evaluate_projections
 
 @ %def term_instance_evaluate_projections
@@ -10540,7 +10562,7 @@ choose to calculate all terms at once together with the seed kinematics, use
           if (config%dalitz_plot%active) &
                call config%register_dalitz_plot (term%k_term%emitter, p)
        end select
-    else if (term%nlo_type == NLO_REAL .and. term%k_term%emitter < 0) then
+    else if (is_subtraction_component (term%k_term%emitter, term%nlo_type)) then
        call term%k_term%modify_momenta_for_subtraction (term%p_seed, p)
     else
        allocate (p (size (term%p_seed))); p = term%p_seed
@@ -10660,7 +10682,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     class(term_instance_t), intent(inout) :: term
     class(pcm_t), intent(in) :: pcm
     integer :: i_phs
-    logical :: no_subtraction_component
+    logical :: set_emitter
     select type (pcm)
     type is (pcm_nlo_t)
        !!! Without resonances, i_alr = i_phs
@@ -10668,8 +10690,8 @@ stored in the kinematics subobject to their source.  This is a side effect.
        term%k_term%i_phs = term%config%i_term
        select type (phs => term%k_term%phs)
        type is (phs_fks_t)
-          no_subtraction_component = i_phs <= pcm%region_data%n_phs
-          if (no_subtraction_component) then
+          set_emitter = i_phs <= pcm%region_data%n_phs .and. term%nlo_type == NLO_REAL
+          if (set_emitter) then
              term%k_term%emitter = phs%phs_identifiers(i_phs)%emitter
              select type (pcm => term%pcm_instance%config)
              type is (pcm_nlo_t)
@@ -10691,7 +10713,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     class(pcm_t), intent(in) :: pcm
     select type (pcm)
     type is (pcm_nlo_t)
-       term%k_term%threshold = pcm%region_data%has_pseudo_isr ()
+       term%k_term%threshold = pcm%settings%factorization_mode == FACTORIZATION_THRESHOLD
     class default
        term%k_term%threshold = .false.
     end select
@@ -10903,6 +10925,7 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_evaluate_sqme_virt (term, alpha_s)
      class(term_instance_t), intent(inout) :: term
      real(default), intent(in) :: alpha_s
+     type(vector4_t), dimension(:), allocatable :: p_born
      real(default), dimension(:), allocatable :: sqme_virt
      if (term%nlo_type /= NLO_VIRTUAL) call msg_fatal &
         ("Trying to evaluate virtual matrix element with unsuited term_instance.")
@@ -10912,8 +10935,19 @@ The quantum numbers mask of the incoming particle
         print *, 'ren_scale: ', term%ren_scale
         print *, 'fac_scale: ', term%fac_scale
      end if
+
+     select type (config => term%pcm_instance%config)
+     type is (pcm_nlo_t)
+        allocate (p_born (config%region_data%n_legs_born))
+        if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
+           p_born = term%pcm_instance%real_kinematics%p_born_onshell%get_momenta(1)
+        else
+           p_born = term%int_hard%get_momenta ()
+        end if
+     end select
+
      call term%pcm_instance%set_momenta_and_scales_virtual &
-          (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
+          (p_born, term%ren_scale, term%fac_scale)
      call term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
           term%connected%trace%get_matrix_element (), &
           term%connected%has_matrix, sqme_virt)
@@ -11130,7 +11164,7 @@ method may modify the [[core_state]] workspace object.
 <<Instances: procedures>>=
   subroutine term_instance_evaluate_interaction_userdef (term, core)
     class(term_instance_t), intent(inout) :: term
-    class(prc_core_t), intent(in) :: core
+    class(prc_core_t), intent(inout) :: core
     integer :: leg
 
     select type (core_state => term%core_state)
@@ -11142,29 +11176,31 @@ method may modify the [[core_state]] workspace object.
     end select
     select type (core)
     type is (prc_threshold_t)
-       if (term%nlo_type == NLO_REAL) then
+       if (term%nlo_type > BORN) then
           associate (pcm => term%pcm_instance)
              if (term%k_term%emitter >= 0) then
                 call core%set_offshell_momenta &
                      (pcm%real_kinematics%p_real_cms%get_momenta(term%config%i_term))
                 leg = thr_leg (term%k_term%emitter)
+                call core%set_leg (leg)
                 call core%set_onshell_momenta &
                      (pcm%real_kinematics%p_real_onshell(leg)%get_momenta(term%config%i_term))
              else
+                call core%set_leg (0)
                 call core%set_offshell_momenta &
                      (pcm%real_kinematics%p_born_cms%get_momenta(1))
              end if
           end associate
        else
+          call core%set_leg (0)
           call core%set_offshell_momenta (term%p_hard)
        end if
     end select
-    select case (term%nlo_type)
-    case (NLO_VIRTUAL)
+    if (term%nlo_type == NLO_VIRTUAL) then
        call term%evaluate_interaction_userdef_loop (core)
-    case (BORN, NLO_REAL, NLO_DGLAP)
+    else
        call term%evaluate_interaction_userdef_tree (core)
-    end select
+    end if
 
   end subroutine term_instance_evaluate_interaction_userdef
 
@@ -11186,7 +11222,7 @@ method may modify the [[core_state]] workspace object.
        call core%update_alpha_s (term%core_state, term%fac_scale)
        do i = 1, n_amps
           call core%compute_sqme (i, term%p_hard, term%ren_scale, &
-             sqme, bad_point)
+               sqme, bad_point)
           i_born = core%get_helicity_list_base (i)
           term%amp(i_born) = cmplx (sqme, 0, default)
        end do
@@ -12201,7 +12237,7 @@ recovered, and we are just computing the rest.
                 if (.not. success)  exit
                 call instance%term(i_term(j))%evaluate_projections ()
                 call instance%term(i_term(j))%evaluate_radiation_kinematics &
-                   (instance%mci_work(instance%i_mci))
+                       (instance%mci_work(instance%i_mci))
              end do
           end if
           if (allocated (i_term)) deallocate (i_term)

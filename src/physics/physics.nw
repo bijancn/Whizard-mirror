@@ -303,6 +303,17 @@ convenient.
 
 @ %def is_nlo_component
 @
+<<Physics defs: public>>=
+  public :: is_subtraction_component
+<<Physics defs: procedures>>=
+  function is_subtraction_component (emitter, nlo_type) result (is_subtraction)
+    logical :: is_subtraction
+    integer, intent(in) :: emitter, nlo_type
+    is_subtraction = nlo_type == NLO_REAL .and. emitter < 0
+  end function is_subtraction_component
+
+@ %def is_subtraction_component
+@
 \subsection{Threshold}
 Some commonly used variables for the threshold computation
 <<Physics defs: public parameters>>=
@@ -319,6 +330,10 @@ Some commonly used variables for the threshold computation
 
   integer, dimension(2), parameter, public :: ass_quark = [5, 6]
   integer, dimension(2), parameter, public :: ass_boson = [3, 4]
+
+  integer, parameter, public :: PROC_MODE_UNDEFINED = 0
+  integer, parameter, public :: PROC_MODE_TT = 1
+  integer, parameter, public :: PROC_MODE_WBWB = 2
 
 @
 @
@@ -1971,12 +1986,11 @@ also is negative.
     integer, intent(in), optional :: unit
     logical, intent(in), optional :: testflag, ultra
     integer :: u, i
-    logical :: tf, extreme
+    logical :: ult
     character(len=7) :: fmt
-    tf = .false.; if (present (testflag)) tf = testflag
-    extreme = .false.; if (present (ultra)) extreme = ultra
-    if (extreme) then
-       call pac_fmt (fmt, FMT_19, FMT_11, testflag)
+    ult = .false.; if (present (ultra)) ult = ultra
+    if (ult) then
+       call pac_fmt (fmt, FMT_19, FMT_11, ultra)
     else
        call pac_fmt (fmt, FMT_19, FMT_13, testflag)
     end if
@@ -2095,11 +2109,7 @@ epsilon.
   function create_unit_vector (p_in) result (p_out)
     type(vector4_t), intent(in) :: p_in
     type(vector3_t) :: p_out
-    real(default) :: abs
-    abs = space_part_norm (p_in)
-    p_out%p(1) = p_in%p(1) / abs
-    p_out%p(2) = p_in%p(2) / abs
-    p_out%p(3) = p_in%p(3) / abs
+    p_out%p = p_in%p(1:3) / space_part_norm (p_in)
   end function create_unit_vector
 
 @ %def create_unit_vector
@@ -2270,7 +2280,6 @@ momentum $1$ and $2$ can be determined to be
           pointer, optional :: evaluate_special
     type(vector4_t) :: p_dec_new
     integer :: n_recoil
-    real(default), dimension(4) :: inv_masses
     n_recoil = size (p_in) - 1
     if (n_recoil > 1) then
        if (present (evaluate_special)) then
@@ -2417,7 +2426,6 @@ rest frame of a particle, in particular $(E;\vec p)$ into $(m;\vec
     if (bg2 > eps0) then
        g = sqrt(1 + bg2);  c = (g-1)/bg2
     else
-       !!!L = identity
        g = one + bg2 / two
        c = one / two
     end if
@@ -4232,13 +4240,13 @@ the factor $\mathcal{F}_1$ can be expressed as
 \begin{align*}
   \mathcal{F}_1 = \frac{1}{2}f_0(1+\varepsilon^2-w^2)
                 & \left[\pi^2 + 2Li_2(u_w) - 2Li_2(1-u_w) - 4Li_2(u_q) \right. \\
-                & -4Li_2(u_q u_w) + \log\left(\frac{1-u_q}{w^2}\right)\log(1-u_q) + \log^2(1-u_q u_w) \\
+                & -4Li_2(u_q u_w) + \log\left(\frac{1-u_q}{w^2}\right)\log(1-u_q) - \log^2(1-u_q u_w) \\
                 & \left.+\frac{1}{4}\log^2\left(\frac{w^2}{u_w}\right) - \log(u_w) \log\left[\frac{(1-u_q u_w)^2}{1-u_q}\right]
                   -2\log(u_q)\log\left[(1-u_q)(1-u_q u_w)\right]\right] \\
                 & -\sqrt{\lambda}f_0(2\log(w) + 3\log(\varepsilon) - 2\log{\lambda}) \\
-                &  +4(1-\varepsilon)\left[(1-\varepsilon^2)^2 + w^2(1+\varepsilon^2) - 4w^4\right]\log(u_w) \\
+                &  +4(1-\varepsilon^2)\left[(1-\varepsilon^2)^2 + w^2(1+\varepsilon^2) - 4w^4\right]\log(u_w) \\
                 & \left[(3 - \varepsilon^2 + 11\varepsilon^4 - \varepsilon^6)
-                  + w^2(6 - 12\varepsilon +2\varepsilon^4) - w^4(21 + 5\varepsilon^2) + 12w^6\right] \log(u_q) \\
+                  + w^2(6 - 12\varepsilon^2 +2\varepsilon^4) - w^4(21 + 5\varepsilon^2) + 12w^6\right] \log(u_q) \\
                 & 6\sqrt{\lambda} (1-\varepsilon^2) (1 + \varepsilon^2 - w^2) \log(\varepsilon)
                   + \sqrt{\lambda}\left[-5 + 22\varepsilon^2 - 5\varepsilon^4 - 9w^2(1+\varepsilon^2) + 6w^4\right].
 \end{align*}
@@ -4395,17 +4403,17 @@ cf. Jezabek / Kuehn 1989.
           - log (one - uq * uw)**2 + one / four * log (w2 / uw)**2 &
           - log (uw) * log ((one - uq * uw)**2 / (one - uq)) &
           - two * log (uq) * log ((one - uq) * (one - uq * uw))) &
-         - sq_lam * fff * (two * log (sqrt (w2)) &
+          - sq_lam * fff * (two * log (sqrt (w2)) &
           + three * log (sqrt (eps2)) - two * log (sq_lam**2)) &
-         + four * (one - eps2) * ((one - eps2)**2 + w2 * (one + eps2) &
+          + four * (one - eps2) * ((one - eps2)**2 + w2 * (one + eps2) &
           - four * w2**2) * log (uw) &
-         + (three - eps2 + 11 * eps2**2 - eps2**3 + w2 * &
-          (6 - 12 * eps2 + 2 * eps2**2) - w2**2 * (21 + five * eps2) &
+          + (three - eps2 + 11 * eps2**2 - eps2**3 + w2 * &
+            (6 - 12 * eps2 + 2 * eps2**2) - w2**2 * (21 + five * eps2) &
           + 12 * w2**3) * log (uq) &
-         + 6 * sq_lam * (one - eps2) * &
-          (one + eps2 - w2) * log (sqrt (eps2)) &
-         + sq_lam * (- five + 22 * eps2 - five * eps2**2 - 9 * w2 * &
-          (one + eps2) + 6 * w2**2)
+          + 6 * sq_lam * (one - eps2) * &
+            (one + eps2 - w2) * log (sqrt (eps2)) &
+          + sq_lam * (- five + 22 * eps2 - five * eps2**2 - 9 * w2 * &
+            (one + eps2) + 6 * w2**2)
   end function ff1
 
 @ %def ff1

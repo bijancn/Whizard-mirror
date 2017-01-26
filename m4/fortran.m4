@@ -216,7 +216,7 @@ AC_DEFUN([WO_NAGFOR_LIBRARY_LDFLAGS],
     wo_nagfor_output=`eval $ac_link AS_MESSAGE_LOG_FD>&1 2>&1`
     echo "$wo_nagfor_output" >&AS_MESSAGE_LOG_FD
     FCFLAGS=$wo_save_fcflags
-    wo_cv_fc_libs=`echo $wo_nagfor_output | $SED -e 's/.* -o conftest \(.*\)$/\1/' | $SED -e 's/conftest.$ac_objext //' | $SED -e 's/\/tmp\/conftest.[[0-9]]*\.o/ /'`
+    wo_cv_fc_libs=`echo $wo_nagfor_output | $SED -e 's/.* -o conftest \(.*\)$/\1/' | $SED -e 's/conftest.$ac_objext //' | $SED -e 's/\/tmp\/conftest.[[0-9]]*\.o/ /' | $SED -e 's/\/tmp\/[[a-zA-Z0-9]]*\/conftest.[[0-9]]*\.o/ /'`
   else
     wo_cv_fc_libs=$FCLIBS
   fi

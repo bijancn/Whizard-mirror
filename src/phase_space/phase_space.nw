@@ -1182,6 +1182,17 @@ necessary.
 @ %def phs_is_cm_frame
 @
 <<PHS base: phs: TBP>>=
+  procedure :: get_n_tot => phs_get_n_tot
+<<PHS base: procedures>>=
+  elemental function phs_get_n_tot (phs) result (n_tot)
+    integer :: n_tot
+    class(phs_t), intent(in) :: phs
+    n_tot = phs%config%n_tot
+  end function phs_get_n_tot
+
+@ %def phs_get_n_tot
+@
+<<PHS base: phs: TBP>>=
   procedure :: set_lorentz_transformation => phs_set_lorentz_transformation
 <<PHS base: procedures>>=
   subroutine phs_set_lorentz_transformation (phs, lt)
@@ -4110,6 +4121,7 @@ module phs_trees
   use io_units
   use constants, only: twopi, twopi2, twopi5
   use format_defs, only: FMT_19
+  use numeric_utils, only: vanishes
   use diagnostics
   use lorentz
   use permutations, only: permutation_t, permutation_size
@@ -5470,7 +5482,7 @@ possible.
          else
             axis = axis_from_p_b3 (pf, -bg)
             LL = rotation_to_2nd (axis, vector3_canonical(3))
-            if (bg /= 0)  LL = LL * boost(-bg, 3)
+            if (.not. vanishes (bg))  LL = LL * boost(-bg, 3)
          end if
          n = space_part (LL * p1)
       else if (present (phi0)) then
@@ -12433,7 +12445,7 @@ module phs_fks
   use cascades
   use process_constants
   use process_libraries
-  use ttv_formfactors, only: generate_on_shell_decay_threshold
+  use ttv_formfactors, only: generate_on_shell_decay_threshold, m1s_to_mpole
 
 <<Standard module head>>
 
@@ -12561,7 +12573,7 @@ end module phs_fks
     class(phs_point_set_t), intent(in) :: phs_point_set
     integer, intent(in) :: i_phs
     allocate (p (phs_point_set%phs_point(i_phs)%n_momenta), &
-       source = phs_point_set%phs_point(i_phs)%p)
+         source = phs_point_set%phs_point(i_phs)%p)
   end function phs_point_set_get_momenta
 
 @ %def phs_point_set_get_momenta
@@ -12796,7 +12808,12 @@ end module phs_fks
   end subroutine real_kinematics_write
 
 @ %def real_kinematics_write
-@
+@ The boost to the center-of-mass system only has a reasonable meaning
+above the threshold. Below the threshold, we do not apply boost at all, so
+that the top quarks stay in the rest frame. However, with top quarks exactly
+at rest, problems arise in the matrix elements (e.g. in the computation
+of angles). Therefore, we apply a boost which is not exactly 1, but has a
+tiny value differing from that.
 <<phs fks: public>>=
   public :: get_boost_for_threshold_projection
 <<phs fks: procedures>>=
@@ -12806,9 +12823,14 @@ end module phs_fks
     real(default), intent(in) :: sqrts, mtop
     type(vector4_t) :: p_tmp
     type(vector3_t) :: dir
-    real(default) :: scale_factor
+    real(default) :: scale_factor, arg
     p_tmp = p(THR_POS_WP) + p(THR_POS_B)
-    scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / two
+    arg = sqrts**2 - four * mtop**2
+    if (arg > zero) then
+       scale_factor = sqrt (arg) / two
+    else
+       scale_factor = tiny_07*1000
+    end if
     dir = scale_factor * create_unit_vector (p_tmp)
     p_tmp = [sqrts / two, dir%p]
     L = boost (p_tmp, mtop)
@@ -12910,16 +12932,22 @@ end module phs_fks
     type(vector4_t), intent(in), dimension(:) :: p_in
     type(vector4_t), intent(out), dimension(:) :: p_onshell
     type(vector4_t), dimension(3) :: k_decay_onshell
+    type(vector4_t) :: p_tmp_1, p_tmp_2
+    type(lorentz_transformation_t) :: L_to_cms_inv
     p_onshell(1:2) = p_in(1:2)
+    L_to_cms_inv = inverse (L_to_cms)
+    p_tmp_1 = L_to_cms_inv * p_in(THR_POS_B)
+    p_tmp_2 = L_to_cms_inv * p_in(THR_POS_WP)
     k_decay_onshell = create_two_particle_decay (mtop**2, &
-         p_in(THR_POS_B), p_in(THR_POS_WP))
+         p_tmp_1, p_tmp_2)
     p_onshell([THR_POS_B, THR_POS_WP]) = k_decay_onshell([2, 3])
+    p_tmp_1 = L_to_cms * p_in(THR_POS_BBAR)
+    p_tmp_2 = L_to_cms * p_in(THR_POS_WM)
     k_decay_onshell = create_two_particle_decay (mtop**2, &
-         p_in(THR_POS_BBAR), p_in(THR_POS_WM))
+         p_tmp_1, p_tmp_2)
     p_onshell([THR_POS_BBAR, THR_POS_WM]) = k_decay_onshell([2, 3])
-    p_onshell (3:6) = L_to_cms * p_onshell (3:6)
-    call vector4_invert_direction (p_onshell (THR_POS_WM))
-    call vector4_invert_direction (p_onshell (THR_POS_BBAR))
+    p_onshell([THR_POS_WP, THR_POS_B]) = L_to_cms * p_onshell([THR_POS_WP, THR_POS_B])
+    p_onshell([THR_POS_WM, THR_POS_BBAR]) = L_to_cms_inv * p_onshell([THR_POS_WM, THR_POS_BBAR])
   end subroutine threshold_projection_born
 
 @ %def threshold_projection_born
@@ -13986,13 +14014,13 @@ recoiling momenta.
   procedure :: generate_fsr_default => phs_fks_generator_generate_fsr_default
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_fsr_default (generator, emitter, i_phs, &
-     p_born, p_real, xi_y_phi)
-    !!! Important: Momenta must be input in the center-of-mass frame
+     p_born, p_real, xi_y_phi, no_jacobians)
     class(phs_fks_generator_t), intent(inout) :: generator
     integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
     real(default), intent(in), dimension(3), optional :: xi_y_phi
+    logical, intent(in), optional :: no_jacobians
     real(default) :: q0
 
     call generator%generate_fsr_in (p_born, p_real)
@@ -14003,7 +14031,8 @@ recoiling momenta.
     end if
 
     generator%i_fsr_first = generator%n_in + 1
-    call generator%generate_fsr_out (emitter, i_phs, p_born, p_real, q0, xi_y_phi = xi_y_phi)
+    call generator%generate_fsr_out (emitter, i_phs, p_born, p_real, q0, &
+         xi_y_phi = xi_y_phi, no_jacobians = no_jacobians)
     if (debug_active (D_PHASESPACE)) then
        call vector4_check_momentum_conservation (p_real%p, generator%n_in, &
            rel_smallness = 1000 * tiny_07, abs_smallness = tiny_07)
@@ -14016,13 +14045,14 @@ recoiling momenta.
   procedure :: generate_fsr_resonances => phs_fks_generator_generate_fsr_resonances
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_fsr_resonances (generator, &
-       emitter, i_phs, i_con, p_born, p_real, xi_y_phi)
+       emitter, i_phs, i_con, p_born, p_real, xi_y_phi, no_jacobians)
     class(phs_fks_generator_t), intent(inout) :: generator
     integer, intent(in) :: emitter, i_phs
     integer, intent(in) :: i_con
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
     real(default), intent(in), dimension(3), optional :: xi_y_phi
+    logical, intent(in), optional :: no_jacobians
     integer, dimension(:), allocatable :: resonance_list
     integer, dimension(size(p_born)) :: inv_resonance_list
     type(vector4_t), dimension(:), allocatable :: p_tmp_born
@@ -14131,6 +14161,7 @@ recoiling momenta.
     real(default) :: q0
     type(lorentz_transformation_t) :: boost_to_top
     integer :: leg, other_leg
+    real(default) :: sqrts, mtop
     call msg_debug2 (D_PHASESPACE, "phs_fks_generator_generate_fsr_resonances")
     nlegborn = size (p_born); nlegreal = nlegborn + 1
 
@@ -14144,7 +14175,13 @@ recoiling momenta.
     p_top = generator%real_kinematics%xi_ref_momenta(leg)
 
     q0 = p_top**1
-    boost_to_top = inverse (boost (p_top, q0))
+    sqrts = two * p_born(1)%p(0)
+    mtop = m1s_to_mpole (sqrts)
+    if (sqrts**2 - four * mtop**2 > zero) then
+       boost_to_top = inverse (boost (p_top, q0))
+    else
+       boost_to_top = identity
+    end if
     p_tmp_born = boost_to_top * p_tmp_born
 
     generator%i_fsr_first = 1
@@ -14181,7 +14218,7 @@ recoiling momenta.
   procedure :: generate_fsr_out => phs_fks_generator_generate_fsr_out
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_fsr_out (generator, &
-      emitter, i_phs, p_born, p_real, q0, p_emitter_index, xi_y_phi)
+      emitter, i_phs, p_born, p_real, q0, p_emitter_index, xi_y_phi, no_jacobians)
     class(phs_fks_generator_t), intent(inout) :: generator
     integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
@@ -14189,6 +14226,7 @@ recoiling momenta.
     real(default), intent(in) :: q0
     integer, intent(in), optional :: p_emitter_index
     real(default), intent(in), dimension(3), optional :: xi_y_phi
+    logical, intent(in), optional :: no_jacobians
     real(default) :: xi, y, phi
     integer :: nlegborn, nlegreal
     real(default) :: uk_np1, uk_n
@@ -14197,10 +14235,12 @@ recoiling momenta.
     real(default) :: uk_n_born, uk, k2, k0_n
     real(default) :: cpsi, beta
     type(vector3_t) :: vec, vec_orth
-    type(lorentz_transformation_t) :: rot, lambda
-    integer :: i
-    integer :: p_em
+    type(lorentz_transformation_t) :: rot
+    integer :: i, p_em
+    logical :: compute_jac
     p_em = emitter; if (present (p_emitter_index)) p_em = p_emitter_index
+    compute_jac = .true.
+    if (present (no_jacobians)) compute_jac = .not. no_jacobians
     if (generator%i_fsr_first < 0) &
        call msg_fatal ("FSR generator is called for outgoing particles but "&
           &"i_fsr_first is not set!")
@@ -14226,10 +14266,10 @@ recoiling momenta.
     uk_n_born = k_n_born**1
 
     generator%mrec2 = (q0 - p_born(p_em)%p(0))**2 &
-       - space_part_norm(p_born(p_em))**2
+         - space_part_norm(p_born(p_em))**2
     if (generator%is_massive(emitter)) then
-       call generator%compute_emitter_kinematics &
-          (y, emitter, i_phs, q0, k0_n, uk_n, uk)
+       call generator%compute_emitter_kinematics (y, emitter, &
+            i_phs, q0, k0_n, uk_n, uk, compute_jac)
     else
        call generator%compute_emitter_kinematics (y, q0, uk_n, uk)
        generator%real_kinematics%y_soft(i_phs) = y
@@ -14258,7 +14298,7 @@ recoiling momenta.
     rot = rotation (cpsi, sqrt (one - cpsi**2), vec_orth)
     p_real%p(nlegreal) = rot * p_real%p(nlegreal)
     call construct_recoiling_momenta ()
-    call compute_jacobians ()
+    if (compute_jac) call compute_jacobians ()
 
   contains
 
@@ -14308,11 +14348,12 @@ is
 \end{equation*}
 <<phs fks: generator generate fsr out procedures>>=
   subroutine construct_recoiling_momenta ()
+    type(lorentz_transformation_t) :: lambda
     k_rec0 = q0 - p_real%p(p_em)%p(0) - p_real%p(nlegreal)%p(0)
     uk_rec = sqrt (k_rec0**2 - generator%mrec2)
     if (generator%is_massive(emitter)) then
        beta = compute_beta (q0**2, k_rec0, uk_rec, &
-          p_born(p_em)%p(0), uk_n_born)
+              p_born(p_em)%p(0), uk_n_born)
     else
        beta = compute_beta (q0**2, k_rec0, uk_rec)
     end if
@@ -14337,7 +14378,7 @@ $\xi$.
   subroutine compute_jacobians ()
     associate (jac => generator%real_kinematics%jac(i_phs))
        if (generator%is_massive(emitter)) then
-          jac%jac(1) = jac%jac(1) * 4 / q0 / uk_n_born / xi
+          jac%jac(1) = jac%jac(1) * four / q0 / uk_n_born / xi
        else
           k2 = two * uk_n * uk_np1* (one - y)
           jac%jac(1) = uk_n**2 / uk_n_born / (uk_n - k2 / (two * q0))
@@ -14352,21 +14393,25 @@ $\xi$.
 <<phs fks: phs fks: TBP>>=
   procedure :: generate_fsr => phs_fks_generate_fsr
 <<phs fks: procedures>>=
-  subroutine phs_fks_generate_fsr (phs, emitter, i_phs, p_real, i_con, xi_y_phi)
+  subroutine phs_fks_generate_fsr (phs, emitter, i_phs, p_real, i_con, &
+         xi_y_phi, no_jacobians)
     class(phs_fks_t), intent(inout) :: phs
     integer, intent(in) :: emitter, i_phs
     type(phs_point_t), intent(inout) :: p_real
     integer, intent(in), optional :: i_con
     real(default), intent(in), dimension(3), optional :: xi_y_phi
+    logical, intent(in), optional :: no_jacobians
     type(vector4_t), dimension(:), allocatable :: p
     associate (generator => phs%generator)
        allocate (p (1 : generator%real_kinematics%p_born_cms%get_n_particles()), &
           source = generator%real_kinematics%p_born_cms%phs_point(1)%p)
        generator%real_kinematics%supply_xi_max = .true.
        if (present (i_con)) then
-          call generator%generate_fsr (emitter, i_phs, i_con, p, p_real, xi_y_phi)
+          call generator%generate_fsr (emitter, i_phs, i_con, p, p_real, &
+               xi_y_phi, no_jacobians)
        else
-          call generator%generate_fsr (emitter, i_phs, p, p_real, xi_y_phi)
+          call generator%generate_fsr (emitter, i_phs, p, p_real, &
+               xi_y_phi, no_jacobians)
        end if
        generator%real_kinematics%p_real_cms%phs_point(i_phs)%p = p_real%p
        if (.not. phs%config%cm_frame) p_real = phs%lt_cm_to_lab * p_real
@@ -14398,7 +14443,9 @@ $\xi$.
   pure function phs_fks_get_onshell_projected_momenta (phs) result (p)
     type(vector4_t), dimension(:), allocatable :: p
     class(phs_fks_t), intent(in) :: phs
-    p = phs%generator%real_kinematics%p_born_onshell%get_momenta (1)
+    !!! !!! !!! Workaround for standard-semantics ifort 16.0 bug
+    allocate(p (size (phs%generator%real_kinematics%p_born_onshell%phs_point(1)%p)))
+    p = phs%generator%real_kinematics%p_born_onshell%phs_point(1)%p
   end function phs_fks_get_onshell_projected_momenta
 
 @ %def phs_fks_get_onshell_projected_momenta
@@ -14409,14 +14456,19 @@ $\xi$.
   subroutine phs_fks_generate_fsr_threshold (phs, emitter, i_phs, p_real)
     class(phs_fks_t), intent(inout) :: phs
     integer, intent(in) :: emitter, i_phs
-    type(phs_point_t), intent(inout) :: p_real
+    type(phs_point_t), intent(inout), optional :: p_real
     type(vector4_t), dimension(:), allocatable :: p_born
+    type(phs_point_t) :: pp
+    integer :: leg
     associate (generator => phs%generator)
        generator%real_kinematics%supply_xi_max = .true.
        allocate (p_born (1 : generator%real_kinematics%p_born_cms%get_n_particles()))
        p_born = generator%real_kinematics%p_born_onshell%get_momenta (1)
-       call generator%generate_fsr_threshold (emitter, i_phs, p_born, p_real)
-       generator%real_kinematics%p_real_onshell(thr_leg(emitter))%phs_point(i_phs)%p = p_real%p
+       pp = size (p_born) + 1
+       call generator%generate_fsr_threshold (emitter, i_phs, p_born, pp)
+       leg = thr_leg(emitter)
+       call generator%real_kinematics%p_real_onshell(leg)%set_momenta (i_phs, pp)
+       if (present (p_real)) p_real = pp
     end associate
   end subroutine phs_fks_generate_fsr_threshold
 
@@ -14490,12 +14542,13 @@ $\xi$.
   end subroutine phs_fks_generator_compute_emitter_kinematics_massless
 
   subroutine phs_fks_generator_compute_emitter_kinematics_massive &
-      (generator, y, em, i_phs, q0, k0_em, uk_em, uk)
+      (generator, y, em, i_phs, q0, k0_em, uk_em, uk, compute_jac)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: y
     integer, intent(in) :: em, i_phs
     real(default), intent(in) :: q0
     real(default), intent(inout) :: k0_em, uk_em, uk
+    logical, intent(in) :: compute_jac
     real(default) :: k0_np1, q2, mrec2, m2
     real(default) :: k0_rec_max, k0_em_max, k0_rec, uk_rec
     real(default) :: z, z1, z2
@@ -14515,7 +14568,8 @@ $\xi$.
     uk_em = sqrt(k0_em**2 - m2)
     uk_rec = sqrt(k0_rec**2 - mrec2)
     uk = uk_rec
-    generator%real_kinematics%jac(i_phs)%jac = q0 * (z1 - z2) / 4 * k0_np1
+    if (compute_jac) &
+         generator%real_kinematics%jac(i_phs)%jac = q0 * (z1 - z2) / four * k0_np1
     generator%real_kinematics%y_soft(i_phs) = &
        (two * q2 * z - q2 - mrec2 + m2) / (sqrt(k0_em_max**2 - m2) * q0) / two
   end subroutine phs_fks_generator_compute_emitter_kinematics_massive
@@ -15544,20 +15598,6 @@ has already been taken into account during its generation.
 @ %def phs_fks_generator_get_radiation_variables
 @
 <<phs fks: phs fks generator: TBP>>=
-  procedure :: get_jacobian => phs_fks_generator_get_jacobian
-<<phs fks: procedures>>=
-  subroutine phs_fks_generator_get_jacobian (generator, emitter, jac)
-    class(phs_fks_generator_t), intent(in) :: generator
-    integer, intent(in) :: emitter
-    real(default) :: jac
-    associate (rad_var => generator%real_kinematics)
-       jac = rad_var%jac_rand (emitter) * rad_var%jac(emitter)%jac(1)
-    end associate
-  end subroutine phs_fks_generator_get_jacobian
-
-@ %def phs_fks_generator_get_jacobian
-@
-<<phs fks: phs fks generator: TBP>>=
   procedure :: write => phs_fks_generator_write
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_write (generator, unit)
@@ -15863,7 +15903,7 @@ module phs_fks_uti
   use format_utils, only: write_separator, pac_fmt
   use format_defs, only: FMT_15, FMT_19
   use numeric_utils, only: nearly_equal
-  use constants, only: tiny_07, zero, two
+  use constants, only: tiny_07, zero, one, two
   use lorentz
 
   use physics_defs, only: THR_POS_B, THR_POS_BBAR, THR_POS_WP, THR_POS_WM, THR_POS_GLUON
@@ -16331,6 +16371,7 @@ end module phs_fks_uti
   public :: phs_fks_generator_5
 <<phs fks: tests>>=
   subroutine phs_fks_generator_5 (u)
+    use ttv_formfactors, only: init_parameters
     integer, intent(in) :: u
     type(phs_fks_generator_t) :: generator
     type(vector4_t), dimension(:), allocatable :: p_born
@@ -16343,6 +16384,7 @@ end module phs_fks_uti
     type(lorentz_transformation_t) :: L_to_cms
     real(default), parameter :: sqrts = 360._default
     real(default), parameter :: momentum_tolerance = 1E-10_default
+    real(default) :: mpole, gam_out
 
     write (u, "(A)") "* Test output: phs_fks_generator_5"
     write (u, "(A)") "* Puropse: Perform threshold on-shell projection of "
@@ -16381,6 +16423,12 @@ end module phs_fks_uti
     mtop = 172._default
 
     generator%sqrts = sqrts
+
+    !!! Dummy-initialization of the threshold model because generate_fsr_threshold
+    !!! uses m1s_to_mpole to determine if it is above or below threshold.
+    call init_parameters (mpole, gam_out, mtop, one, one / 1.5_default, 125._default, &
+         0.47_default, 0.118_default, 91._default, 80._default, 4.2_default, &
+         one, one, one, one, zero, zero, zero, zero, zero, zero, .false., zero)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
     call vector4_write_set (p_born, u, testflag = .true., ultra = .true.)

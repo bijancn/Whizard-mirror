@@ -53,6 +53,7 @@ module auto_components
   use diagnostics
   use model_data
   use pdg_arrays
+  use flavors, only: flavor_t
 
 <<Standard module head>>
 
@@ -77,8 +78,8 @@ states.  The concrete objects are applied as visitor objects at certain hooks
 during the splitting algorithm.
 <<Auto components: types>>=
   type, abstract :: split_constraint_t
-   contains
-   <<Auto components: split constraint: TBP>>
+  contains
+  <<Auto components: split constraint: TBP>>
   end type split_constraint_t
 
 @ %def split_constraint_t
@@ -539,6 +540,67 @@ it is recorded.
 
 @ %def constrain_in_state
 @ %def constraint_in_state_check_before_record
+@
+\subsubsection{Coupling constraint}
+Filters vertices which do not match the desired NLO pattern.
+<<Auto components: types>>=
+  type, extends (split_constraint_t) :: constraint_coupling_t
+    private
+    logical :: qed = .false.
+    logical :: qcd = .true.
+  contains
+  <<Auto components: constraint coupling: TBP>>
+  end type constraint_coupling_t
+
+@ %def constraint_coupling_t
+@
+<<Auto components: public>>=
+  public :: constrain_couplings
+<<Auto components: procedures>>=
+  function constrain_couplings (qcd, qed) result (c)
+    type(constraint_coupling_t) :: c
+    logical, intent(in) :: qcd, qed
+    c%qcd = qcd; c%qed = qed
+  end function constrain_couplings
+
+@ %def constrain_couplings
+@
+<<Auto components: constraint coupling: TBP>>=
+  procedure :: check_before_insert => constraint_coupling_check_before_insert
+<<Auto components: procedures>>=
+  subroutine constraint_coupling_check_before_insert (c, table, pa, pl, passed)
+    class(constraint_coupling_t), intent(in) :: c
+    class(ps_table_t), intent(in) :: table
+    type(pdg_array_t), intent(in) :: pa
+    type(pdg_list_t), intent(inout) :: pl
+    logical, intent(out) :: passed
+    type(flavor_t) :: flv1, flv2, flv3
+    call flv1%init (pa%get(1), table%model)
+    call flv2%init (pl%a(1)%get(1), table%model)
+    call flv3%init (pl%a(2)%get(1), table%model)
+    if (c%qcd .and. .not. c%qed) then
+       passed = vertex_is_qcd ([flv1, flv2, flv3])
+    else if (.not. c%qcd .and. c%qed) then
+       passed = .not. vertex_is_qcd ([flv1, flv2, flv3])
+    else if (c%qcd .and. c%qed) then
+       passed = .true.
+    end if
+  contains
+    function vertex_is_qcd (flv) result (is_qcd)
+      logical :: is_qcd
+      type(flavor_t), intent(in), dimension(3) :: flv
+      integer :: i
+      is_qcd = .true.
+      do i = 1, 3
+         if (flv(i)%get_color_type () == 1) then
+            is_qcd = .false.
+            exit
+         end if
+      end do
+    end function vertex_is_qcd
+  end subroutine constraint_coupling_check_before_insert
+
+@ %def constraint_coupling_check_before_insert
 @
 \subsection{Tables of states}
 Automatically generate a list of possible process components for a given
@@ -2034,16 +2096,16 @@ caller when this is a function.
 @ %def prt_queue_write
 @
 <<radiation generator: procedures>>=
-  subroutine sort_prt (prt, radiation_model)
+  subroutine sort_prt (prt, model)
     type(string_t), dimension(:), intent(inout) :: prt
-    class(model_data_t), intent(in), target :: radiation_model
+    class(model_data_t), intent(in), target :: model
     type(pdg_array_t), dimension(:), allocatable :: pdg
     type(flavor_t) :: flv
     integer :: i
-    call create_pdg_array (prt, radiation_model, pdg)
+    call create_pdg_array (prt, model, pdg)
     call sort_pdg (pdg)
     do i = 1, size (pdg)
-       call flv%init (pdg(i)%get(), radiation_model)
+       call flv%init (pdg(i)%get(), model)
        prt(i) = flv%get_name ()
     end do
   end subroutine sort_prt
@@ -2063,15 +2125,15 @@ caller when this is a function.
     end do
   end subroutine sort_pdg
 
-  subroutine create_pdg_array (prt, radiation_model, pdg)
+  subroutine create_pdg_array (prt, model, pdg)
     type (string_t), dimension(:), intent(in) :: prt
-    class (model_data_t), intent(in), target :: radiation_model
+    class (model_data_t), intent(in), target :: model
     type(pdg_array_t), dimension(:), allocatable, intent(out) :: pdg
     type(flavor_t) :: flv
     integer :: i
     allocate (pdg (size (prt)))
     do i = 1, size (prt)
-       call flv%init (prt(i), radiation_model)
+       call flv%init (prt(i), model)
        pdg(i) = flv%get_pdg ()
     end do
   end subroutine create_pdg_array
@@ -2234,7 +2296,6 @@ initialization phase (more precisely: at the moment only in the
     integer :: n_loops
     integer :: n_light_quarks
     real(default) :: mass_sum
-    class(model_data_t), pointer :: radiation_model
     type(prt_queue_t) :: prt_queue
     type(pdg_states_t) :: pdg_raw
     type(pdg_array_t), dimension(:), allocatable :: pdg_in_born, pdg_out_born
@@ -2302,8 +2363,9 @@ initialization phase (more precisely: at the moment only in the
 <<radiation generator: radiation generator: TBP>>=
   procedure :: setup_if_table => radiation_generator_setup_if_table
 <<radiation generator: procedures>>=
-  subroutine radiation_generator_setup_if_table (generator)
+  subroutine radiation_generator_setup_if_table (generator, model)
     class(radiation_generator_t), intent(inout) :: generator
+    class(model_data_t), intent(in), target :: model
     type(pdg_list_t), dimension(:), allocatable :: pl_in, pl_out
 
     allocate (pl_in(1), pl_out(1))
@@ -2312,7 +2374,7 @@ initialization phase (more precisely: at the moment only in the
     pl_out(1) = generator%pl_out
 
     call generator%if_table%init &
-       (generator%radiation_model, pl_in, pl_out, generator%constraints)
+       (model, pl_in, pl_out, generator%constraints)
   end subroutine radiation_generator_setup_if_table
 
 @ %def radiation_generator_setup_if_table
@@ -2357,18 +2419,6 @@ initialization phase (more precisely: at the moment only in the
 @ %def radiation_generator_reset_reshuffle_list
 @
 <<radiation generator: radiation generator: TBP>>=
-  procedure :: set_radiation_model => &
-       radiation_generator_set_radiation_model
-<<radiation generator: procedures>>=
-  subroutine radiation_generator_set_radiation_model (generator, model)
-    class(radiation_generator_t), intent(inout) :: generator
-    class(model_data_t), intent(in), target :: model
-    generator%radiation_model => model
-  end subroutine radiation_generator_set_radiation_model
-
-@ %def radiation_generator_set_radiation_model
-@
-<<radiation generator: radiation generator: TBP>>=
   procedure :: set_n => radiation_generator_set_n
 <<radiation generator: procedures>>=
   subroutine radiation_generator_set_n (generator, n_in, n_out, n_loops)
@@ -2405,12 +2455,15 @@ initialization phase (more precisely: at the moment only in the
     allocate (i_skip (generator%n_tot))
     i_skip = -1
 
-    n_constraints = 1 + count([set_n_loop, set_mass_sum, &
+    n_constraints = 2 + count([set_n_loop, set_mass_sum, &
          set_selected_particles, set_required_particles])
     associate (constraints => generator%constraints)
       n = 1
       call constraints%init (n_constraints)
       call constraints%set (n, constrain_n_tot (generator%n_tot))
+      n = 2
+      call constraints%set (n, constrain_couplings (generator%qcd_enabled, &
+           generator%qed_enabled))
       n = n + 1
       if (set_n_loop) then
          call constraints%set (n, constrain_n_loop(generator%n_loops))
@@ -2691,15 +2744,16 @@ initialization phase (more precisely: at the moment only in the
 <<radiation generator: radiation generator: TBP>>=
   procedure :: generate_multiple => radiation_generator_generate_multiple
 <<radiation generator: procedures>>=
-  subroutine radiation_generator_generate_multiple (generator, max_multiplicity)
+  subroutine radiation_generator_generate_multiple (generator, max_multiplicity, model)
     class(radiation_generator_t), intent(inout) :: generator
     integer, intent(in) :: max_multiplicity
+    class(model_data_t), intent(in), target :: model
     if (max_multiplicity <= generator%n_out) &
          call msg_fatal ("GKS states: Multiplicity is not large enough!")
-    call generator%first_emission ()
+    call generator%first_emission (model)
     call generator%reset_reshuffle_list ()
     if (max_multiplicity - generator%n_out > 1) &
-         call generator%append_emissions (max_multiplicity)
+         call generator%append_emissions (max_multiplicity, model)
   end subroutine radiation_generator_generate_multiple
 
 @ %def radiation_generator_generate_multiple
@@ -2707,10 +2761,11 @@ initialization phase (more precisely: at the moment only in the
 <<radiation generator: radiation generator: TBP>>=
   procedure :: first_emission => radiation_generator_first_emission
 <<radiation generator: procedures>>=
-  subroutine radiation_generator_first_emission (generator)
+  subroutine radiation_generator_first_emission (generator, model)
     class(radiation_generator_t), intent(inout) :: generator
+    class(model_data_t), intent(in), target :: model
     type(string_t), dimension(:), allocatable :: prt_in, prt_out
-    call generator%setup_if_table ()
+    call generator%setup_if_table (model)
     call generator%generate (prt_in, prt_out)
     call generator%prt_queue%null ()
     call generator%prt_queue%append (prt_out)
@@ -2721,9 +2776,10 @@ initialization phase (more precisely: at the moment only in the
 <<radiation generator: radiation generator: TBP>>=
   procedure :: append_emissions => radiation_generator_append_emissions
 <<radiation generator: procedures>>=
-  subroutine radiation_generator_append_emissions (generator, max_multiplicity)
+  subroutine radiation_generator_append_emissions (generator, max_multiplicity, model)
     class(radiation_generator_t), intent(inout) :: generator
     integer, intent(in) :: max_multiplicity
+    class(model_data_t), intent(in), target :: model
     type(string_t), dimension(:), allocatable :: prt_fetched
     type(string_t), dimension(:), allocatable :: prt_in
     type(string_t), dimension(:), allocatable :: prt_out1, prt_out2
@@ -2733,19 +2789,19 @@ initialization phase (more precisely: at the moment only in the
        call generator%prt_queue%get (prt_fetched)
        current_multiplicity = size (prt_fetched)
        if (current_multiplicity == max_multiplicity) exit
-       call create_pdg_array (prt_fetched, generator%radiation_model, &
+       call create_pdg_array (prt_fetched, model, &
             pdg_new_out)
        call generator%reset_particle_content (pdg_new_out)
        call generator%set_n (2, current_multiplicity, 0)
        call generator%set_constraints (.false., .false., .true., .true.)
-       call generator%setup_if_table ()
+       call generator%setup_if_table (model)
        call generator%generate (prt_in, prt_out1)
        call separate_particles (prt_out1, prt_out2)
-       call sort_prt (prt_out2, generator%radiation_model)
+       call sort_prt (prt_out2, model)
        if (.not. generator%prt_queue%contains (prt_out2)) &
             call generator%prt_queue%append (prt_out2)
        if (.not. any (prt_out1 == " ")) then
-          call sort_prt (prt_out1, generator%radiation_model)
+          call sort_prt (prt_out1, model)
           if (.not. generator%prt_queue%contains (prt_out1)) &
              call generator%prt_queue%append (prt_out1)
        end if
@@ -2981,20 +3037,19 @@ end module radiation_generator_uti
     type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
-    type(model_t), pointer :: radiation_model => null ()
+    type(model_t), pointer :: model => null ()
 
     write (u, "(A)") "* Test output: radiation_generator_1"
     write (u, "(A)") "* Purpose: Create N+1-particle flavor structures from predefined N-particle flavor structures"
     write (u, "(A)") "* One additional strong coupling, no additional electroweak coupling"
     write (u, "(A)")
-    write (u, "(A)") "* Loading radiation model: SM_rad.mdl"
+    write (u, "(A)") "* Loading radiation model: SM.mdl"
 
     call syntax_model_file_init ()
     call os_data_init (os_data)
     call model_list%read_model &
-       (var_str ("SM_rad"), var_str ("SM_rad.mdl"), &
-        os_data, radiation_model)
-    call generator%set_radiation_model (radiation_model)
+       (var_str ("SM"), var_str ("SM.mdl"), &
+        os_data, model)
     write (u, "(A)") "* Success"
 
     allocate (pdg_in (2))
@@ -3071,7 +3126,7 @@ end module radiation_generator_uti
       call generator%set_n (2, size(pdg_out), 0)
       if (yorn) call generator%set_initial_state_emissions ()
       call generator%set_constraints (.false., .false., .true., .true.)
-      call generator%setup_if_table ()
+      call generator%setup_if_table (model)
       call generator%generate (prt_strings_in, prt_strings_out)
       write (u, "(A)") "* Additional radiation: "
       write (u, "(A)") "* Incoming: "
@@ -3095,7 +3150,7 @@ end module radiation_generator_uti
     type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
-    type(model_t), pointer :: radiation_model => null ()
+    type(model_t), pointer :: model => null ()
     integer, parameter :: max_multiplicity = 10
     type(string_t), dimension(:), allocatable :: prt_last
 
@@ -3103,14 +3158,13 @@ end module radiation_generator_uti
     write (u, "(A)") "* Purpose: Test the repeated application of a radiation generator splitting"
     write (u, "(A)") "* Only Final state emissions! "
     write (u, "(A)")
-    write (u, "(A)") "* Loading radiation model: SM_rad.mdl"
+    write (u, "(A)") "* Loading radiation model: SM.mdl"
 
     call syntax_model_file_init ()
     call os_data_init (os_data)
     call model_list%read_model &
-       (var_str ("SM_rad"), var_str ("SM_rad.mdl"), &
-        os_data, radiation_model)
-    call generator%set_radiation_model (radiation_model)
+       (var_str ("SM"), var_str ("SM.mdl"), &
+        os_data, model)
     write (u, "(A)") "* Success"
 
     allocate (pdg_in (2))
@@ -3131,7 +3185,7 @@ end module radiation_generator_uti
     call write_separator (u)
     write (u, "(A)") "Generate higher-multiplicity states"
     write (u, "(A,I0)") "Desired multiplicity: ", max_multiplicity
-    call generator%generate_multiple (max_multiplicity)
+    call generator%generate_multiple (max_multiplicity, model)
     call generator%prt_queue%write (u)
     call write_separator (u)
     write (u, "(A,I0)") "Number of higher-multiplicity states: ", generator%prt_queue%n_lists
@@ -11497,6 +11551,8 @@ module models
   use expr_base
   use eval_trees
 
+  use ttv_formfactors, only: init_parameters
+
 <<Standard module head>>
 
 <<Models: public>>
@@ -12229,7 +12285,24 @@ which also take care of the building a new variable list.
        call model%real_parameters_to_c_array (par)
        call model%init_external_parameters (par)
        call model%real_parameters_from_c_array (par)
+       if (model%get_name() == var_str ("SM_tt_threshold")) &
+            call set_threshold_parameters ()
     end if
+  contains
+    subroutine set_threshold_parameters ()
+      real(default) :: mpole, wtop
+      !!! !!! !!! Workaround for OS-X and BSD which do not load
+      !!! !!! !!! the global values created previously. Therefore
+      !!! !!! !!! a second initialization for the threshold model,
+      !!! !!! !!! where M1S is required to compute the top mass.
+      call init_parameters (mpole, wtop, &
+           par(20), par(21), par(22), &
+           par(19), par(39), par(4), par(1), &
+           par(2), par(10), par(24), par(25), &
+           par(23), par(26), par(27), par(29), &
+           par(30), par(31), par(32), par(33), &
+           par(36) > 0._default, par(28))
+    end subroutine set_threshold_parameters
   end subroutine model_parameters_update
 
 @ %def model_parameters_update
