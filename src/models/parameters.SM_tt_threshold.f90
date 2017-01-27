@@ -347,7 +347,7 @@ contains
   pure function top_width_nlo (minv) result (w)
     real(default) :: w
     real(default), intent(in) :: minv
-    w = top_width_sm_qcd_nlo_jb (one / alphaemi, sinthw, minv, &
+    w = top_width_sm_qcd_nlo_jk (one / alphaemi, sinthw, minv, &
          mass(24), mass(5), AS_HARD) + wt_inv
   end function top_width_nlo
 
