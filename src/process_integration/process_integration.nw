@@ -3180,7 +3180,7 @@ from the library.
                select type (pcm => process%pcm)
                type is (pcm_nlo_t)
                   if (component%component_type /= COMP_REAL_FIN) &
-                     n_entry(i) = n_entry(i) + pcm%region_data%get_n_phs ()
+                       n_entry(i) = n_entry(i) + pcm%region_data%get_n_phs ()
                end select
             end if
          end if
@@ -3200,9 +3200,9 @@ from the library.
            allocate (component%i_term (n_entry(i)))
            do j = 1, n_entry(i)
               setup_subtraction_component = &
-                 (component%get_nlo_type () == NLO_REAL &
-                  .and. component%component_type /= COMP_REAL_FIN &
-                  .and. j == n_entry(i))
+                   (component%get_nlo_type () == NLO_REAL &
+                    .and. component%component_type /= COMP_REAL_FIN &
+                    .and. j == n_entry(i))
               i_term = k + j
               component%i_term(j) = i_term
               process%term(i_term)%i_sub = k + n_entry(i)
@@ -9841,10 +9841,11 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 <<Kinematics: kinematics: TBP>>=
   procedure :: evaluate_radiation => kinematics_evaluate_radiation
 <<Kinematics: procedures>>=
-  subroutine kinematics_evaluate_radiation (k, p_in, p_out)
+  subroutine kinematics_evaluate_radiation (k, p_in, p_out, success)
     class(kinematics_t), intent(inout) :: k
     type(vector4_t), intent(in), dimension(:) :: p_in
     type(vector4_t), intent(out), dimension(:), allocatable :: p_out
+    logical, intent(out) :: success
     type(phs_point_t) :: p
     type(vector4_t), dimension(:), allocatable :: p_born
     real(default) :: xi_max_offshell, xi_offshell, y_offshell, jac_rand_dummy, phi
@@ -9886,6 +9887,7 @@ Relevant for using the proper momenta input for BLHA matrix elements.
                 call phs%generate_fsr (k%emitter, k%i_phs, p)
              end if
           end if
+          success = check_scalar_products (p%p)
           if (debug_active (D_SUBTRACTION)) then
              call msg_debug (D_SUBTRACTION, "Real phase-space: ")
              call p%write ()
@@ -9893,6 +9895,7 @@ Relevant for using the proper momenta input for BLHA matrix elements.
           p_out = p%p
        else
           allocate (p_out (size (p_in))); p_out = p_in
+          success = .true.
        end if
     end select
   contains
@@ -10552,10 +10555,11 @@ choose to calculate all terms at once together with the seed kinematics, use
   procedure :: compute_hard_kinematics => &
        term_instance_compute_hard_kinematics
 <<Instances: procedures>>=
-  subroutine term_instance_compute_hard_kinematics (term, skip_term)
+  subroutine term_instance_compute_hard_kinematics (term, skip_term, success)
     class(term_instance_t), intent(inout) :: term
     integer, intent(in), optional :: skip_term
     type(vector4_t), dimension(:), allocatable :: p
+    logical, intent(out) :: success
     if (allocated (term%core_state)) &
        call term%core_state%reset_new_kinematics ()
     if (present (skip_term)) then
@@ -10563,7 +10567,7 @@ choose to calculate all terms at once together with the seed kinematics, use
     end if
 
     if (term%nlo_type == NLO_REAL .and. term%k_term%emitter >= 0) then
-       call term%k_term%evaluate_radiation (term%p_seed, p)
+       call term%k_term%evaluate_radiation (term%p_seed, p, success)
        select type (config => term%pcm_instance%config)
        type is (pcm_nlo_t)
           if (config%dalitz_plot%active) &
@@ -10571,8 +10575,10 @@ choose to calculate all terms at once together with the seed kinematics, use
        end select
     else if (is_subtraction_component (term%k_term%emitter, term%nlo_type)) then
        call term%k_term%modify_momenta_for_subtraction (term%p_seed, p)
+       success = .true.
     else
        allocate (p (size (term%p_seed))); p = term%p_seed
+       success = .true.
     end if
     call term%int_hard%set_momenta (p)
   end subroutine term_instance_compute_hard_kinematics
@@ -12317,12 +12323,19 @@ components, from the seed kinematics.
     class(process_instance_t), intent(inout) :: instance
     integer, intent(in), optional :: skip_term
     integer :: i
+    logical :: success
+    success = .true.
     if (instance%evaluation_status >= STAT_SEED_KINEMATICS) then
        do i = 1, size (instance%term)
           if (instance%term(i)%active) &
-             call instance%term(i)%compute_hard_kinematics (skip_term)
+             call instance%term(i)%compute_hard_kinematics (skip_term, success)
+          if (.not. success) exit
        end do
-       instance%evaluation_status = STAT_HARD_KINEMATICS
+       if (success) then
+          instance%evaluation_status = STAT_HARD_KINEMATICS
+       else
+          instance%evaluation_status = STAT_FAILED_KINEMATICS
+       end if
     end if
   end subroutine process_instance_compute_hard_kinematics
 
@@ -12562,17 +12575,21 @@ terms, iterating over all active process components.
 
     subroutine set_born_sqmes (term)
       type(term_instance_t), intent(inout) :: term
-      integer :: i_flv
+      integer :: i_flv, i_born
       real(default) :: sqme
-      do i_flv = 1, term%connected%trace%get_n_matrix_elements ()
-         sqme = real (term%connected%trace%get_matrix_element (i_flv))
-         select case (term%nlo_type)
-         case (NLO_REAL)
-            term%pcm_instance%real_sub%sqme_born (i_flv) = sqme
-         case (NLO_MISMATCH)
-            term%pcm_instance%soft_mismatch%sqme_born (i_flv) = sqme
-         end select
-      end do
+      select type (config => instance%pcm%config)
+      type is (pcm_nlo_t)
+         do i_flv = 1, term%connected%trace%get_n_matrix_elements ()
+            i_born = config%region_data%get_underlying_born_index (i_flv)
+            sqme = real (term%connected%trace%get_matrix_element (i_born))
+            select case (term%nlo_type)
+            case (NLO_REAL)
+               term%pcm_instance%real_sub%sqme_born (i_born) = sqme
+            case (NLO_MISMATCH)
+               term%pcm_instance%soft_mismatch%sqme_born (i_born) = sqme
+            end select
+         end do
+      end select
     end subroutine set_born_sqmes
   end subroutine process_instance_evaluate_trace
 
