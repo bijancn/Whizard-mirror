@@ -2004,16 +2004,16 @@ auto-allocation bug.
     integer, dimension(:), allocatable :: uborn_group
     class(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: uborn_index
-    integer :: alr, n_uborn, i_uborn
+    integer :: alr, n_uborn, i_born
     n_uborn = reg_data%get_uborn_group_size (uborn_index)
     if (n_uborn > 0) then
        allocate (uborn_group (n_uborn))
-       i_uborn = 1
+       i_born = 1
        do alr = 1, reg_data%n_regions
           if (reg_data%regions(alr)%i_res > 1) cycle
           if (reg_data%regions(alr)%uborn_index == uborn_index) then
-             uborn_group (i_uborn) = alr
-             i_uborn = i_uborn + 1
+             uborn_group (i_born) = alr
+             i_born = i_born + 1
           end if
        end do
     end if
@@ -2992,7 +2992,7 @@ writes it to a file.
      flst_title = '(A' // flst_title_format(reg_data%n_legs_born) // ')'
      write (u, char (flst_title), advance = 'no') 'flst_born'
      call write_vline (u)
-     write (u, '(A7)') 'i_uborn'
+     write (u, '(A7)') 'i_born'
      do j = 1, reg_data%n_regions
         write (u, '(I3)', advance = 'no') j
         call reg_data%regions(j)%write (u, maxnregions)
@@ -5648,7 +5648,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
     real(default) :: sqme_mismatch
     class(soft_mismatch_t), intent(inout) :: soft_mismatch
     real(default), intent(in) :: alpha_s
-    integer :: alr, i_uborn, emitter, i_res, i_phs, i_con
+    integer :: alr, i_born, emitter, i_res, i_phs, i_con
     real(default) :: xi, y, q2, s
     real(default) :: E_gluon
     type(vector4_t) :: p_em
@@ -5685,7 +5685,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
            emitter = soft_mismatch%reg_data%regions(alr)%emitter
            p_em = p_born (emitter)
            i_res = soft_mismatch%reg_data%regions(alr)%i_res
-           i_uborn = soft_mismatch%reg_data%regions(alr)%uborn_index
+           i_born = soft_mismatch%reg_data%regions(alr)%uborn_index
 
            call print_debug_alr ()
 
@@ -5701,12 +5701,12 @@ These inputs are then used to get the numerical value of the soft mismatch.
            end select
 
            sqme_soft = soft_mismatch%sub_soft%compute &
-                (p_born, soft_mismatch%sqme_born_cc(:,:,i_uborn), y, &
+                (p_born, soft_mismatch%sqme_born_cc(:,:,i_born), y, &
                 q2, alpha_s, alr, emitter, i_res)
 
            sqme_alr = soft_mismatch%compute (alr, xi, y, p_em, &
                 real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
-                soft_mismatch%sqme_born(i_uborn), sqme_soft, &
+                soft_mismatch%sqme_born(i_born), sqme_soft, &
                 alpha_s, s)
 
            call msg_debug (D_MISMATCH, 'sqme_alr: ', sqme_alr)
@@ -5719,7 +5719,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
       if (debug_active (D_MISMATCH)) then
          print *, 'alr: ', alr
          print *, 'i_phs: ', i_phs, 'i_con: ', i_con, 'i_res: ', i_res
-         print *, 'emitter: ', emitter, 'i_uborn: ', i_uborn
+         print *, 'emitter: ', emitter, 'i_born: ', i_born
          print *, 'emitter momentum: ', p_em%p
          print *, 'resonance momentum: ', &
             soft_mismatch%real_kinematics%xi_ref_momenta(i_con)%p
@@ -6035,7 +6035,7 @@ necessary to expand with $z$ once.
     real(default), dimension(:,:), allocatable :: sqme_real_non_sub
     real(default), dimension(:), allocatable :: sqme_born
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
-    complex(default), dimension(:), pointer :: sqme_born_sc => null ()
+    complex(default), dimension(:), allocatable :: sqme_born_sc
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
     logical, dimension(:), allocatable :: sc_required
@@ -6056,7 +6056,7 @@ necessary to expand with $z$ once.
   subroutine real_subtraction_init (rsub, reg_data)
     class(real_subtraction_t), intent(inout), target :: rsub
     type(region_data_t), intent(in), target :: reg_data
-    integer :: alr, i_uborn
+    integer :: alr, i_born
     call msg_debug (D_SUBTRACTION, "real_subtraction_init")
     call msg_debug (D_SUBTRACTION, "n_in", reg_data%n_in)
     call msg_debug (D_SUBTRACTION, "nlegs_born", reg_data%n_legs_born)
@@ -6072,10 +6072,12 @@ necessary to expand with $z$ once.
     allocate (rsub%sqme_real_non_sub (reg_data%n_flv_real, reg_data%n_phs))
     allocate (rsub%sc_required (reg_data%n_regions))
     do alr = 1, reg_data%n_regions
-       i_uborn = reg_data%regions(alr)%uborn_index
+       i_born = reg_data%regions(alr)%uborn_index
        rsub%sc_required(alr) = &
-          reg_data%flv_born(i_uborn)%count_particle (GLUON) > 0
+            reg_data%flv_born(i_born)%count_particle (GLUON) > 0
     end do
+    if (rsub%requires_spin_correlations ()) &
+         allocate (rsub%sqme_born_sc (reg_data%n_flv_born))
 
     call rsub%sub_soft%init (reg_data)
     call rsub%sub_coll%init (reg_data%n_regions, reg_data%n_in)
@@ -6399,11 +6401,11 @@ the corresponding jacobians.
     subroutine write_computation_status (passed, total, region_type)
        integer, intent(in), optional :: passed, total
        character(*), intent(in), optional :: region_type
-       integer :: i_uborn
+       integer :: i_born
        integer :: u
        real(default) :: xi
        u = given_output_unit (); if (u < 0) return
-       i_uborn = rsub%reg_data%regions(alr)%uborn_index
+       i_born = rsub%reg_data%regions(alr)%uborn_index
        xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
        write (u,'(A,I2)') 'rsub%purpose: ', rsub%purpose
        write (u,'(A,I3)') 'alr: ', alr
@@ -6411,7 +6413,7 @@ the corresponding jacobians.
        write (u,'(A,I3)') 'i_phs: ', i_phs
        write (u,'(A,F6.4)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
        write (u,'(A,F6.4,2X,A,F6.4)') 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
-       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
+       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_born)
        write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
        write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
        write (u,'(A,ES16.9)')  'sqme_coll: ', sqme_coll
@@ -6537,11 +6539,11 @@ the corresponding jacobians.
 
     subroutine write_computation_status (unit)
        integer, intent(in), optional :: unit
-       integer :: i_uborn
+       integer :: i_born
        integer :: u
        real(default) :: xi
        u = given_output_unit (unit); if (u < 0) return
-       i_uborn = rsub%reg_data%regions(alr)%uborn_index
+       i_born = rsub%reg_data%regions(alr)%uborn_index
        xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
        write (u,'(A,I2)') 'alr: ', alr
        write (u,'(A,I2)') 'emitter: ', emitter
@@ -6549,7 +6551,7 @@ the corresponding jacobians.
        print *, 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
        print *, 'xb1: ', rsub%isr_kinematics%x(1), 'xb2: ', rsub%isr_kinematics%x(2)
        print *, 'random jacobian: ', rsub%real_kinematics%jac_rand (i_phs)
-       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
+       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_born)
        write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
        write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
        write (u,'(A,ES16.9)')  'sqme_coll_plus: ', sqme_coll_plus
@@ -6798,7 +6800,7 @@ to be more consistent with the evaluation of the Born phase space.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
-    integer :: i_xi_ref, i_uborn
+    integer :: i_xi_ref, i_born
     real(default) :: q2
     type(vector4_t), dimension(:), allocatable :: p_born
     associate (real_kinematics => rsub%real_kinematics)
@@ -6820,9 +6822,9 @@ to be more consistent with the evaluation of the Born phase space.
              call rsub%sub_soft%create_softvec_isr &
                 (real_kinematics%y_soft(i_phs), real_kinematics%phi)
           end if
-          i_uborn = rsub%reg_data%regions(alr)%uborn_index
+          i_born = rsub%reg_data%regions(alr)%uborn_index
           sqme_soft = rsub%sub_soft%compute &
-               (p_born, rsub%sqme_born_cc(:,:,i_uborn), &
+               (p_born, rsub%sqme_born_cc(:,:,i_born), &
                real_kinematics%y(i_phs), &
                q2, alpha_s, alr, emitter, i_res)
        else
@@ -7030,6 +7032,18 @@ when dividing out the Born contribution.
   end subroutine real_subtraction_scale_pdfs_collinear
 
 @ %def real_subtraction_scale_pdfs_collinear
+@
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: requires_spin_correlations => &
+       real_subtraction_requires_spin_correlations
+<<real subtraction: procedures>>=
+  function real_subtraction_requires_spin_correlations (rsub) result (val)
+    logical :: val
+    class(real_subtraction_t), intent(in) :: rsub
+    val = any (rsub%sc_required)
+  end function real_subtraction_requires_spin_correlations
+
+@ %def real_subtraction_requires_spin_correlations
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: final => real_subtraction_final
@@ -7687,7 +7701,7 @@ and virtual counterterms.
     class(nlo_color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(in) :: reg_data
     integer, intent(in), dimension(:) :: flavor_indices, color_indices
-    integer :: i, i_uborn, n_flv
+    integer :: i, i_born, n_flv
     integer, dimension(N_MAX_FLV) :: checked_uborns
     integer, dimension(:), allocatable :: i_flv, i_limit
     type(color_index_list_t), dimension(:), allocatable :: i_col
@@ -7695,13 +7709,13 @@ and virtual counterterms.
     call evaluate_colors (n_flv, i_flv, i_limit, i_col)
     checked_uborns = 0
     do i = 1, size (i_flv)
-       i_uborn = reg_data%get_underlying_born_index (i_flv(i))
-       if (.not. any (checked_uborns == i_uborn)) then
+       i_born = reg_data%get_underlying_born_index (i_flv(i))
+       if (.not. any (checked_uborns == i_born)) then
           if (.not. allocated (color_data%included_color_structures)) then
              allocate (color_data%included_color_structures (size (i_col(i)%col)))
              color_data%included_color_structures = i_col(i)%col
           end if
-          checked_uborns(i) = i_uborn
+          checked_uborns(i) = i_born
        end if
     end do
   contains
