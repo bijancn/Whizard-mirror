@@ -1191,11 +1191,11 @@ there is only a soft singularity if the radiated parton becomes soft.
     real(default) :: val
     real(default) :: E_rad, E_em
     if (region%double_fsr) then
-      E_em = energy (p(region%emitter))
-      E_rad = energy (p(region%flst_real%get_nlegs()))
-      val = two * E_em / (E_em + E_rad)
+       E_em = energy (p(region%emitter))
+       E_rad = energy (p(region%flst_real%get_nlegs()))
+       val = two * E_em / (E_em + E_rad)
     else
-      val = one
+       val = one
     end if
   end function singular_region_double_fsr_factor
 
@@ -2136,12 +2136,14 @@ this point, the flavor array should be rearranged in such a way that
 the emitted particle is at the last position of
 the flavor structure list.
 <<fks regions: reg data: TBP>>=
-  procedure :: get_svalue => region_data_get_svalue
+  generic :: get_svalue => get_svalue_last_pos, get_svalue_ij
+  procedure :: get_svalue_last_pos => region_data_get_svalue_last_pos
+  procedure :: get_svalue_ij => region_data_get_svalue_ij
 <<fks regions: procedures>>=
-  function region_data_get_svalue (reg_data, p, alr, emitter, i_res) result (sval)
+  function region_data_get_svalue_ij (reg_data, p, alr, i, j, i_res) result (sval)
     class(region_data_t), intent(inout) :: reg_data
     type(vector4_t), intent(in), dimension(:) :: p
-    integer, intent(in) :: alr, emitter
+    integer, intent(in) :: alr, i, j
     integer, intent(in) :: i_res
     real(default) :: sval
     associate (map => reg_data%fks_mapping)
@@ -2151,9 +2153,18 @@ the flavor structure list.
           map%i_con = reg_data%alr_to_i_contributor (alr)
        end select
        map%pseudo_isr = reg_data%regions(alr)%pseudo_isr
-       sval = map%svalue (p, emitter, reg_data%n_legs_real, i_res) * map%normalization_factor
+       sval = map%svalue (p, i, j, i_res) * map%normalization_factor
     end associate
-  end function region_data_get_svalue
+  end function region_data_get_svalue_ij
+
+  function region_data_get_svalue_last_pos (reg_data, p, alr, emitter, i_res) result (sval)
+    class(region_data_t), intent(inout) :: reg_data
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in) :: alr, emitter
+    integer, intent(in) :: i_res
+    real(default) :: sval
+    sval = reg_data%get_svalue (p, alr, emitter, reg_data%n_legs_real, i_res)
+  end function region_data_get_svalue_last_pos
 
 @ %def region_data_get_svalue
 @ The same as above, but for the soft limit.
@@ -6233,14 +6244,21 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
   contains
     subroutine check_s_alpha_consistency ()
       real(default) :: sum_s_alpha, sum_s_alpha_soft
-      sum_s_alpha = zero; sum_s_alpha_soft = zero
-      do alr = 1, rsub%reg_data%n_regions
-         call rsub%evaluate_emitter_region_debug (alr, emitter, i_phs, &
-              sum_s_alpha, sum_s_alpha_soft)
-      end do
+      integer :: i_reg, i1, i2
       call msg_debug2 (D_SUBTRACTION, "Check consistency of s_alpha: ")
-      print *, 'sum_s_alpha: ', sum_s_alpha
-      print *, 'sum_s_alpha_soft: ', sum_s_alpha_soft
+      do i_reg = 1, rsub%reg_data%n_regions
+         sum_s_alpha = zero; sum_s_alpha_soft = zero
+         do alr = 1, rsub%reg_data%regions(i_reg)%nregions
+            call rsub%reg_data%regions(i_reg)%ftuples(alr)%get (i1, i2)
+            print *, 'alr: ', alr, 'i1: ', i1, 'i2: ', i2
+            call rsub%evaluate_emitter_region_debug (i_reg, alr, i1, i2, i_phs, &
+                 sum_s_alpha, sum_s_alpha_soft)
+         end do
+         print *, 'region: ', i_reg
+         print *, 'sum_s_alpha: ', sum_s_alpha
+         print *, 'sum_s_alpha_soft: ', sum_s_alpha_soft
+      end do
+      !stop
     end subroutine check_s_alpha_consistency
   end subroutine real_subtraction_compute
 
@@ -6274,10 +6292,10 @@ region, and also if resonances are used.
   procedure :: evaluate_emitter_region_debug &
        => real_subtraction_evaluate_emitter_region_debug
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_evaluate_emitter_region_debug (rsub, alr, emitter, &
+  subroutine real_subtraction_evaluate_emitter_region_debug (rsub, i_reg, alr, i1, i2, &
        i_phs, sum_s_alpha, sum_s_alpha_soft)
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: alr, emitter, i_phs
+    integer, intent(in) :: i_reg, alr, i1, i2, i_phs
     real(default), intent(inout) :: sum_s_alpha, sum_s_alpha_soft
     type(vector4_t), dimension(:), allocatable :: p_real, p_born
     integer :: this_emitter, i_res
@@ -6290,15 +6308,17 @@ region, and also if resonances are used.
        p_real = rsub%real_kinematics%p_real_cms%get_momenta (i_phs)
        p_born = rsub%real_kinematics%p_born_cms%get_momenta (1)
     end if
-    i_res = rsub%get_i_res (alr)
-    this_emitter = rsub%reg_data%regions(alr)%emitter
-    sum_s_alpha = sum_s_alpha + rsub%reg_data%get_svalue (p_real, alr, this_emitter, i_res)
+    !i_res = rsub%get_i_res (alr)
+    i_res = rsub%get_i_res (i_reg)
+    !this_emitter = rsub%reg_data%regions(alr)%emitter
+    sum_s_alpha = sum_s_alpha + rsub%reg_data%get_svalue (p_real, alr, i1, i2, i_res)
     associate (r => rsub%real_kinematics)
        call rsub%sub_soft%create_softvec_fsr (p_born, r%y_soft(i_phs), r%phi, &
-            emitter, r%xi_ref_momenta(rsub%sub_soft%i_xi_ref (alr, i_phs)))
+            i1, r%xi_ref_momenta(rsub%sub_soft%i_xi_ref (i_reg, i_phs)))
     end associate
     sum_s_alpha_soft = sum_s_alpha_soft + rsub%reg_data%get_svalue_soft &
-         (p_born, rsub%sub_soft%p_soft, alr, this_emitter, i_res)
+         !(p_born, rsub%sub_soft%p_soft, alr, this_emitter, i_res)
+         (p_born, rsub%sub_soft%p_soft, alr, i1, i_res)
   end subroutine real_subtraction_evaluate_emitter_region_debug
 
 @ %def real_subtraction_evaluate_emitter_region_debug
