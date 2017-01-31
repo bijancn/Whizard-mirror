@@ -645,10 +645,10 @@ permutation of the final-state particles
     equiv = .true.
     if (n /= size (flv2%flst)) then
        call msg_fatal &
-          ('flv_structure_equivalent: flavor arrays do not have equal lengths')
+            ('flv_structure_equivalent: flavor arrays do not have equal lengths')
     else if (flv1%n_in /= flv2%n_in) then
        call msg_fatal &
-          ('flv_structure_equivalent: flavor arrays do not have equal n_in')
+            ('flv_structure_equivalent: flavor arrays do not have equal n_in')
     else
        allocate (present(n))
        allocate (checked(n))
@@ -855,11 +855,15 @@ flavor array
     integer, intent(in), optional :: unit
     integer :: i, u
     u = given_output_unit (unit); if (u < 0) return
-    write (u, '(A1)',advance = 'no') '['
-    do i = 1, size(flv%flst) - 1
-      write (u, '(I3,A1)', advance = 'no') flv%flst(i), ','
-    end do
-    write (u, '(I3,A1)') flv%flst(i), ']'
+    if (allocated (flv%flst)) then
+       write (u, '(A1)',advance = 'no') '['
+       do i = 1, size(flv%flst) - 1
+          write (u, '(I3,A1)', advance = 'no') flv%flst(i), ','
+       end do
+       write (u, '(I3,A1)') flv%flst(i), ']'
+    else
+       write (u, '(A)') '[not allocated]'
+    end if
   end subroutine flv_structure_write
 
 @ %def flv_structure_write
@@ -921,6 +925,18 @@ structure if the particle at position \texttt{emitter} is removed
   end subroutine flv_structure_init_mass_and_color
 
 @ %def flv_structure_init_mass_and_color
+@
+<<fks regions: flv structure: TBP>>=
+  procedure :: get_last_two => flv_structure_get_last_two
+<<fks regions: procedures>>=
+  function flv_structure_get_last_two (flv, n) result (flst_last)
+    integer, dimension(2) :: flst_last
+    class(flv_structure_t), intent(in) :: flv
+    integer, intent(in) :: n
+    flst_last = [flv%flst(n - 1), flv%flst(n)]
+  end function flv_structure_get_last_two
+
+@ %def flv_structure_get_last_two
 @
 <<fks regions: flv structure: TBP>>=
   procedure :: final => flv_structure_final
@@ -2321,7 +2337,7 @@ of the present one is increased.
          (reg_data, ftuples, emitter, flv_alr)
     class(region_data_t), intent(inout) :: reg_data
     type(ftuple_list_t), intent(inout), dimension(:), allocatable :: ftuples
-    integer :: n_valid_ftuples
+    integer :: n_independent_flv
     integer, intent(in), dimension(:) :: emitter
     type(flv_structure_t), intent(in), dimension(:) :: flv_alr
     type(flv_structure_t), dimension(:), allocatable :: flv_uborn, flv_alr2
@@ -2330,7 +2346,8 @@ of the present one is increased.
     integer :: nregions, maxregions
     integer, dimension(:,:), allocatable :: perm_list
     integer, dimension(:), allocatable :: index
-    integer :: i, j, k, l
+    integer :: i, j, k
+    integer :: i_flv
     integer :: nlegs
     logical :: equiv
     integer :: i_first, j_first
@@ -2350,12 +2367,12 @@ of the present one is increased.
     allocate (k_index (maxregions))
 
     mult = 0
-    n_valid_ftuples = 0
+    n_independent_flv = 0
     do i = 1, size (ftuples)
        if (ftuples(i)%get_n_tuples() > 0) &
-          n_valid_ftuples = n_valid_ftuples + 1
+          n_independent_flv = n_independent_flv + 1
     end do
-    allocate (ftuple_limits (n_valid_ftuples))
+    allocate (ftuple_limits (n_independent_flv))
 
     j = 1
     do i = 1, size (ftuples)
@@ -2365,9 +2382,9 @@ of the present one is increased.
        end if
     end do
     if (.not. (sum (ftuple_limits) == maxregions)) &
-       call msg_fatal ("Too many regions!")
+         call msg_fatal ("Too many regions!")
     k = 1
-    do j = 1, n_valid_ftuples
+    do j = 1, n_independent_flv
        do i = 1, ftuple_limits(j)
           region_to_ftuple(k) = i
           k = k + 1
@@ -2376,8 +2393,8 @@ of the present one is increased.
     i_first = 1
     j_first = 1
     j = 1
-    SCAN_REGIONS: do l = 1, n_valid_ftuples
-       SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) - 1
+    SCAN_FLAVORS: do i_flv = 1, n_independent_flv
+       SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (i_flv) - 1
           equiv = .false.
           if (i == i_first) then
              flv_alr2(j) = flv_alr(i)
@@ -2391,21 +2408,20 @@ of the present one is increased.
              !!! Check for equivalent flavor structures
              do k = j_first, j - 1
                 if (emitter(i) == emitter(k) .and. emitter(i) > reg_data%n_in) then
-                   if (flv_alr(i) == flv_alr2(k) .and. &
-                      flv_alr(i)%flst(nlegs - 1) == flv_alr2(k)%flst(nlegs - 1) &
-                      .and. flv_alr(i)%flst(nlegs) == flv_alr2(k)%flst(nlegs)) then
+                   if (flv_alr(i) == flv_alr2(k) .and. check_fs_splitting &
+                        (flv_alr(i)%get_last_two(nlegs), flv_alr2(k)%get_last_two(nlegs))) then
                       mult(k) = mult(k) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
-                         (k_index(k), region_to_ftuple(i))
+                           (k_index(k), region_to_ftuple(i))
                       exit
                    end if
                 else if (emitter(i) == emitter(k) .and. emitter(i) <= reg_data%n_in) then
                    if (flv_alr(i) == flv_alr2(k)) then
                       mult(k) = mult(k) + 1
                       equiv = .true.
-                      call ftuples (region_to_index(ftuples,i))%set_equiv &
-                         (k_index(k), region_to_ftuple(i))
+                      call ftuples (region_to_index(ftuples, i))%set_equiv &
+                           (k_index(k), region_to_ftuple(i))
                       exit
                    end if
                 end if
@@ -2421,9 +2437,9 @@ of the present one is increased.
              end if
           end if
        end do SCAN_FTUPLES
-       i_first = i_first + ftuple_limits(l)
+       i_first = i_first + ftuple_limits(i_flv)
        j_first = j_first + j - 1
-    end do SCAN_REGIONS
+    end do SCAN_FLAVORS
     nregions = j - 1
     allocate (reg_data%regions (nregions))
     reg_data%n_regions = nregions
@@ -2460,7 +2476,16 @@ of the present one is increased.
           end if
        end do
     end associate
-
+  contains
+    function check_fs_splitting (flv1, flv2) result (valid)
+      logical :: valid
+      integer, intent(in), dimension(2) :: flv1, flv2
+      if (flv1(1) + flv1(2) == 0) then
+         valid = abs(flv1(1)) == abs(flv2(1)) .and. abs(flv1(2)) == abs(flv2(2))
+      else
+         valid = flv1(1) == flv2(1) .and. flv1(2) == flv2(2)
+      end if
+    end function check_fs_splitting
   end subroutine region_data_init_singular_regions
 
 @ %def region_data_init_singular_regions
