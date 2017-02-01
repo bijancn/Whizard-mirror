@@ -393,36 +393,44 @@ contains
     owf_b_6 = v (mass(5), p_ofs(6), s(THR_POS_BBAR))
   end subroutine compute_decay_owfs
 
-  function calculate_blob (ffi, p12, ptop_ofs, h_t, h_tbar, ptop_ons) result (amp)
+  function calculate_blob (ffi, p12, ptop_ofs, h_t, h_tbar, ptop_ons, tree_contrib) result (amp)
     complex(default) :: amp
     integer, intent(in) :: ffi
     type(momentum), intent(in) :: p12
     type(momentum), intent(in), dimension(2) :: ptop_ofs
     type(momentum), intent(in), dimension(2), optional :: ptop_ons
     integer, intent(in), optional :: h_t, h_tbar
+    logical, intent(in), optional :: tree_contrib
     complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
-    real(default) :: mtop, top_width, extra_tree
-    integer :: u
     type(momentum) :: ptop, ptopbar
+    real(default) :: mtop, top_width, add_tree
+    integer :: u
+    logical :: tc
     u = output_unit
-    if (threshold%settings%interference .or. threshold%settings%force_minus_one) then
-       extra_tree = zero
+    if (present (tree_contrib)) then
+       tc = tree_contrib
     else
-       extra_tree = one
+       tc = .not. (threshold%settings%interference .or. &
+            threshold%settings%force_minus_one)
+    end if
+    if (tc) then
+       add_tree = one
+    else
+       add_tree = zero
     end if
     if (process_mode == PROC_MODE_TT) then
-       blob_Z_vec = gncup(1) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + extra_tree)
-       blob_Z_ax = gncup(2) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2) + extra_tree)
+       blob_Z_vec = gncup(1) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + add_tree)
+       blob_Z_ax = gncup(2) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2) + add_tree)
        if (.not. threshold%settings%Z_disabled) then
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
        else
           amp = zero
        end if
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
-            (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + extra_tree)
+            (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + add_tree)
     else if (process_mode == PROC_MODE_WBWB) then
-       ttv_vec = ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1, ffi) + extra_tree
-       ttv_ax = ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2, ffi) + extra_tree
+       ttv_vec = ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1, ffi) + add_tree
+       ttv_ax = ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2, ffi) + add_tree
        blob_Z_vec = gncup(1) * ttv_vec
        blob_Z_ax = gncup(2) * ttv_ax
        mtop = ttv_mtpole (p12 * p12)
@@ -534,11 +542,12 @@ contains
          f_vlf (gccq33, owf_Wm_4, owf_b_6)
   end function anti_top_decay_born
 
-  subroutine compute_born (n_tot, p_ofs, ffi, amp)
+  subroutine compute_born (n_tot, p_ofs, ffi, amp, tree_contrib)
     integer, intent(in) :: n_tot
     real(default), dimension(0:3,*), intent(in) :: p_ofs
     integer, intent(in) :: ffi
     complex(default), dimension(:), intent(inout) :: amp
+    logical, intent(in), optional :: tree_contrib
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
     complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
     complex(default) :: propagators
@@ -565,7 +574,7 @@ contains
        else
           call compute_production_owfs (mom_ofs, hi)
           if (process_mode == PROC_MODE_WBWB) call compute_decay_owfs (mom_ofs, hi)
-          amp(hi) = - calculate_blob (ffi, p12, ptop_ofs)
+          amp(hi) = - calculate_blob (ffi, p12, ptop_ofs, tree_contrib=tree_contrib)
        end if
     end do
   contains
@@ -581,7 +590,7 @@ contains
     end subroutine compute_projections
     subroutine compute_partial_matrix_elements ()
       integer :: i
-      production_me = compute_production_me (ffi, mom_ofs, ptop_ofs, ptop_ons)
+      production_me = compute_production_me (ffi, mom_ofs, ptop_ofs, ptop_ons, tree_contrib)
       select case (momentum_mode ())
       case (OFS)
          p_decay = mom_ofs
@@ -926,12 +935,14 @@ contains
     onshell = nearly_equal (mm, m)
   end function check_if_onshell
 
-  function compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons) result (production_me)
+  function compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons, &
+         tree_contrib) result (production_me)
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
     integer, intent(in) :: ffi
     type(momentum), intent(in), dimension(:) :: p_ofs
     type(momentum), intent(in), dimension(2) :: ptop_ofs
     type(momentum), intent(in), dimension(2), optional :: ptop_ons
+    logical, intent(in), optional :: tree_contrib
     type(momentum) :: p12
     integer :: h_t, h_tbar, h_pos, h_el
     p12 = p_ofs(1) + p_ofs(2)
@@ -941,7 +952,7 @@ contains
     do h_el = -1, 1, 2
        call compute_production_owfs (p_ofs, spins = [h_el, h_pos])
        production_me(h_el, h_pos, h_t, h_tbar) = &
-            calculate_blob (ffi, p12, ptop_ofs, h_t, h_tbar, ptop_ons)
+            calculate_blob (ffi, p12, ptop_ofs, h_t, h_tbar, ptop_ons, tree_contrib=tree_contrib)
     end do
     end do
     end do
@@ -1332,8 +1343,8 @@ contains
     select case (FF)
     case (EXPANDED_HARD, EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
             EXPANDED_SOFT_HARD)
-       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF)
-       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
+       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF, tree_contrib=.false.)
+       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF, tree_contrib=.true.)
        amp2 = real (sum (abs2 (amp_no_FF))) + &
             2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
     case (MATCHED)
