@@ -1355,9 +1355,10 @@ contains
           amp2 = real (sum (abs2 (amp_omega_full) + abs2 (amp_with_FF) + &
                2 * real (amp_no_FF * conjg (amp_with_FF))))
        else
-          if (threshold%settings%helicity_approximation%simple .or. &
+          if (threshold%settings%factorized_computation .and. ( &
+               threshold%settings%helicity_approximation%simple .or. &
                threshold%settings%helicity_approximation%extra .or. &
-               threshold%settings%helicity_approximation%ultra) then
+               threshold%settings%helicity_approximation%ultra)) then
              amp2 = real (sum (amp_with_FF))
           else
              amp2 = real (sum (abs2 (amp_with_FF)))
