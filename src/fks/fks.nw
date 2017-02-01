@@ -199,6 +199,7 @@ module fks_regions
   use io_units
 <<Use strings>>
   use constants
+  use permutations
   use diagnostics
   use flavors
   use process_constants
@@ -994,15 +995,14 @@ also be supplied by a symmetry factor, explained below.
   procedure :: init => singular_region_init
 <<fks regions: procedures>>=
   subroutine singular_region_init (sregion, alr, mult, i_res, &
-         flst_real, flst_uborn, flv_born, emitter, ftuples, index)
+         flst_real, flst_uborn, flv_born, emitter, ftuples)
     class(singular_region_t), intent(out) :: sregion
     integer, intent(in) :: alr, mult, i_res
     type(flv_structure_t), intent(in) :: flst_real
     type(flv_structure_t), intent(in) :: flst_uborn
     type(flv_structure_t), dimension(:), intent(in) :: flv_born
     integer, intent(in) :: emitter
-    type(ftuple_list_t), intent(in), dimension(:), target :: ftuples
-    integer, dimension(:), intent(in) :: index
+    type(ftuple_list_t), intent(in), target :: ftuples
     type(ftuple_list_t), pointer :: current_region
     integer :: i, i1, i2, nlegs
     call msg_debug (D_SUBTRACTION, "singular_region_init")
@@ -1013,11 +1013,11 @@ also be supplied by a symmetry factor, explained below.
     sregion%flst_real = flst_real
     sregion%flst_uborn = flst_uborn
     sregion%emitter = emitter
-    sregion%nregions = ftuples (index(alr))%get_n_tuples ()
+    sregion%nregions = ftuples%get_n_tuples ()
     nlegs = size (flst_real%flst)
     allocate (sregion%ftuples (sregion%nregions))
     do i = 1, sregion%nregions
-       current_region => ftuples (index(alr))%get_entry (i)
+       current_region => ftuples%get_entry (i)
        if (.not. associated (current_region%equiv)) then
           call current_region%ftuple%get (i1, i2)
           if (i2 /= nlegs) call current_region%ftuple%set (i1, nlegs)
@@ -1042,10 +1042,8 @@ also be supplied by a symmetry factor, explained below.
             call flv_born(i)%write ()
          end do
          print *, 'emitter =    ', emitter
-         do i = 1, size (ftuples)
-            call ftuples(i)%write ()
-         end do
-         print *, 'index =    ', index
+         print *, 'ftuples: '
+         call ftuples%write ()
       end if
     end subroutine debug_input_values
   end subroutine singular_region_init
@@ -2254,8 +2252,10 @@ are therefore equivalent.
 
     allocate (flst_alr (nreg))
     allocate (emitter (nreg))
-    flst_alr(1 : nreg) = flst_alr_tmp(1 : nreg)
-    emitter(1 : nreg) = emitter_tmp(1 : nreg)
+    flst_alr = flst_alr_tmp(1 : nreg)
+    emitter = emitter_tmp(1 : nreg)
+    deallocate (flst_alr_tmp)
+    deallocate (emitter_tmp)
 
   contains
     subroutine check_final_state_emissions (i_real, i_reg)
@@ -2354,7 +2354,7 @@ of the present one is increased.
     integer, dimension(:), allocatable :: mult
     integer, dimension(:), allocatable :: flst_emitter
     integer :: nregions, maxregions
-    integer, dimension(:,:), allocatable :: perm_list
+    integer, dimension(:,:), allocatable :: perm_list_born, perm_list_real
     integer, dimension(:), allocatable :: index
     integer :: i, j, k
     integer :: i_flv
@@ -2456,17 +2456,23 @@ of the present one is increased.
     do j = 1, nregions
        do i = 1, reg_data%n_flv_born
           if (reg_data%flv_born (i) == flv_uborn (j)) then
-             if (allocated (perm_list)) deallocate (perm_list)
-             call fks_permute_born &
-                (reg_data%flv_born (i), reg_data%n_in, flv_uborn (j), perm_list)
-             call fks_apply_perm (flv_alr2(j), flst_emitter(j), perm_list)
+             if (allocated (perm_list_born)) deallocate (perm_list_born)
+             if (allocated (perm_list_real)) deallocate (perm_list_real)
+             print *, 'Get permutation list: '
+             print *, reg_data%flv_born(i)%flst
+             print *, flv_uborn(j)%flst
+             perm_list_born =  create_flavor_permutation_list &
+                  (reg_data%flv_born(i), flv_uborn(j), reg_data%n_in)
+             call apply_permutations_on_flavors (flv_uborn(j), flst_emitter(j), perm_list_born)
+             call apply_permutations_on_flavors (flv_alr2(j), flst_emitter(j), perm_list_born)
+             perm_list_real = create_flavor_permutation_list &
+                  (reg_data%flv_real(i), flv_alr2(j), reg_data%n_in)
+             call apply_permutations_on_ftuples (ftuples(index(j)), perm_list_real)
+             call apply_permutations_on_ftuples (ftuples(index(j)), perm_list_born)
           end if
        end do
-    end do
-    do i = 1, nregions
-       call reg_data%regions(i)%init (i, mult(i), 0, flv_alr2(i), &
-          flv_uborn(i), reg_data%flv_born, flst_emitter(i), ftuples, &
-          index)
+       call reg_data%regions(j)%init (j, mult(j), 0, flv_alr2(j), &
+          flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuples(index(j)))
     end do
     ! TODO: (bcn 2015-12-15) can this be put in singular_region_init?
     k = 1
@@ -3256,53 +3262,50 @@ position.
 @ %def create_alr
 @ Explain
 <<fks regions: procedures>>=
-  subroutine fks_permute_born (flv_in, n_in, flv_out, perm_list)
-    type(flv_structure_t), intent(in) :: flv_in
+  function create_flavor_permutation_list (flv_in, flv_ref, n_in) result (perm_list)
+    integer, dimension(:,:), allocatable :: perm_list
+    type(flv_structure_t), intent(in) :: flv_in, flv_ref
     integer, intent(in) :: n_in
-    type(flv_structure_t), intent(inout) :: flv_out
-    integer, intent(out), dimension(:,:), allocatable :: perm_list
-    integer, dimension(:,:), allocatable :: perm_list_tmp
-    integer :: n_perms, n_perms_max
     integer :: nlegs
     integer :: flv1, flv2, tmp
-    integer :: i, j, j_min
-    n_perms_max = 100
-    !!! actually (n-1)!, but there seems to be no intrinsic function
-    !!! of this type in fortran
-    if (allocated (perm_list_tmp)) deallocate (perm_list_tmp)
-    allocate (perm_list_tmp (n_perms_max,2))
-    n_perms = 0
-    j_min = n_in + 1
+    integer :: i, j, j_min, i_perm
+    integer, dimension(:,:), allocatable :: perm_list_tmp
+    type(flv_structure_t) :: flv_copy
     nlegs = size (flv_in%flst)
+    flv_copy = flv_ref
+    allocate (perm_list_tmp (factorial (nlegs - n_in - 1), 2))
+    j_min = n_in + 1
+    i_perm = 0
     do i = n_in + 1, nlegs
        flv1 = flv_in%flst(i)
        do j = j_min, nlegs
-          flv2 = flv_out%flst(j)
+          flv2 = flv_copy%flst(j)
           if (flv1 == flv2 .and. i /= j) then
-             n_perms = n_perms + 1
-             tmp = flv_out%flst(i)
-             flv_out%flst(i) = flv2
-             flv_out%flst(j) = tmp
-             perm_list_tmp (n_perms, 1) = j
-             perm_list_tmp (n_perms, 2) = i
+             i_perm = i_perm + 1
+             tmp = flv_copy%flst(i)
+             flv_copy%flst(i) = flv2
+             flv_copy%flst(j) = tmp
+             perm_list_tmp (i_perm, 1) = j
+             perm_list_tmp (i_perm, 2) = i
              j_min = j_min + 1
              exit
           end if
        end do
     end do
-    allocate (perm_list (n_perms, 2))
-    perm_list (1:n_perms, :) = perm_list_tmp (1:n_perms, :)
-  end subroutine fks_permute_born
+    allocate (perm_list (i_perm, 2))
+    perm_list = perm_list_tmp (1 : i_perm, :)
+    deallocate (perm_list_tmp)
+    call flv_copy%final ()
+  end function create_flavor_permutation_list
 
-@ %def fks_permute_born
+@ %def create_flavor_permutation_list
 @ Explain
 <<fks regions: procedures>>=
-  subroutine fks_apply_perm (flv, emitter, perm_list)
+  subroutine apply_permutations_on_flavors (flv, emitter, perm_list)
     type(flv_structure_t), intent(inout) :: flv
     integer, intent(inout) :: emitter
     integer, intent(in), dimension(:,:), allocatable :: perm_list
-    integer :: i
-    integer :: i1, i2
+    integer :: i, i1, i2
     integer :: tmp
     do i = 1, size (perm_list (:,1))
        i1 = perm_list (i,1)
@@ -3312,9 +3315,73 @@ position.
        flv%flst (i2) = tmp
        if (i1 == emitter) emitter = i2
     end do
-  end subroutine fks_apply_perm
+  end subroutine apply_permutations_on_flavors
 
-@ %def fks_apply_perm
+@ %def apply_permutations_on_flavors
+@
+<<fks regions: procedures>>=
+  subroutine apply_permutations_on_ftuples (ftuples, perm_list)
+    type(ftuple_list_t), intent(inout), target :: ftuples
+    integer, intent(in), dimension(:,:) :: perm_list
+    integer :: i, i1, i2
+    integer :: f_i1, f_i2
+    integer :: tmp
+    type(ftuple_list_t), pointer :: current_ftuple => null ()
+    logical, dimension(2) :: mask
+    integer, dimension(2) :: other_index = [2,1]
+    integer, dimension(2) :: i_perm, i_ftuple
+    do i = 1, size (perm_list (:,1))
+      i1 = perm_list (i,1)
+      i2 = perm_list (i,2)
+      current_ftuple => ftuples
+      do
+         call current_ftuple%ftuple%get (f_i1, f_i2)
+         if (f_i1 == i1) then
+            f_i1 = i2
+         else if (f_i1 == i2) then
+            f_i1 = i1
+         end if
+         if (f_i2 == i1) then
+            f_i2 = i2
+         else if (f_i2 == i2) then
+            f_i2 = i1
+         end if
+         !i_perm = [i1, i2]
+         !i_ftuple = [f_i1, f_i2]
+         !mask(1) = f_i1 == i1 .or. f_i1 == i2
+         !mask(2) = f_i2 == i1 .or. f_i2 == i2
+         !if (count (mask) == 1) then
+         !   if (.not. mask(1)) then
+         !      if (f_i2 == i1) then
+         !         f_i1 = i2
+         !      else
+         !         f_i1 = i1
+         !      end if
+         !   else
+         !      if (f_i1 == i1) then
+         !         f_i2 = i2
+         !      else
+         !         f_i2 = i1
+         !      end if
+         !   end if
+            !!! Need to sort by size again
+            if (f_i1 > f_i2) then
+               tmp = f_i2
+               f_i2 = f_i1
+               f_i1 = tmp
+            end if
+         !end if
+         call current_ftuple%ftuple%set (f_i1, f_i2)
+         if (associated (current_ftuple%next)) then
+            current_ftuple => current_ftuple%next
+         else
+            exit
+         end if
+       end do
+    end do
+  end subroutine apply_permutations_on_ftuples
+
+@ %def apply_permutations_on_ftuples
 @
 <<fks regions: reg data: TBP>>=
   procedure :: has_pseudo_isr => region_data_has_pseudo_isr
