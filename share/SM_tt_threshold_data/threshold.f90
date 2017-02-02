@@ -1317,6 +1317,20 @@ contains
     amp_no_FF = zero
   end subroutine allocate_amps
 
+  subroutine handle_test_onshell (n_tot, p_ofs_work)
+    integer, intent(in) :: n_tot
+    real(c_default_float), dimension(0:3,n_tot) :: p_ofs_work
+    if (test_onshell) then
+       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
+       do hi = 1, size(amp_omega_full)
+          call assert_equal (output_unit, amp_omega_full(hi), &
+               amp_no_FF(hi), "Signal \= Factorized", exit_on_fail=.true., &
+               rel_smallness=tiny_07)
+       end do
+       stop
+    end if
+  end subroutine handle_test_onshell
+
   function compute_born_special_cases (n_tot, p_ofs) result (amp2)
     real(c_default_float) :: amp2
     integer, intent(in) :: n_tot
@@ -1331,36 +1345,24 @@ contains
        end do
     end if
     call threshold%formfactor%activate ()
-    if (test_onshell) then
-       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
-       do hi = 1, size(amp_omega_full)
-          call assert_equal (output_unit, amp_omega_full(hi), &
-               amp_no_FF(hi), "Signal \= Factorized", exit_on_fail=.true., &
-               rel_smallness=tiny_07)
-       end do
-       stop
-    end if
+    call handle_test_onshell (n_tot, p_ofs_work)
     select case (FF)
     case (EXPANDED_HARD, EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
             EXPANDED_SOFT_HARD)
        call compute_born (n_tot, p_ofs_work, FF, amp_with_FF, tree_contrib=.false.)
        call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF, tree_contrib=.true.)
        amp2 = real (sum (abs2 (amp_no_FF))) + &
-            2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
+            2 * sum (real (amp_no_FF * conjg (amp_with_FF)))   !!! No |FFtilde|^2 here
     case (MATCHED)
        call compute_born (n_tot, p_ofs_work, FF, amp_with_FF)
-       amp2 = real (sum (abs2 (amp_with_FF)))       !!! Resummed amp_squared
-       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
+       amp2 = real (sum (abs2 (amp_with_FF)))                  !!! |FFtilde|^2
+       amp_no_FF = amp_omega_full
        call compute_born (n_tot, p_ofs_work, MATCHED_EXPANDED, amp_with_FF)
        amp2 = amp2 + 2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
     case default
        call compute_born (n_tot, p_ofs_work, FF, amp_with_FF)
        if (threshold%settings%interference) then
-          if (threshold%settings%factorized_interference_term) then
-             call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
-          else
-             amp_no_FF = amp_omega_full
-          end if
+          amp_no_FF = amp_omega_full
           if (threshold%settings%flip_relative_sign) &
               amp_no_FF = - amp_no_FF
           amp2 = real (sum (abs2 (amp_omega_full) + abs2 (amp_with_FF) + &
@@ -1378,13 +1380,8 @@ contains
     end select
     if (test_ward)  amp2 = 0
     if (threshold%settings%only_interference_term) then
-       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF)
-       if (threshold%settings%factorized_interference_term) then
-          call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
-       else
-          amp_no_FF = amp_omega_full
-       end if
-       amp2 = sum (2 * real (amp_no_FF * conjg (amp_with_FF)))
+       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF, tree_contrib=.false.)
+       amp2 = sum (2 * real (amp_omega_full * conjg (amp_with_FF)))
     end if
   end function compute_born_special_cases
 
