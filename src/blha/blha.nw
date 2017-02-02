@@ -135,6 +135,7 @@ end module blha_olp_interfaces
     integer, dimension(:), allocatable :: i_whizard_to_i_olc
     logical, dimension(3) :: ew_parameter_mask
     integer :: sqme_tree_pos
+    integer :: n_excess_amps
   contains
   <<BLHA OLP interfaces: prc blha: TBP>>
   end type prc_blha_t
@@ -146,6 +147,7 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: types>>=
   type, abstract, extends (user_defined_driver_t) :: blha_driver_t
     type(string_t) :: contract_file
+    type(string_t) :: nlo_suffix
     logical :: include_polarizations = .false.
     logical :: switch_off_muon_yukawas = .false.
     real(default) :: external_top_yukawa = -1.0
@@ -755,11 +757,12 @@ end module blha_olp_interfaces
   procedure :: read_contract_file => blha_driver_read_contract_file
 <<BLHA OLP interfaces: procedures>>=
   subroutine blha_driver_read_contract_file (driver, flavors, &
-     amp_type, flv_index, label, helicities)
+     amp_type, flv_index, label, helicities, n_different_amps)
     class(blha_driver_t), intent(inout) :: driver
     integer, intent(in), dimension(:,:) :: flavors
     integer, intent(out), dimension(N_MAX_FLAVORS) :: amp_type, flv_index, label
     integer, intent(out), dimension(:,:) :: helicities
+    integer, intent(out) :: n_different_amps
     integer :: unit, filestat
     character(len=LEN_MAX_FLAVOR_STRING) :: rd_line
     logical :: read_flavor, give_warning
@@ -833,6 +836,14 @@ end module blha_olp_interfaces
          end if
       end if
     end do
+    if (driver%nlo_suffix == var_str ('_BORN') .or. &
+         driver%nlo_suffix == var_str ('_REAL')) then !!! TREE
+       n_different_amps = n_found
+    else if (driver%nlo_suffix == var_str ('_LOOP')) then !!! LOOP + CC
+       n_different_amps = n_found / 2
+    else !!! SUB -> TREE + CC + SC
+       n_different_amps = n_found / 3
+    end if
     if (n_found == 0) then
        call msg_fatal ("The desired process has not been found ",  &
             [var_str ("by the OLP-Provider. Maybe the value of alpha_power "), &
@@ -1075,7 +1086,7 @@ end module blha_olp_interfaces
     GF = model%get_real (var_str ('GF'))
     select type (driver => object%driver)
     class is (blha_driver_t)
-      call driver%set_GF (GF)
+       call driver%set_GF (GF)
     end select
   end subroutine prc_blha_set_GF
 
@@ -1120,16 +1131,18 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: read_contract_file => prc_blha_read_contract_file
 <<BLHA OLP interfaces: procedures>>=
-  subroutine prc_blha_read_contract_file (object, flavors)
+  subroutine prc_blha_read_contract_file (object, flavors, n_found)
     class(prc_blha_t), intent(inout) :: object
     integer, intent(in), dimension(:,:) :: flavors
+    integer, intent(out) :: n_found
     integer, dimension(N_MAX_FLAVORS) :: amp_type, flv_index, label
     integer, dimension(:,:), allocatable :: helicities
     integer :: i_proc
     allocate (helicities (N_MAX_FLAVORS, object%data%n_in))
     select type (driver => object%driver)
     class is (blha_driver_t)
-       call driver%read_contract_file (flavors, amp_type, flv_index, label, helicities)
+       call driver%read_contract_file (flavors, amp_type, flv_index, &
+            label, helicities, n_found)
     end select
     object%n_proc = count (amp_type >= 0)
     do i_proc = 1, object%n_proc
@@ -1272,6 +1285,7 @@ end module blha_olp_interfaces
        driver%switch_off_muon_yukawas = blha_template%switch_off_muon_yukawas
        driver%external_top_yukawa = blha_template%external_top_yukawa
     end select
+    object%n_excess_amps = 0
   end subroutine prc_blha_init_blha
 
 @ %def prc_blha_init_blha

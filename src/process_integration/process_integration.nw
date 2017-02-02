@@ -5890,6 +5890,7 @@ Could also be moved to the [[core_manager_t]].
     type(string_t) :: libname
     integer :: i_component, i_core
     logical, dimension(process%cm%n_cores) :: loaded
+    integer :: n_excess
 
     loaded = .false.
     if (process%needs_extra_code (only_blha = .true.)) &
@@ -5903,7 +5904,6 @@ Could also be moved to the [[core_manager_t]].
                 select type (core => process%cm%cores(i_core)%core)
                 class is (prc_user_defined_base_t)
                    libname = process%get_library_name ()
-                   print *, 'Create blha core! '
                    call core%create_and_load_extra_libraries &
                         (var_list, os_data, libname, process%config%model, i_core)
                 end select
@@ -7323,7 +7323,12 @@ matrix element.
     yorn = .false.; if (present (pol_beams)) yorn = pol_beams
     nlo_t = BORN; if (present (nlo_type)) nlo_t = nlo_type
     n_tot = term%data%n_in + term%data%n_out
-    call count_number_of_states ()
+    select type (core)
+    type is (prc_openloops_t)
+       call count_number_of_states (core%n_excess_amps)
+    class default
+       call count_number_of_states (0)
+    end select
     term%n_allowed = n
     call compute_n_sub ()
     call fill_quantum_numbers ()
@@ -7331,7 +7336,7 @@ matrix element.
          (term%data%n_in, 0, term%data%n_out, set_relations = .true.)
     select type (core)
     type is (prc_openloops_t)
-       call setup_states_openloops ()
+       call setup_states_openloops (core%n_excess_amps)
     type is (prc_threshold_t)
        call setup_states_threshold ()
     class is (prc_user_defined_base_t)
@@ -7341,13 +7346,16 @@ matrix element.
     end select
     call term%int%freeze ()
   contains
-    subroutine count_number_of_states ()
+    subroutine count_number_of_states (n_excess)
+      integer, intent(in) :: n_excess
+      integer :: n_flv
       integer :: f, h, c
       n = 0
+      n_flv = term%data%n_flv - n_excess
       select type (core)
       class is (prc_user_defined_base_t)
          n_hel = 1; if (yorn) n_hel = 4
-         do f = 1, term%data%n_flv
+         do f = 1, n_flv
             do h = 1, term%data%n_hel
                do c = 1, term%data%n_col
                   n = n + 1
@@ -7355,7 +7363,7 @@ matrix element.
             end do
          end do
       class default !!! Omega and all test cores
-         do f = 1, term%data%n_flv
+         do f = 1, n_flv
             do h = 1, term%data%n_hel
                do c = 1, term%data%n_col
                   if (core%is_allowed (term%i_term, f, h, c))  n = n + 1
@@ -7378,7 +7386,7 @@ matrix element.
     subroutine fill_quantum_numbers ()
       if (nlo_t == NLO_VIRTUAL) then
          allocate (term%flv ((n_sub + 1) * n), &
-            term%col ((n_sub + 1) * n), term%hel ((n_sub + 1) * n))
+              term%col ((n_sub + 1) * n), term%hel ((n_sub + 1) * n))
       else
          allocate (term%flv (n), term%col (n), term%hel (n))
       end if
@@ -7386,12 +7394,15 @@ matrix element.
       allocate (qn (n_tot))
     end subroutine fill_quantum_numbers
 
-    subroutine setup_states_openloops ()
+    subroutine setup_states_openloops (n_excess)
+      integer, intent(in) :: n_excess
+      integer :: n_flv
       integer :: s, f, c, h, i
       i = 0
+      n_flv = term%data%n_flv - n_excess
       associate (data => term%data)
          do s = 0, n_sub
-             do f = 1, data%n_flv
+             do f = 1, n_flv
                 do h = 1, data%n_hel
                    do c = 1, data%n_col
                       i = i + 1
@@ -7401,7 +7412,7 @@ matrix element.
                       term%col(i) = c
                       call flv%init (data%flv_state (:,f), model)
                       call color_init_from_array (col, &
-                         data%col_state(:,:,c), data%ghost_flag(:,c))
+                           data%col_state(:,:,c), data%ghost_flag(:,c))
                       call col(:data%n_in)%invert ()
                       if (n_hel > 1) then
                          call hel%init (data%hel_state (:,h))
@@ -7420,7 +7431,7 @@ matrix element.
     subroutine setup_states_threshold ()
       integer :: s, f, c, h, i
       if (n_hel > 1) &
-         call msg_fatal ("Polarized beams only supported by OpenLoops")
+           call msg_fatal ("Polarized beams only supported by OpenLoops")
       i = 0
       n_sub = 0; if (nlo_t == NLO_VIRTUAL) n_sub = 1
       associate (data => term%data)
@@ -11764,7 +11775,7 @@ to subobject of [[instance]].
        select type (pcm_instance => instance%pcm)
        type is (pcm_instance_nlo_t)
           call pcm_instance%init_config (process%component_is_active (), &
-             process%get_nlo_type_component (), process%get_sqrts (), i_real_fin)
+               process%get_nlo_type_component (), process%get_sqrts (), i_real_fin)
        end select
     end select
 
