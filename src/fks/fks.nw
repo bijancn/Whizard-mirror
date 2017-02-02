@@ -1076,6 +1076,8 @@ also be supplied by a symmetry factor, explained below.
     end do
     write (u, flst_format, advance = 'no') sregion%flst_real%flst(nreal), ']'
     call write_vline (u)
+    write (u, '(I6)', advance = 'no') sregion%real_index
+    call write_vline (u)
     write (u, '(I3)', advance = 'no') sregion%emitter
     call write_vline (u)
     write (u, '(I3)', advance = 'no') sregion%mult
@@ -2355,7 +2357,6 @@ of the present one is increased.
     integer, dimension(:), allocatable :: mult
     integer, dimension(:), allocatable :: flst_emitter
     integer :: nregions, maxregions
-    integer, dimension(:,:), allocatable :: perm_list_born, perm_list_real
     integer, dimension(:), allocatable :: index
     integer :: i, j, k
     integer :: i_flv
@@ -2364,7 +2365,6 @@ of the present one is increased.
     integer :: i_first
     integer, dimension(:), allocatable :: &
          region_to_ftuple, ftuple_limits, k_index
-    type(flv_structure_t) :: flv_save
 
     maxregions = size (emitter)
     nlegs = flv_alr(1)%nlegs
@@ -2450,41 +2450,51 @@ of the present one is increased.
        i_first = i_first + ftuple_limits(i_flv)
     end do SCAN_FLAVORS
     nregions = j - 1
+
     allocate (reg_data%regions (nregions))
     reg_data%n_regions = nregions
-    do j = 1, nregions
-       do i = 1, reg_data%n_flv_born
-          if (reg_data%flv_born (i) == flv_uborn (j)) then
-             if (allocated (perm_list_born)) deallocate (perm_list_born)
-             if (allocated (perm_list_real)) deallocate (perm_list_real)
-             perm_list_born =  create_flavor_permutation_list &
-                  (reg_data%flv_born(i), flv_uborn(j), reg_data%n_in)
-             call apply_permutations_on_flavors (flv_uborn(j), flst_emitter(j), perm_list_born)
-             call apply_permutations_on_flavors (flv_alr2(j), flst_emitter(j), perm_list_born)
-          end if
-       end do
-       call reg_data%regions(j)%init (j, mult(j), 0, flv_alr2(j), &
-          flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuples(index(j)))
-    end do
-    ! TODO: (bcn 2015-12-15) can this be put in singular_region_init?
-    k = 1
-    associate (regions => reg_data%regions)
-       do i = 1, nregions
-          if (i == 1) then
-             regions(i)%real_index = 1
-             flv_save = flv_alr2(1)
-             cycle
-          end if
-          if (flv_alr2(i) == flv_save) then
-             regions(i)%real_index = k
-          else
-             k = k + 1
-             regions(i)%real_index = k
-             flv_save = flv_alr2(i)
-          end if
-       end do
-    end associate
+    call init_regions_with_permuted_flavors ()
+    call assign_real_indices ()
+
   contains
+
+    subroutine init_regions_with_permuted_flavors ()
+       integer, dimension(:,:), allocatable :: perm_list
+       do j = 1, nregions
+          do i = 1, reg_data%n_flv_born
+             if (reg_data%flv_born (i) == flv_uborn (j)) then
+                if (allocated (perm_list)) deallocate (perm_list)
+                perm_list =  create_flavor_permutation_list (reg_data%flv_born(i), &
+                     flv_uborn(j), reg_data%n_in)
+                call apply_permutations_on_flavors (flv_uborn(j), flst_emitter(j), perm_list)
+                call apply_permutations_on_flavors (flv_alr2(j), flst_emitter(j), perm_list)
+             end if
+          end do
+          call reg_data%regions(j)%init (j, mult(j), 0, flv_alr2(j), &
+               flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuples(index(j)))
+       end do
+    end subroutine init_regions_with_permuted_flavors
+
+    subroutine assign_real_indices ()
+      type(flv_structure_t) :: current_flv_real
+      integer :: i_real
+      i_real = 1
+      associate (regions => reg_data%regions)
+         do i = 1, reg_data%n_regions
+            if (i == 1) then
+               regions(i)%real_index = 1
+               current_flv_real = flv_alr2(1)
+            else if (flv_alr2(i) == current_flv_real) then
+               regions(i)%real_index = i_real
+            else
+               i_real = i_real + 1
+               regions(i)%real_index = i_real
+               current_flv_real = flv_alr2(i)
+            end if
+         end do
+      end associate
+   end subroutine assign_real_indices
+
     subroutine write_perm_list (perm_list)
       integer, intent(in), dimension(:,:) :: perm_list
       integer :: i
@@ -3014,6 +3024,8 @@ writes it to a file.
      write (u, '(A3)', advance = 'no') 'alr'
      call write_vline (u)
      write (u, char (flst_title), advance = 'no') 'flst_real'
+     call write_vline (u)
+     write (u, '(A6)', advance = 'no') 'i_real'
      call write_vline (u)
      write (u, '(A3)', advance = 'no') 'em'
      call write_vline (u)
