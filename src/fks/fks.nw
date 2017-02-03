@@ -248,7 +248,7 @@ the [[ftuple]]-object.
   public :: ftuple_t
 <<fks regions: types>>=
   type :: ftuple_t
-    integer, dimension(2) :: ireg
+    integer, dimension(2) :: ireg = [-1,-1]
     integer :: i_res = 0
     integer :: splitting_type
     logical :: pseudo_isr = .false.
@@ -286,22 +286,26 @@ the [[ftuple]]-object.
     logical :: nl
     u = given_output_unit (unit); if (u < 0) return
     nl = .true.; if (present(newline)) nl = newline
-    if (ftuple%i_res > 0) then
-       if (nl) then
-          write (u, "(A1,I1,A1,I1,A1,I1,A1)") &
-              '(', ftuple%ireg(1), ',', ftuple%ireg(2), ';', ftuple%i_res, ')'
+    if (all (ftuple%ireg > -1)) then
+       if (ftuple%i_res > 0) then
+          if (nl) then
+             write (u, "(A1,I1,A1,I1,A1,I1,A1)") &
+                 '(', ftuple%ireg(1), ',', ftuple%ireg(2), ';', ftuple%i_res, ')'
+          else
+             write (u, "(A1,I1,A1,I1,A1,I1,A1)", advance = "no") &
+                 '(', ftuple%ireg(1), ',', ftuple%ireg(2), ';', ftuple%i_res, ')'
+          end if
        else
-          write (u, "(A1,I1,A1,I1,A1,I1,A1)", advance = "no") &
-              '(', ftuple%ireg(1), ',', ftuple%ireg(2), ';', ftuple%i_res, ')'
+          if (nl) then
+             write (u, "(A1,I1,A1,I1,A1)") &
+                  '(', ftuple%ireg(1), ',', ftuple%ireg(2), ')'
+          else
+             write (u, "(A1,I1,A1,I1,A1)", advance = "no") &
+                  '(', ftuple%ireg(1), ',', ftuple%ireg(2), ')'
+          end if
        end if
     else
-       if (nl) then
-          write (u, "(A1,I1,A1,I1,A1)") &
-               '(', ftuple%ireg(1), ',', ftuple%ireg(2), ')'
-       else
-          write (u, "(A1,I1,A1,I1,A1)", advance = "no") &
-               '(', ftuple%ireg(1), ',', ftuple%ireg(2), ')'
-       end if
+       write (u, "(A)") "(Empty)"
     end if
   end subroutine ftuple_write
 
@@ -2251,45 +2255,66 @@ are therefore equivalent.
     type(ftuple_t) :: current_ftuple
     integer, dimension(:), allocatable :: emitter_tmp
     type(flv_structure_t), dimension(:), allocatable :: flst_alr_tmp
-    type(ftuple_list_t), dimension(:), allocatable :: ftuples_tmp
+    type(ftuple_list_t), dimension(:,:), allocatable :: ftuples_tmp
     integer :: n_born, n_real
     integer :: n_legreal
     integer, parameter :: maxnregions = 200
-    integer :: i_born, i_real, i_reg, i_ftuple
-    integer :: i
+    integer :: i_born, i_real, i_reg
 
     n_born = size (reg_data%flv_born)
     n_real = size (reg_data%flv_real)
     n_legreal = size (reg_data%flv_real(1)%flst)
-    allocate (ftuples_tmp (n_born + n_real))
+    allocate (ftuples_tmp (n_born,n_real))
     allocate (emitter_tmp (maxnregions))
     allocate (flst_alr_tmp (maxnregions))
-    i_reg = 0; i_ftuple = 0
+    i_reg = 0
 
     do i_real = 1, n_real
        do i_born = 1, n_born
-          print *, 'i_real: ', i_real, 'i_born: ', i_born
-          print *, reg_data%flv_real(i_real)%flst
-          print *, reg_data%flv_born(i_born)%flst
-          call check_final_state_emissions (i_real, i_born, i_reg, i_ftuple)
-          call check_initial_state_emissions (i_real, i_born, i_reg, i_ftuple)
+          call check_final_state_emissions (i_real, i_born, i_reg)
+          call check_initial_state_emissions (i_real, i_born, i_reg)
        end do
     end do
+
+    if (debug2_active (D_SUBTRACTION)) then
+       print *, 'Intermediate ftuples: '
+       do i_real = 1, n_real
+          print *, 'i_real: ', i_real, ' // ', reg_data%flv_real(i_real)%flst
+          do i_born = 1, n_born
+             print *, 'i_born: ', i_born, ' // ', reg_data%flv_born(i_born)%flst
+             print *, 'ftuples: '
+             call ftuples_tmp(i_born,i_real)%write ()
+             print *, '**************************'
+          end do
+      end do
+    end if
 
     allocate (flst_alr (i_reg))
     flst_alr = flst_alr_tmp(1 : i_reg)
     allocate (emitters (i_reg))
     emitters = emitter_tmp(1 : i_reg)
     allocate (ftuples (count (ftuples_tmp%get_n_tuples () > 0)))
-    ftuples = pack(ftuples_tmp, ftuples_tmp%get_n_tuples () > 0)
+    i_reg = 1
+    do i_born = 1, n_born
+       do i_real = 1, n_real
+          if (ftuples_tmp(i_born,i_real)%get_n_tuples () > 0) then
+             ftuples(i_reg) = ftuples_tmp(i_born,i_real)
+             i_reg = i_reg + 1
+          end if
+       end do
+    end do
+    !do i_reg = 1, size (ftuples)
+    !   print *, 'i_reg: ', i_reg
+    !   call ftuples(i_reg)%write ()
+    !end do
     deallocate (flst_alr_tmp)
     deallocate (emitter_tmp)
     deallocate (ftuples_tmp)
 
   contains
-    subroutine check_final_state_emissions (i_real, i_born, i_reg, i_ftuple)
+    subroutine check_final_state_emissions (i_real, i_born, i_reg)
       integer, intent(in) :: i_real, i_born
-      integer, intent(inout) :: i_reg, i_ftuple
+      integer, intent(inout) :: i_reg
       integer :: leg1, leg2
       type(flv_structure_t) :: born_flavor
       logical :: valid1, valid2
@@ -2312,8 +2337,7 @@ are therefore equivalent.
                   call current_ftuple%set (leg1, leg2)
                   call current_ftuple%determine_splitting_type_fsr &
                        (flv_real, leg1, leg2)
-                  i_ftuple = i_ftuple + 1
-                  call ftuples_tmp(i_born + i_real)%append (current_ftuple)
+                  call ftuples_tmp(i_born,i_real)%append (current_ftuple)
                   emitter_tmp(i_reg) = n_legreal - 1
                end if
             end associate
@@ -2321,9 +2345,9 @@ are therefore equivalent.
       end do
     end subroutine check_final_state_emissions
 
-    subroutine check_initial_state_emissions (i_real, i_born, i_reg, i_ftuple)
+    subroutine check_initial_state_emissions (i_real, i_born, i_reg)
       integer, intent(in) :: i_real, i_born
-      integer, intent(inout) :: i_reg, i_ftuple
+      integer, intent(inout) :: i_reg
       integer :: leg, emitter
       type(flv_structure_t) :: born_flavor
       logical :: valid1, valid2
@@ -2351,8 +2375,7 @@ are therefore equivalent.
                call current_ftuple%set(emitter, leg)
                call current_ftuple%determine_splitting_type_isr &
                   (flv_real, emitter, leg)
-               i_ftuple = i_ftuple + 1
-               call ftuples_tmp(i_born + i_real)%append (current_ftuple)
+               call ftuples_tmp(i_born,i_real)%append (current_ftuple)
                emitter_tmp(i_reg) = emitter
                flst_alr_tmp(i_reg) = &
                     create_alr (flv_real, reg_data%n_in, emitter, leg)
