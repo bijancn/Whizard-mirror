@@ -1453,7 +1453,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     integer, intent(in) :: alr
     type(vector4_t), intent(in), dimension(:) :: p
     real(default) :: sumpfr
-    integer :: i_res, i_alr
+    integer :: i_res
     sumpfr = zero
     do i_res = 1, size (res_map%res_histories)
        sumpfr = sumpfr + res_map%get_resonance_value (i_res, p)
@@ -2256,18 +2256,22 @@ are therefore equivalent.
     integer, dimension(:), allocatable :: emitter_tmp
     type(flv_structure_t), dimension(:), allocatable :: flst_alr_tmp
     type(ftuple_list_t), dimension(:,:), allocatable :: ftuples_tmp
+    integer, dimension(:,:), allocatable :: ftuple_index
     integer :: n_born, n_real
     integer :: n_legreal
     integer, parameter :: maxnregions = 200
-    integer :: i_born, i_real, i_reg
+    integer :: i_born, i_real, i_reg, i_ftuple
 
     n_born = size (reg_data%flv_born)
     n_real = size (reg_data%flv_real)
     n_legreal = size (reg_data%flv_real(1)%flst)
     allocate (ftuples_tmp (n_born,n_real))
+    allocate (ftuple_index (n_born,n_real))
     allocate (emitter_tmp (maxnregions))
     allocate (flst_alr_tmp (maxnregions))
     i_reg = 0
+    ftuple_index = 0
+    i_ftuple = 0
 
     do i_real = 1, n_real
        do i_born = 1, n_born
@@ -2276,42 +2280,39 @@ are therefore equivalent.
        end do
     end do
 
-    if (debug2_active (D_SUBTRACTION)) then
-       print *, 'Intermediate ftuples: '
-       do i_real = 1, n_real
-          print *, 'i_real: ', i_real, ' // ', reg_data%flv_real(i_real)%flst
-          do i_born = 1, n_born
-             print *, 'i_born: ', i_born, ' // ', reg_data%flv_born(i_born)%flst
-             print *, 'ftuples: '
-             call ftuples_tmp(i_born,i_real)%write ()
-             print *, '**************************'
-          end do
-      end do
-    end if
+    if (debug2_active (D_SUBTRACTION)) call print_all_regions ()
 
     allocate (flst_alr (i_reg))
     flst_alr = flst_alr_tmp(1 : i_reg)
     allocate (emitters (i_reg))
     emitters = emitter_tmp(1 : i_reg)
     allocate (ftuples (count (ftuples_tmp%get_n_tuples () > 0)))
-    i_reg = 1
     do i_born = 1, n_born
        do i_real = 1, n_real
-          if (ftuples_tmp(i_born,i_real)%get_n_tuples () > 0) then
-             ftuples(i_reg) = ftuples_tmp(i_born,i_real)
-             i_reg = i_reg + 1
-          end if
+          if (ftuples_tmp(i_born,i_real)%get_n_tuples () > 0) &
+               ftuples(ftuple_index(i_born,i_real)) = ftuples_tmp(i_born,i_real)
        end do
     end do
-    !do i_reg = 1, size (ftuples)
-    !   print *, 'i_reg: ', i_reg
-    !   call ftuples(i_reg)%write ()
-    !end do
     deallocate (flst_alr_tmp)
     deallocate (emitter_tmp)
     deallocate (ftuples_tmp)
+    deallocate (ftuple_index)
 
   contains
+    function incr_i_ftuple_if_required (i_born, i_real, i_ftuple_in) result (i_ftuple)
+      integer :: i_ftuple
+      integer, intent(in) :: i_born, i_real, i_ftuple_in
+      integer, save :: last_registered_i_born = 0
+      integer, save :: last_registered_i_real = 0
+      if (last_registered_i_born /= i_born .or. last_registered_i_real /= i_real) then
+         last_registered_i_born = i_born
+         last_registered_i_real = i_real
+         i_ftuple = i_ftuple_in + 1
+      else
+         i_ftuple = i_ftuple_in
+      end if
+    end function incr_i_ftuple_if_required
+
     subroutine check_final_state_emissions (i_real, i_born, i_reg)
       integer, intent(in) :: i_real, i_born
       integer, intent(inout) :: i_reg
@@ -2337,7 +2338,9 @@ are therefore equivalent.
                   call current_ftuple%set (leg1, leg2)
                   call current_ftuple%determine_splitting_type_fsr &
                        (flv_real, leg1, leg2)
+                  i_ftuple = incr_i_ftuple_if_required (i_born, i_real, i_ftuple)
                   call ftuples_tmp(i_born,i_real)%append (current_ftuple)
+                  ftuple_index(i_born,i_real) = i_ftuple
                   emitter_tmp(i_reg) = n_legreal - 1
                end if
             end associate
@@ -2353,7 +2356,6 @@ are therefore equivalent.
       logical :: valid1, valid2
       born_flavor = reg_data%flv_born (i_born)
       do leg = reg_data%n_in + 1, n_legreal
-         !do i_born = 1, nborn
          associate (flv_real => reg_data%flv_real(i_real))
             valid1 = flv_real%valid_pair(1, leg, born_flavor, model)
             if (reg_data%n_in > 1) then
@@ -2374,16 +2376,31 @@ are therefore equivalent.
                i_reg = i_reg + 1
                call current_ftuple%set(emitter, leg)
                call current_ftuple%determine_splitting_type_isr &
-                  (flv_real, emitter, leg)
+                    (flv_real, emitter, leg)
+               i_ftuple = incr_i_ftuple_if_required (i_born, i_real, i_ftuple)
                call ftuples_tmp(i_born,i_real)%append (current_ftuple)
+               ftuple_index(i_born,i_real) = i_real
                emitter_tmp(i_reg) = emitter
                flst_alr_tmp(i_reg) = &
                     create_alr (flv_real, reg_data%n_in, emitter, leg)
             end if
          end associate
-         !end do
       end do
     end subroutine check_initial_state_emissions
+
+    subroutine print_all_regions
+       print *, 'Intermediate ftuples: '
+       do i_real = 1, n_real
+          print *, 'i_real: ', i_real, ' // ', reg_data%flv_real(i_real)%flst
+          do i_born = 1, n_born
+             print *, 'i_born: ', i_born, ' // ', reg_data%flv_born(i_born)%flst
+             print *, 'ftuples: '
+             call ftuples_tmp(i_born,i_real)%write ()
+             print *, '**************************'
+          end do
+      end do
+    end subroutine print_all_regions
+
   end subroutine region_data_find_regions
 
 @ %def region_data_find_regions
@@ -2402,125 +2419,144 @@ of the present one is increased.
     integer :: n_independent_flv
     integer, intent(in), dimension(:) :: emitter
     type(flv_structure_t), intent(in), dimension(:) :: flv_alr
-    type(flv_structure_t), dimension(:), allocatable :: flv_uborn, flv_alr2
+    type(flv_structure_t), dimension(:), allocatable :: flv_uborn, flv_alr_registered
     integer, dimension(:), allocatable :: mult
     integer, dimension(:), allocatable :: flst_emitter
-    integer :: nregions, maxregions
+    integer :: n_regions, maxregions
     integer, dimension(:), allocatable :: index
-    integer :: i, k
-    integer :: i_flv
-    integer :: nlegs
-    logical :: equiv
-    integer :: i_first
-    integer, dimension(:), allocatable :: region_to_ftuple, alr_limits, k_index
-    integer :: i_reg
+    integer :: i, i_flv, n_legs
+    logical :: equiv, valid_fs_splitting
+    integer :: i_first, i_reg, i_reg_prev
+    integer, dimension(:), allocatable :: region_to_ftuple, alr_limits
+    integer, dimension(:), allocatable :: equiv_index
 
     maxregions = size (emitter)
-    nlegs = flv_alr(1)%nlegs
+    n_legs = flv_alr(1)%nlegs
 
     allocate (flv_uborn (maxregions))
-    allocate (flv_alr2 (maxregions))
+    allocate (flv_alr_registered (maxregions))
     allocate (mult (maxregions))
+    mult = 0
     allocate (flst_emitter (maxregions))
     allocate (index (maxregions))
     allocate (region_to_ftuple (maxregions))
-    allocate (k_index (maxregions))
+    allocate (equiv_index (maxregions))
 
-    mult = 0
-    n_independent_flv = 0
-    do i = 1, size (ftuples)
-       if (ftuples(i)%get_n_tuples() > 0) &
-          n_independent_flv = n_independent_flv + 1
-    end do
-    allocate (alr_limits (n_independent_flv))
-
-    k = 1
-    do i = 1, size (ftuples)
-       if (ftuples(i)%get_n_tuples() > 0) then
-          alr_limits(k) = ftuples(i)%get_n_tuples ()
-          k = k + 1
-       end if
-    end do
-    if (.not. (sum (alr_limits) == maxregions)) &
-         call msg_fatal ("Too many regions!")
-    k = 1
-    do i_flv = 1, n_independent_flv
-       do i = 1, alr_limits(i_flv)
-          region_to_ftuple(k) = i
-          k = k + 1
-       end do
-    end do
+    call setup_region_mappings (n_independent_flv, alr_limits, region_to_ftuple)
     i_first = 1
     i_reg = 1
     SCAN_FLAVORS: do i_flv = 1, n_independent_flv
        SCAN_FTUPLES: do i = i_first, i_first + alr_limits (i_flv) - 1
           equiv = .false.
           if (i == i_first) then
-             flv_alr2(i_reg) = flv_alr(i)
+             flv_alr_registered(i_reg) = flv_alr(i)
              mult(i_reg) = mult(i_reg) + 1
              flv_uborn(i_reg) = flv_alr(i)%create_uborn (emitter(i))
              flst_emitter(i_reg) = emitter(i)
              index (i_reg) = region_to_index(ftuples, i)
-             k_index (i_reg) = region_to_ftuple(i)
+             equiv_index (i_reg) = region_to_ftuple(i)
              i_reg  = i_reg + 1
           else
              !!! Check for equivalent flavor structures
-             do k = 1, i_reg - 1
-                if (emitter(i) == emitter(k) .and. emitter(i) > reg_data%n_in) then
-                   if (flv_alr(i) == flv_alr2(k) .and. check_fs_splitting &
-                        (flv_alr(i)%get_last_two(nlegs), flv_alr2(k)%get_last_two(nlegs))) then
-                      mult(k) = mult(k) + 1
+             do i_reg_prev = 1, i_reg - 1
+                if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) > reg_data%n_in) then
+                   valid_fs_splitting = check_fs_splitting (flv_alr(i)%get_last_two(n_legs), &
+                          flv_alr_registered(i_reg_prev)%get_last_two(n_legs))
+                   if (flv_alr(i) == flv_alr_registered(i_reg_prev) .and. valid_fs_splitting) then
+                      mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
-                           (k_index(k), region_to_ftuple(i))
+                           (equiv_index(i_reg_prev), region_to_ftuple(i))
                       exit
                    end if
-                else if (emitter(i) == emitter(k) .and. emitter(i) <= reg_data%n_in) then
-                   if (flv_alr(i) == flv_alr2(k)) then
-                      mult(k) = mult(k) + 1
+                else if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) <= reg_data%n_in) then
+                   if (flv_alr(i) == flv_alr_registered(i_reg_prev)) then
+                      mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
-                           (k_index(k), region_to_ftuple(i))
+                           (equiv_index(i_reg_prev), region_to_ftuple(i))
                       exit
                    end if
                 end if
              end do
              if (.not. equiv) then
-                flv_alr2(i_reg) = flv_alr(i)
+                flv_alr_registered(i_reg) = flv_alr(i)
                 mult(i_reg) = mult(i_reg) + 1
                 flv_uborn(i_reg) = flv_alr(i)%create_uborn (emitter(i))
                 flst_emitter(i_reg) = emitter(i)
                 index (i_reg) = region_to_index (ftuples, i)
-                k_index (i_reg) = region_to_ftuple(i)
+                equiv_index (i_reg) = region_to_ftuple(i)
                 i_reg = i_reg + 1
              end if
           end if
        end do SCAN_FTUPLES
        i_first = i_first + alr_limits(i_flv)
     end do SCAN_FLAVORS
-    nregions = i_reg - 1
+    n_regions = i_reg - 1
 
-    allocate (reg_data%regions (nregions))
-    reg_data%n_regions = nregions
+    allocate (reg_data%regions (n_regions))
+    reg_data%n_regions = n_regions
     call init_regions_with_permuted_flavors ()
     call assign_real_indices ()
 
+    deallocate (flv_uborn)
+    deallocate (flv_alr_registered)
+    deallocate (mult)
+    deallocate (flst_emitter)
+    deallocate (index)
+    deallocate (region_to_ftuple)
+    deallocate (equiv_index)
+
   contains
+
+    subroutine setup_region_mappings (n_independent_flv, &
+           alr_limits, region_to_ftuple)
+       integer, intent(inout) :: n_independent_flv
+       integer, intent(inout), dimension(:), allocatable :: alr_limits
+       integer, intent(inout), dimension(:), allocatable :: region_to_ftuple
+       integer :: i, j, i_flv
+       n_independent_flv = 0
+       do i = 1, size (ftuples)
+          if (ftuples(i)%get_n_tuples() > 0) &
+             n_independent_flv = n_independent_flv + 1
+       end do
+       allocate (alr_limits (n_independent_flv))
+
+       j = 1
+       do i = 1, size (ftuples)
+          if (ftuples(i)%get_n_tuples() > 0) then
+             alr_limits(j) = ftuples(i)%get_n_tuples ()
+             j = j + 1
+          end if
+       end do
+
+       if (.not. (sum (alr_limits) == maxregions)) &
+            call msg_fatal ("Too many regions!")
+
+       j = 1
+       do i_flv = 1, n_independent_flv
+          do i = 1, alr_limits(i_flv)
+             region_to_ftuple(j) = i
+             j = j + 1
+          end do
+       end do
+    end subroutine setup_region_mappings
 
     subroutine init_regions_with_permuted_flavors ()
        integer, dimension(:,:), allocatable :: perm_list
        integer :: i, j
-       do j = 1, nregions
+       do j = 1, n_regions
           do i = 1, reg_data%n_flv_born
              if (reg_data%flv_born (i) == flv_uborn (j)) then
                 if (allocated (perm_list)) deallocate (perm_list)
                 perm_list =  create_flavor_permutation_list (reg_data%flv_born(i), &
                      flv_uborn(j), reg_data%n_in)
                 call apply_permutations_on_flavors (flv_uborn(j), flst_emitter(j), perm_list)
-                call apply_permutations_on_flavors (flv_alr2(j), flst_emitter(j), perm_list)
+                call apply_permutations_on_flavors (flv_alr_registered(j), &
+                     flst_emitter(j), perm_list)
              end if
           end do
-          call reg_data%regions(j)%init (j, mult(j), 0, flv_alr2(j), &
+          call reg_data%regions(j)%init (j, mult(j), 0, flv_alr_registered(j), &
                flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuples(index(j)))
        end do
     end subroutine init_regions_with_permuted_flavors
@@ -2533,13 +2569,13 @@ of the present one is increased.
          do i = 1, reg_data%n_regions
             if (i == 1) then
                regions(i)%real_index = 1
-               current_flv_real = flv_alr2(1)
-            else if (flv_alr2(i) == current_flv_real) then
+               current_flv_real = flv_alr_registered(1)
+            else if (flv_alr_registered(i) == current_flv_real) then
                regions(i)%real_index = i_real
             else
                i_real = i_real + 1
                regions(i)%real_index = i_real
-               current_flv_real = flv_alr2(i)
+               current_flv_real = flv_alr_registered(i)
             end if
          end do
       end associate
