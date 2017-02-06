@@ -596,6 +596,7 @@ emitter-radiation pairs. This is coped with using the linked list
     integer :: n_in = 0
     logical, dimension(:), allocatable :: massive
     logical, dimension(:), allocatable :: colored
+    logical, dimension(:), allocatable :: tagged_gluon
   contains
   <<fks regions: flv structure: TBP>>
   end type flv_structure_t
@@ -701,7 +702,7 @@ permutation of the final-state particles
 @ %def flv_structure_equivalent
 @
 <<fks regions: procedures>>=
-  subroutine flv_structure_assign_flv (flv_out, flv_in)
+  pure subroutine flv_structure_assign_flv (flv_out, flv_in)
     type(flv_structure_t), intent(out) :: flv_out
     type(flv_structure_t), intent(in) :: flv_in
     flv_out%nlegs = flv_in%nlegs
@@ -718,12 +719,16 @@ permutation of the final-state particles
        allocate (flv_out%colored (size (flv_in%colored)))
        flv_out%colored = flv_in%colored
     end if
+    if (allocated (flv_in%tagged_gluon)) then
+       allocate (flv_out%tagged_gluon (size (flv_in%tagged_gluon)))
+       flv_out%tagged_gluon = flv_in%tagged_gluon
+    end if
   end subroutine flv_structure_assign_flv
 
 @ %def flv_structure_assign_flv
 @
 <<fks regions: procedures>>=
-  subroutine flv_structure_assign_integer (flv_out, iarray)
+  pure subroutine flv_structure_assign_integer (flv_out, iarray)
     type(flv_structure_t), intent(out) :: flv_out
     integer, intent(in), dimension(:) :: iarray
     flv_out%nlegs = size (iarray)
@@ -867,6 +872,8 @@ flavor array
     flv%flst(1 : n) = aval(1 : n)
     flv%nlegs = n
     flv%n_in = n_in
+    allocate (flv%tagged_gluon (n))
+    flv%tagged_gluon = .false.
   end subroutine flv_structure_init
 
 @ %def flv_structure_init
@@ -910,7 +917,7 @@ structure if the particle at position \texttt{emitter} is removed
           !!! Emitted particle is a gluon => just remove it
           flv_uborn = flv%remove_particle(n_legs)
        else if (is_quark (f1) .and. is_quark (f2) .and. f1 + f2 == 0) then
-          !!! Emission type is a gluon splitting into two quars
+          !!! Emission type is a gluon splitting into two quarks
           flv_uborn = flv%insert_particle(n_legs - 1, n_legs, 21)
        else
           call msg_fatal ("Create underlying Born: Unsupported splitting type.")
@@ -991,6 +998,141 @@ structure if the particle at position \texttt{emitter} is removed
   end subroutine flv_structure_final
 
 @ %def flv_structure_final
+@
+<<fks regions: types>>=
+  type :: flavor_permutation_t
+    integer, dimension(:,:), allocatable :: perms
+  contains
+  <<fks regions: flavor permutation: TBP>>
+  end type flavor_permutation_t
+
+@ %def flavor_permutation_t
+@
+<<fks regions: flavor permutation: TBP>>=
+  procedure :: init => flavor_permutation_init
+<<fks regions: procedures>>=
+  subroutine flavor_permutation_init (perm, flv_in, flv_ref, n_first, n_last)
+    class(flavor_permutation_t), intent(out) :: perm
+    type(flv_structure_t), intent(in) :: flv_in, flv_ref
+    integer, intent(in) :: n_first, n_last
+    integer :: flv1, flv2, tmp
+    integer :: i, j, j_min, i_perm
+    integer, dimension(:,:), allocatable :: perm_list_tmp
+    type(flv_structure_t) :: flv_copy
+    flv_copy = flv_ref
+    allocate (perm_list_tmp (factorial (n_last - n_first - 1), 2))
+    j_min = n_first + 1
+    i_perm = 0
+    do i = n_first + 1, n_last
+       flv1 = flv_in%flst(i)
+       do j = j_min, n_last
+          flv2 = flv_copy%flst(j)
+          if (flv1 == flv2 .and. i /= j) then
+             i_perm = i_perm + 1
+             tmp = flv_copy%flst(i)
+             flv_copy%flst(i) = flv2
+             flv_copy%flst(j) = tmp
+             perm_list_tmp (i_perm, 1) = j
+             perm_list_tmp (i_perm, 2) = i
+             j_min = j_min + 1
+             exit
+          end if
+       end do
+    end do
+    allocate (perm%perms (i_perm, 2))
+    perm%perms = perm_list_tmp (1 : i_perm, :)
+    deallocate (perm_list_tmp)
+    call flv_copy%final ()
+  end subroutine flavor_permutation_init
+
+@ %def flavor_permutation_init
+@
+<<fks regions: flavor permutation: TBP>>=
+  procedure :: write => flavor_permutation_write
+<<fks regions: procedures>>=
+  subroutine flavor_permutation_write (perm, unit)
+    class(flavor_permutation_t), intent(in) :: perm
+    integer, intent(in), optional :: unit
+    integer :: i, n, u
+    u = given_output_unit (unit); if (u < 0) return
+    write (u, "(A)") "Flavor permutation list: "
+    n = size (perm%perms, dim = 1)
+    if (n > 0) then
+       do i = 1, n
+          write (u, "(A1,I1,1X,I1,A1)", advance = "no") "[", perm%perms(i,1), perm%perms(i,2), "]"
+          if (i < n) write (u, "(A4)", advance = "no") " // "
+       end do
+       write (u, "(A)") ""
+    else
+       write (u, "(A)") "[Empty]"
+    end if
+  end subroutine flavor_permutation_write
+
+@ %def flavor_permutation_write
+@
+<<fks regions: flavor permutation: TBP>>=
+  procedure :: reset => flavor_permutation_final
+  procedure :: final => flavor_permutation_final
+<<fks regions: procedures>>=
+  subroutine flavor_permutation_final (perm)
+    class(flavor_permutation_t), intent(inout) :: perm
+    if (allocated (perm%perms)) deallocate (perm%perms)
+  end subroutine flavor_permutation_final
+
+@ %def flavor_permutation_final
+@
+<<fks regions: interfaces>>=
+  interface operator(*)
+     module procedure prod_perm_flv
+     module procedure prod_perm_int
+  end interface
+
+@ %def interface prod_perm_flv
+@
+<<fks regions: procedures>>=
+  elemental function prod_perm_flv (perm, flv_in) result (flv_out)
+    type(flv_structure_t) :: flv_out
+    type(flavor_permutation_t), intent(in) :: perm
+    type(flv_structure_t), intent(in) :: flv_in
+    integer :: i, i1, i2
+    integer :: flv_tmp
+    logical :: flag_tmp
+    flv_out = flv_in
+    do i = 1, size (perm%perms(:,1))
+       i1 = perm%perms(i,1)
+       i2 = perm%perms(i,2)
+       flv_tmp = flv_out%flst(i1)
+       flv_out%flst(i1) = flv_out%flst(i2)
+       flv_out%flst(i2) = flv_tmp
+       if (allocated (flv_out%tagged_gluon)) then
+          flag_tmp = flv_out%tagged_gluon(i1)
+          flv_out%tagged_gluon(i1) = flv_out%tagged_gluon(i2)
+          flv_out%tagged_gluon(i2) = flag_tmp
+       end if
+    end do
+  end function prod_perm_flv
+
+@ %def prod_perm_flv
+@
+<<fks regions: procedures>>=
+  elemental function prod_perm_int (perm, i_in) result (i_out)
+    integer :: i_out
+    type(flavor_permutation_t), intent(in) :: perm
+    integer, intent(in) :: i_in
+    integer :: i, i1, i2
+    i_out = i_in
+    do i = 1, size (perm%perms(:,1))
+       i1 = perm%perms(i,1)
+       i2 = perm%perms(i,2)
+       if (i_out == i1) then
+          i_out = i2
+       else
+          i_out = i1
+       end if
+    end do
+  end function prod_perm_int
+
+@ %def prod_perm_int
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with
 an $\alpha_r$- and resonance-index, with a real flavor structure and
@@ -2538,25 +2680,36 @@ of the present one is increased.
     end subroutine setup_region_mappings
 
     subroutine init_regions_with_permuted_flavors ()
-       integer, dimension(:,:), allocatable :: perm_list
+       !integer, dimension(:,:), allocatable :: perm_list
+       type(flavor_permutation_t) :: perm_list
        integer :: i, j
        do j = 1, n_regions
           do i = 1, reg_data%n_flv_born
              if (reg_data%flv_born (i) == flv_uborn (j)) then
-                if (allocated (perm_list)) deallocate (perm_list)
-                perm_list =  create_flavor_permutation_list (reg_data%flv_born(i), &
-                     flv_uborn(j), reg_data%n_in, reg_data%n_legs_born)
-                call apply_permutations_on_flavors (flv_uborn(j), perm_list)
-                call apply_permutations_on_flavors (flv_alr_registered(j), perm_list)
-                call apply_permutations_on_emitter (flst_emitter(j), perm_list)
+                !if (allocated (perm_list)) deallocate (perm_list)
+                call perm_list%reset ()
+                !perm_list =  create_flavor_permutation_list (reg_data%flv_born(i), &
+                !     flv_uborn(j), reg_data%n_in, reg_data%n_legs_born)
+                call perm_list%init (reg_data%flv_born(i), flv_uborn(j), &
+                     reg_data%n_in, reg_data%n_legs_born)
+                !call apply_permutations_on_flavors (flv_uborn(j), perm_list)
+                flv_uborn(j) = perm_list * flv_uborn(j)
+                !call apply_permutations_on_flavors (flv_alr_registered(j), perm_list)
+                flv_alr_registered(j) = perm_list * flv_alr_registered(j)
+                !call apply_permutations_on_emitter (flst_emitter(j), perm_list)
+                flst_emitter(j) = perm_list * flst_emitter(j)
              end if
           end do
           do i = 1, size (reg_data%flv_real)
              if (reg_data%flv_real(i) == flv_alr_registered(j)) then
-                if (allocated (perm_list)) deallocate (perm_list)
-                perm_list = create_flavor_permutation_list (reg_data%flv_real(i), &
-                     flv_alr_registered(j), reg_data%n_in, reg_data%n_legs_real - 1)
-                call apply_permutations_on_emitter (flst_emitter(j), perm_list)
+                !if (allocated (perm_list)) deallocate (perm_list)
+                call perm_list%reset ()
+                !perm_list = create_flavor_permutation_list (reg_data%flv_real(i), &
+                !     flv_alr_registered(j), reg_data%n_in, reg_data%n_legs_real - 1)
+                call perm_list%init (reg_data%flv_real(i), flv_alr_registered(j), &
+                     reg_data%n_in, reg_data%n_legs_real - 1)
+                !call apply_permutations_on_emitter (flst_emitter(j), perm_list)
+                flst_emitter(j) = perm_list * flst_emitter(j)
              end if
           end do
           call reg_data%regions(j)%init (j, mult(j), 0, flv_alr_registered(j), &
@@ -3352,74 +3505,6 @@ position.
   end function create_alr
 
 @ %def create_alr
-@ Explain
-<<fks regions: procedures>>=
-  function create_flavor_permutation_list (flv_in, flv_ref, n_first, n_last) result (perm_list)
-    integer, dimension(:,:), allocatable :: perm_list
-    type(flv_structure_t), intent(in) :: flv_in, flv_ref
-    integer, intent(in) :: n_first, n_last
-    integer :: flv1, flv2, tmp
-    integer :: i, j, j_min, i_perm
-    integer, dimension(:,:), allocatable :: perm_list_tmp
-    type(flv_structure_t) :: flv_copy
-    flv_copy = flv_ref
-    allocate (perm_list_tmp (factorial (n_last - n_first - 1), 2))
-    j_min = n_first + 1
-    i_perm = 0
-    do i = n_first + 1, n_last
-       flv1 = flv_in%flst(i)
-       do j = j_min, n_last
-          flv2 = flv_copy%flst(j)
-          if (flv1 == flv2 .and. i /= j) then
-             i_perm = i_perm + 1
-             tmp = flv_copy%flst(i)
-             flv_copy%flst(i) = flv2
-             flv_copy%flst(j) = tmp
-             perm_list_tmp (i_perm, 1) = j
-             perm_list_tmp (i_perm, 2) = i
-             j_min = j_min + 1
-             exit
-          end if
-       end do
-    end do
-    allocate (perm_list (i_perm, 2))
-    perm_list = perm_list_tmp (1 : i_perm, :)
-    deallocate (perm_list_tmp)
-    call flv_copy%final ()
-  end function create_flavor_permutation_list
-
-@ %def create_flavor_permutation_list
-@ Explain
-<<fks regions: procedures>>=
-  subroutine apply_permutations_on_flavors (flv, perm_list)
-    type(flv_structure_t), intent(inout) :: flv
-    integer, intent(in), dimension(:,:), allocatable :: perm_list
-    integer :: i, i1, i2
-    integer :: tmp
-    do i = 1, size (perm_list (:,1))
-       i1 = perm_list (i,1)
-       i2 = perm_list (i,2)
-       tmp = flv%flst (i1)
-       flv%flst (i1) = flv%flst (i2)
-       flv%flst (i2) = tmp
-    end do
-  end subroutine apply_permutations_on_flavors
-
-@ %def apply_permutations_on_flavors
-@
-<<fks regions: procedures>>=
-  subroutine apply_permutations_on_emitter (emitter, perm_list)
-    integer, intent(inout) :: emitter
-    integer, intent(in), dimension(:,:), allocatable :: perm_list
-    integer :: i, i1, i2
-    do i = 1, size (perm_list (:,1))
-       i1 = perm_list (i, 1)
-       i2 = perm_list (i, 2)
-       if (emitter == i1) emitter = i2
-    end do
-  end subroutine apply_permutations_on_emitter
-
-@ %def apply_permutations_on_emitter
 @
 <<fks regions: reg data: TBP>>=
   procedure :: has_pseudo_isr => region_data_has_pseudo_isr
@@ -3428,7 +3513,6 @@ position.
     logical :: val
     class(region_data_t), intent(in) :: reg_data
     val = any (reg_data%regions%pseudo_isr)
-    !val = .true.
   end function region_data_has_pseudo_isr
 
 @ %def region_data_has_pseudo_isr
