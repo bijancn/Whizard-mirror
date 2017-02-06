@@ -576,10 +576,11 @@ contains
           if (process_mode == PROC_MODE_WBWB) call compute_decay_owfs (mom_ofs, hi)
           amp(hi) = - calculate_blob (ffi, p12, ptop_ofs, tree_contrib=tree_contrib)
           if (process_mode == PROC_MODE_TT .and. &
-               threshold%settings%helicity_approximation%ultra .and. &
-               (threshold%settings%sel_hel_top /= table_spin_states_OS(3,hi) .or. &
-                threshold%settings%sel_hel_topbar /= table_spin_states_OS(4,hi))) then
+               threshold%settings%helicity_approximation%ultra) then
+             if (threshold%settings%sel_hel_top /= table_spin_states_OS(3,hi) .or. &
+                threshold%settings%sel_hel_topbar /= table_spin_states_OS(4,hi)) then
                 amp(hi) = zero
+             end if
           end if
        end if
     end do
