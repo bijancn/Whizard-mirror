@@ -1111,11 +1111,27 @@ structure if the particle at position \texttt{emitter} is removed
 @
 <<fks regions: interfaces>>=
   interface operator(*)
+     module procedure prod_perm_perm
      module procedure prod_perm_flv
      module procedure prod_perm_int
+     module procedure prod_perm_ftuple
   end interface
 
 @ %def interface prod_perm_flv
+@
+<<fks regions: procedures>>=
+  elemental function prod_perm_perm(perm_1, perm_2) result (perm_out)
+    type(flavor_permutation_t) :: perm_out
+    type(flavor_permutation_t), intent(in) :: perm_1, perm_2
+    integer :: n1, n2
+    n1 = size (perm_1%perms, dim = 1)
+    n2 = size (perm_2%perms, dim = 1)
+    allocate (perm_out%perms (n1 + n2, 2))
+    perm_out%perms (1 : n1, :) = perm_1%perms
+    perm_out%perms (n1 + 1: n1 + n2, :) = perm_2%perms
+  end function prod_perm_perm
+
+@ %def prod_perm_perm
 @
 <<fks regions: procedures>>=
   elemental function prod_perm_flv (perm, flv_in) result (flv_out)
@@ -1157,6 +1173,50 @@ structure if the particle at position \texttt{emitter} is removed
   end function prod_perm_int
 
 @ %def prod_perm_int
+@
+<<fks regions: procedures>>=
+  function prod_perm_ftuple (perm, f_in) result (f_out)
+    type(ftuple_t) :: f_out
+    type(flavor_permutation_t), intent(in) :: perm
+    type(ftuple_t), intent(in) :: f_in
+    integer :: i, i1, i2
+    f_out = f_in
+    do i = 1, size (perm%perms, dim = 1)
+       i1 = perm%perms(i,1)
+       i2 = perm%perms(i,2)
+       if (f_out%ireg(1) == i1) then
+          f_out%ireg(1) = i2
+       else if (f_out%ireg(1) == i2) then
+          f_out%ireg(1) = i1
+       end if
+       if (f_out%ireg(2) == i1) then
+          f_out%ireg(2) = i2
+       else if (f_out%ireg(2) == i2) then
+          f_out%ireg(2) = i1
+       end if
+    end do
+    if (f_out%ireg(1) > f_out%ireg(2)) f_out%ireg = f_out%ireg([2,1])
+  end function prod_perm_ftuple
+
+@ %def prod_perm_ftuple
+@
+<<fks regions: procedures>>=
+  subroutine apply_permutations_on_ftuple_list (perm, ftuples)
+    type(flavor_permutation_t), intent(in) :: perm
+    type(ftuple_list_t), intent(inout), target :: ftuples
+    type(ftuple_list_t), pointer :: current => null ()
+    current => ftuples
+    do
+       current%ftuple = perm * current%ftuple
+       if (associated (current%next)) then
+          current => current%next
+       else
+          exit
+       end if
+    end do
+  end subroutine apply_permutations_on_ftuple_list
+
+@ %def apply_permutations_on_ftuple_list
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with
 an $\alpha_r$- and resonance-index, with a real flavor structure and
@@ -2347,6 +2407,44 @@ auto-allocation bug.
   end function region_data_get_flv_states_real_single
 
 @ %def region_data_get_flv_states_real
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_flv_states => region_data_get_flv_states
+<<fks regions: procedures>>=
+  subroutine region_data_get_flv_states (reg_data, flv_born, flv_real)
+     class(region_data_t), intent(in) :: reg_data
+     integer, dimension(:,:), allocatable, intent(out) :: flv_born, flv_real
+     integer :: i_flv, i_reg
+     logical, dimension(:), allocatable :: checked
+     allocate (flv_born (reg_data%n_legs_born, reg_data%n_flv_born))
+     do i_flv = 1, reg_data%n_flv_born
+        flv_born(:, i_flv) = reg_data%flv_born(i_flv)%flst
+     end do
+     allocate (flv_real (reg_data%n_legs_real, reg_data%n_flv_real))
+     allocate (checked (reg_data%n_flv_real))
+     checked = .false.
+     do i_reg = 1, reg_data%n_regions
+        i_flv = reg_data%regions(i_reg)%real_index
+        if (.not. checked(i_flv)) then
+           flv_real(:, i_flv) = reg_data%regions(i_reg)%flst_real%flst
+           checked (i_flv) = .true.
+        end if
+     end do
+     deallocate (checked)
+  end subroutine region_data_get_flv_states
+
+@ %def region_data_get_flv_states
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_n_in => region_data_get_n_in
+<<fks regions: procedures>>=
+  function region_data_get_n_in (reg_data) result (n_in)
+    integer :: n_in
+    class(region_data_t), intent(in) :: reg_data
+    n_in = reg_data%n_in
+  end function region_data_get_n_in
+
+@ %def region_data_get_n_in
 @ Returns $S_i = \frac{1}{\mathcal{D}d_i}$ or $S_{ij} =
 \frac{1}{\mathcal{D}d_{ij}}$ for one particular singular region.  At
 this point, the flavor array should be rearranged in such a way that
@@ -2750,9 +2848,11 @@ of the present one is increased.
                 !perm_list = create_flavor_permutation_list (reg_data%flv_real(i), &
                 !     flv_alr_registered(j), reg_data%n_in, reg_data%n_legs_real - 1)
                 call perm_list%init (reg_data%flv_real(i), flv_alr_registered(j), &
-                     reg_data%n_in, reg_data%n_legs_real - 1)
+                     reg_data%n_in, reg_data%n_legs_real)
                 !call apply_permutations_on_emitter (flst_emitter(j), perm_list)
-                flst_emitter(j) = perm_list * flst_emitter(j)
+                !flst_emitter(j) = perm_list * flst_emitter(j)
+                call apply_permutations_on_ftuple_list (perm_list, ftuples(index(j)))
+
              end if
           end do
           call reg_data%regions(j)%init (j, mult(j), 0, flv_alr_registered(j), &
@@ -5773,8 +5873,9 @@ distinguished by the flag [[xi2_expanded]].
        print *, 'Compute soft subtraction using alpha_s = ', alpha_s
     end if
 
-    s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
-         (p_born, sub_soft%p_soft, alr, emitter, i_res)
+    s_alpha_soft = sub_soft%reg_data%get_svalue_soft (p_born, &
+         sub_soft%p_soft, alr, emitter, i_res)
+    if (s_alpha_soft > one) call msg_fatal ("s_alpha_soft > 1!")
     if (debug_active (D_SUBTRACTION)) &
          call msg_print_color ('s_alpha_soft', s_alpha_soft, COL_YELLOW)
     select case (sub_soft%factorization_mode)
@@ -6002,7 +6103,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
           print *, 'Evaluating soft mismatch: '
           print *, 'Phase space: '
           call vector4_write_set (real_kinematics%p_born_cms%get_momenta(1), &
-             show_mass = .true.)
+               show_mass = .true.)
           print *, 'xi: ', xi, 'y: ', y, 's: ', s, 'E_gluon: ', E_gluon
        end if
           
@@ -6934,6 +7035,7 @@ the corresponding jacobians.
        p_real => real_kinematics%p_real_cms
     end if
     s_alpha = reg_data%get_svalue (p_real%get_momenta(i_phs), alr, emitter, i_res)
+    if (s_alpha > one) call msg_fatal ("s_alpha > 1!")
     if (debug_active (D_SUBTRACTION)) call msg_print_color('s_alpha', s_alpha, COL_YELLOW)
     sqme = sqme * s_alpha
     associate (region => reg_data%regions(alr))

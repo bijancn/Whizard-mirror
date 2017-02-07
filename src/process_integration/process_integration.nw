@@ -2524,6 +2524,18 @@ end module core_manager
   end subroutine cm_get_flv_states
 
 @ %def cm_get_flv_states
+@
+<<Core manager: cm: TBP>>=
+  procedure :: core_is_radiation => cm_core_is_radiation
+<<Core manager: procedures>>=
+  elemental function cm_core_is_radiation (cm, i_core) result (is_rad)
+    logical :: is_rad
+    class(core_manager_t), intent(in) :: cm
+    integer, intent(in) :: i_core
+    is_rad = cm%nlo_type(i_core) == NLO_REAL .and. .not. cm%sub(i_core)
+  end function cm_core_is_radiation
+
+@ %def cm_core_is_radiation
 @ Asterisks denote the subtraction components
 <<Core manager: cm: TBP>>=
   procedure :: write => cm_write
@@ -5836,12 +5848,12 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
 <<Process: process: TBP>>=
   procedure :: create_blha_interface => process_create_blha_interface
 <<Process: procedures>>=
-  subroutine process_create_blha_interface (process, beam_structure)
+  subroutine process_create_blha_interface (process, flv_born, flv_real, n_in, beam_structure)
     class(process_t), intent(inout) :: process
+    integer, intent(in), dimension(:,:), allocatable :: flv_born, flv_real
+    integer, intent(in) :: n_in
     type(beam_structure_t), intent(in) :: beam_structure
     integer :: alpha_power, alphas_power
-    integer, dimension(:,:), allocatable :: flv_born, flv_real
-    integer :: n_in
     type(blha_master_t) :: blha_master
     integer :: openloops_phs_tolerance, openloops_stability_log
     logical :: use_cms, use_collier
@@ -5858,7 +5870,12 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
           ew_scheme = var_list%get_sval (var_str ("$blha_ew_scheme"))
           call blha_master%set_ew_scheme (ew_scheme)
        end associate
-       call cm%get_flv_states (flv_born, flv_real, n_in)
+       !call cm%get_flv_states (flv_born, flv_real, n_in)
+       !select type (pcm => process%pcm)
+       !type is (pcm_nlo_t)
+       !   call pcm%region_data%get_flv_states (flv_born, flv_real)
+       !   n_in = pcm%region_data%get_n_in ()
+       !end select
        call blha_master%set_methods (process%is_nlo_calculation (), process%meta%var_list)
        call blha_master%allocate_config_files ()
        call blha_master%setup_additional_features (openloops_phs_tolerance, &
@@ -5890,11 +5907,17 @@ Could also be moved to the [[core_manager_t]].
     type(string_t) :: libname
     integer :: i_component, i_core
     logical, dimension(process%cm%n_cores) :: loaded
-    integer :: n_excess
+    integer :: n_excess, n_in
+    integer, dimension(:,:), allocatable :: flv_born, flv_real
 
     loaded = .false.
+    select type (pcm => process%pcm)
+    type is (pcm_nlo_t)
+       call pcm%region_data%get_flv_states (flv_born, flv_real)
+       n_in = pcm%region_data%get_n_in ()
+    end select
     if (process%needs_extra_code (only_blha = .true.)) &
-         call process%create_blha_interface (beam_structure)
+         call process%create_blha_interface (flv_born, flv_real, n_in, beam_structure)
     do i_component = 1, process%meta%n_components
        associate (config => process%component(i_component)%config)
           i_core = process%get_i_core_nlo_type (config%get_nlo_type ())
@@ -5904,8 +5927,15 @@ Could also be moved to the [[core_manager_t]].
                 select type (core => process%cm%cores(i_core)%core)
                 class is (prc_user_defined_base_t)
                    libname = process%get_library_name ()
-                   call core%create_and_load_extra_libraries &
-                        (var_list, os_data, libname, process%config%model, i_core)
+                   if (process%cm%core_is_radiation(i_core)) then
+                      call core%create_and_load_extra_libraries &
+                           (flv_real, var_list, os_data, libname, &
+                           process%config%model, i_core)
+                   else
+                      call core%create_and_load_extra_libraries &
+                           (flv_born, var_list, os_data, libname, &
+                           process%config%model, i_core)
+                   end if
                 end select
                 loaded(i_core) = .true.
              end if
@@ -8983,8 +9013,8 @@ object and the squared matrix-element collector.
           call pcm_instance%real_sub%init (region_data)
           call pcm_instance%real_sub%set_resonance_mappings &
                (config%settings%use_resonance_mappings)
-          if (config%settings%fixed_alr < 1) then
-             call msg_fatal ("Fixed alpha region must be larger than 0!")
+          if (config%settings%fixed_alr < 0) then
+             call msg_fatal ("Fixed alpha region must be non-negative!")
           else if (config%settings%fixed_alr > region_data%n_regions) then
              call msg_fatal ("Fixed alpha region is larger than the total"&
                   &" number of singular regions!")
