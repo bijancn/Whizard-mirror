@@ -2523,9 +2523,11 @@ initialization phase (more precisely: at the moment only in the
     integer :: n_corr_types, n_rad_prt
 
     n_corr_types = count ([generator%qcd_enabled, generator%qed_enabled])
+    print *, "n_corr_types = ", n_corr_types
 
     allocate (i_skip (generator%n_tot))
     i_skip = -1
+    
     n_constraints = 2 + count([set_n_loop, set_mass_sum, &
          set_selected_particles, set_required_particles])
     associate (constraints => generator%constraints)
@@ -2564,32 +2566,44 @@ initialization phase (more precisely: at the moment only in the
             call pl_req%set (j, generator%pl_out%get(i))
             j = j + 1
          end do
+         print *, "pl_req:"
+         call pl_req%write ()
+         print *, " "
          call constraints%set (n, constrain_require (pl_req))
          n = n + 1
       end if
       if (set_selected_particles) then
-         n_rad_prt = n_corr_types + generator%pl_add_rad%get_size ()
-         if (generator%only_final_state ) then
-            call pl_insert%init (generator%n_out + n_rad_prt)
-            do i = 1, generator%n_out
-               call pl_insert%set(i, generator%pl_out%get(i))
+         if (generator%pl_add_rad%get_size () == 0) then
+            if (generator%only_final_state ) then
+               call pl_insert%init (generator%n_out + n_corr_types)
+               do i = 1, generator%n_out
+                  call pl_insert%set(i, generator%pl_out%get(i))
+               end do
+               last_index = generator%n_out + 1
+            else
+               call generator%pl_in%create_antiparticles (pl_antiparticles, n_new_particles)
+               call pl_insert%init (generator%n_tot + n_new_particles + n_corr_types)
+               do i = 1, generator%n_in
+                  call pl_insert%set(i, generator%pl_in%get(i))
+               end do
+               do i = 1, generator%n_out
+                  j = i + generator%n_in
+                  call pl_insert%set(j, generator%pl_out%get(i))
+               end do
+               do i = 1, n_new_particles
+                  j = i + generator%n_in + generator%n_out
+                  call pl_insert%set(j, pl_antiparticles%get(i))
+               end do
+               last_index = generator%n_tot + n_new_particles + 1
+            end if
+         else if (generator%pl_add_rad%get_size () > 0) then
+            n_rad_prt = n_corr_types + generator%pl_add_rad%get_size ()
+            call pl_insert%init (n_rad_prt)
+            last_index = 1
+            do i = 1, generator%pl_add_rad%get_size ()
+               call pl_insert%set (last_index, generator%pl_add_rad%get(i))
+               last_index = last_index + 1
             end do
-            last_index = generator%n_out + 1
-         else
-            call generator%pl_in%create_antiparticles (pl_antiparticles, n_new_particles)
-            call pl_insert%init (generator%n_tot + n_new_particles + n_rad_prt)
-            do i = 1, generator%n_in
-               call pl_insert%set(i, generator%pl_in%get(i))
-            end do
-            do i = 1, generator%n_out
-               j = i + generator%n_in
-               call pl_insert%set(j, generator%pl_out%get(i))
-            end do
-            do i = 1, n_new_particles
-               j = i + generator%n_in + generator%n_out
-               call pl_insert%set(j, pl_antiparticles%get(i))
-            end do
-            last_index = generator%n_tot + n_new_particles + 1
          end if
          pdg_gluon = GLUON; pdg_photon = PHOTON
          if (generator%qcd_enabled) then
@@ -2600,12 +2614,7 @@ initialization phase (more precisely: at the moment only in the
          if (generator%qed_enabled) then
             pdg_add = pdg_photon
             call pl_insert%set (last_index, pdg_add)
-            last_index = last_index + 1
          end if
-         do i = 1, generator%pl_add_rad%get_size ()
-            call pl_insert%set (last_index, generator%pl_add_rad%get(i))
-            last_index = last_index + 1
-         end do
          call constraints%set (n, constrain_insert (pl_insert))
       end if
    end associate
@@ -3155,11 +3164,11 @@ end module radiation_generator_uti
     deallocate (pdg_out)
 
     write (u, "(A)") "* Process 2: Quark-antiquark production with additional gluon. &
-         & Top quarks considered in radiation"
+         & Only down quarks considered in radiation"
     allocate (pdg_out(3))
     allocate (pdg_add_rad(2))
     pdg_out(1) = 2; pdg_out(2) = -2; pdg_out(3) = 21
-    pdg_add_rad(1) = 6; pdg_add_rad(2) = -6
+    pdg_add_rad(1) = 1; pdg_add_rad(2) = -1
     call test_process (generator, pdg_in, pdg_out, u, pdg_add_rad = pdg_add_rad)
     deallocate (pdg_out)
     deallocate (pdg_add_rad)
@@ -3342,11 +3351,11 @@ end module radiation_generator_uti
     deallocate (pdg_out)
 
     write (u, "(A)") "* Process 2: Quark-antiquark production with additional photon. &
-         & Top quarks considered in radiation"
+         & Only down quarks considered in radiation"
     allocate (pdg_out(3))
     allocate (pdg_add_rad(2))
     pdg_out(1) = 2; pdg_out(2) = -2; pdg_out(3) = 22
-    pdg_add_rad(1) = 6; pdg_add_rad(2) = -6
+    pdg_add_rad(1) = 1; pdg_add_rad(2) = -1
     call test_process (generator, pdg_in, pdg_out, u, pdg_add_rad = pdg_add_rad)
     deallocate (pdg_out)
     deallocate (pdg_add_rad)
@@ -3357,11 +3366,11 @@ end module radiation_generator_uti
     call test_process (generator, pdg_in, pdg_out, u)
     deallocate (pdg_out)
 
-    write (u, "(A)") "* Process 3: Z + jets. Z considered in radiation"
+    write (u, "(A)") "* Process 3: Z + jets. Only Z considered in radiation"
     allocate (pdg_out(3))
-    allocate (pdg_add_rad(1))
+    allocate (pdg_add_rad(3))
     pdg_out(1) = 2; pdg_out(2) = -2; pdg_out(3) = 23
-    pdg_add_rad(1) = 23
+    pdg_add_rad(1) = 23; pdg_add_rad(2) = 2; pdg_add_rad(2) = -2
     call test_process (generator, pdg_in, pdg_out, u, pdg_add_rad = pdg_add_rad)
     deallocate (pdg_out)
     deallocate (pdg_add_rad)
