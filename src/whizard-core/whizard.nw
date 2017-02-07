@@ -13212,7 +13212,7 @@ module commands
 <<Use kinds>>
 <<Use strings>>
   use io_units
-  use string_utils, only: lower_case
+  use string_utils, only: lower_case, split_string
   use format_utils, only: write_indent
   use format_defs, only: FMT_14, FMT_19
   use diagnostics
@@ -13826,7 +13826,7 @@ or arrays which would make the expansion ambiguous.
     logical :: qcd_corr, qed_corr
     type(string_t), dimension(:), allocatable :: prt_in_nlo, prt_out_nlo
     type(radiation_generator_t) :: radiation_generator
-    type(pdg_list_t) :: pl_in, pl_out
+    type(pdg_list_t) :: pl_in, pl_out, pl_add_rad
     type(string_t) :: born_me_method
     type(string_t) :: real_tree_me_method
     type(string_t) :: loop_me_method
@@ -13933,18 +13933,16 @@ or arrays which would make the expansion ambiguous.
     if (nlo_fixed_order .or. gks_active) then
        nlo_correction_type = var_list%get_sval (var_str ('$nlo_correction_type'))
        select case (char(nlo_correction_type))
-       case ("QCD")          !!! had been hard coded in radiation_generator%init () so far
-          qcd_corr = .true.  !!! leaving it as default for now
-          qed_corr = .false.
+       case ("QCD")          !!! leaving it as default for now
+          qcd_corr = .true.; qed_corr = .false.
        case ("EW")
-          qcd_corr = .false.
-          qed_corr = .true.
+          qcd_corr = .false.; qed_corr = .true.
        case ("Full")
-          qcd_corr =.true.
-          qed_corr = .true.
+          qcd_corr =.true.; qed_corr = .true.
        case default
           call msg_fatal ("Invalid NLO correction type! Valid inputs are: QCD, EW, Full (default: QCD)")
        end select
+       call check_for_additional_radiation ()
        call setup_radiation_generator ()
     end if
     if (nlo_fixed_order) then
@@ -13955,6 +13953,33 @@ or arrays which would make the expansion ambiguous.
             var_str ("Proceed with usual leading-order integration and simulation")])
     end if
   end subroutine check_for_nlo_corrections
+
+@ %def check_for_nlo_corrections
+@
+<<Commands: cmd process execute procedures>>=
+  subroutine check_for_additional_radiation ()
+    type(string_t) :: str_prt_add_rad
+    type(string_t), dimension(:), allocatable :: prt_add_rad
+    type(pdg_list_t) :: pl_tmp, pl_anti
+    integer :: i, n_anti
+    str_prt_add_rad = var_list%get_sval (var_str ("$add_particles_to_radiation"))
+    if (str_prt_add_rad /= "") then
+       call split_string (str_prt_add_rad, var_str (":"), prt_add_rad)
+       call pl_tmp%init (size(prt_add_rad))
+       do i = 1, size (prt_add_rad)
+          call pl_tmp%set (i, cmd%local%model%get_pdg (prt_add_rad(i), .true.))
+       end do
+       call pl_tmp%create_antiparticles (pl_anti, n_anti)
+       call pl_add_rad%init (pl_tmp%get_size() + n_anti)
+       do i = 1, pl_tmp%get_size ()
+          call pl_add_rad%set (i, pl_tmp%get(i))
+       end do
+       do i = 1, n_anti
+          j = i + pl_tmp%get_size ()
+          call pl_add_rad%set (j, pl_anti%get(i))
+       end do
+    end if
+  end subroutine check_for_additional_radiation
 
 @ %def check_for_nlo_corrections
 @
@@ -13997,7 +14022,7 @@ or arrays which would make the expansion ambiguous.
   subroutine setup_radiation_generator ()
     call split_prt (prt_spec_in, n_in, pl_in)
     call split_prt (prt_spec_out, n_out, pl_out)
-    call radiation_generator%init (pl_in, pl_out, &
+    call radiation_generator%init (pl_in, pl_out, pl_add_rad, &
          qcd = qcd_corr, qed = qed_corr)
     call radiation_generator%set_n (n_in, n_out, 0)
     initial_state_colored = pdg_in%has_colored_particles()
