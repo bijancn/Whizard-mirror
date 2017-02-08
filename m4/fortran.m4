@@ -135,6 +135,11 @@ AC_CACHE_CHECK([the major version],
 ])
 FC_MAJOR_VERSION="$wo_cv_fc_major_version"
 AC_SUBST([FC_MAJOR_VERSION])
+
+# Catch optimization problem of gcc/gfortran 7 
+AM_CONDITIONAL([FC_IS_GFORTRAN_7],
+  [test test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_major_version" = "7"])
+
 ])
 ### end WO_FC_GET_VENDOR_AND_VERSION
 
@@ -146,6 +151,8 @@ AC_MSG_NOTICE([error: gfortran 4.5/4.6/4.7 object orientation support insufficie
 AC_MSG_ERROR([***************************************************************])
 fi 
 ])
+
+
 
 ### Determine Fortran flags and file extensions
 AC_DEFUN([WO_FC_PARAMETERS],

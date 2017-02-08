@@ -271,6 +271,7 @@ TESTS_STATIC = \
     static_2.run
 XFAIL_TESTS_STATIC =
 
+
 TESTS_REQ_PYTHIA6 = \
     pythia6_1.run \
     pythia6_2.run \
@@ -278,9 +279,22 @@ TESTS_REQ_PYTHIA6 = \
     pythia6_4.run \
     tauola_1.run \
     tauola_2.run \
-    mlm_matching_isr.run \
     mlm_pythia6_isr.run
-XFAIL_TESTS_REQ_PYTHIA6 = 
+if !FC_IS_GFORTRAN_7
+if !FC_EXT
+TESTS_REQ_PYTHIA6 =+
+    mlm_matching_isr.run
+endif
+endif
+XFAIL_TESTS_REQ_PYTHIA6=
+if FC_IS_GFORTRAN_7
+if FC_EXT
+XFAIL_TESTS_REQ_PYTHIA6 +=
+    mlm_matching_isr.run
+endif
+endif
+
+
 
 TESTS_REQ_EV_ANA = \
     analyze_3.run
