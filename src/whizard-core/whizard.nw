@@ -5240,11 +5240,6 @@ local changes to currently inactive models.
 
     n_components = intg%process%get_n_components ()
 
-    call blha_template%init (local%beam_structure%has_polarized_beams(), &
-         var_list%get_lval (var_str ("?openloops_switch_off_muon_yukawa")), &
-         var_list%get_rval (var_str ("blha_use_top_yukawa")), &
-         var_list%get_sval (var_str ("$blha_ew_scheme")))
-
     intg%combined_integration = var_list%get_lval &
        (var_str ('?combined_nlo_integration')) .and. &
         intg%process%is_nlo_calculation ()
@@ -5269,11 +5264,29 @@ local changes to currently inactive models.
        deallocate (core_template)
     end do
 
-    do i_core = 1, intg%process%get_n_cores ()
-       call fill_blha_template (intg%process%get_nlo_type (i_core))
-       call intg%process%init_core (i_core, blha_template)
-       call blha_template%reset ()
-    end do
+    call intg%process%init_cores ()
+
+    if (intg%process%is_nlo_calculation ()) then
+       call dispatch_fks_s (fks_template, local%var_list)
+       call intg%process%init_nlo_settings (var_list, fks_template)
+       call intg%process%check_if_threshold_method ()
+       i_core_real = intg%process%get_i_core_nlo_type (NLO_REAL)
+       i_core_born = intg%process%get_i_core_nlo_type (BORN)
+       call msg_print_color ("setup region data", COL_RED)
+       call intg%process%setup_region_data (i_real, &
+            intg%process%get_constants(i_core_born), &
+            intg%process%get_constants(i_core_real))
+    end if
+    if (intg%process%needs_extra_code ()) then
+       call blha_template%init (local%beam_structure%has_polarized_beams(), &
+            var_list%get_lval (var_str ("?openloops_switch_off_muon_yukawa")), &
+            var_list%get_rval (var_str ("blha_use_top_yukawa")), &
+            var_list%get_sval (var_str ("$blha_ew_scheme")))
+       call intg%process%init_blha_cores(blha_template, var_list)
+       call intg%process%create_and_load_extra_libraries &
+            (local%beam_structure, var_list, local%os_data)
+    end if
+
 
     do i_component = 1, n_components
        config => intg%process%get_component_def_ptr (i_component)
@@ -5305,23 +5318,6 @@ local changes to currently inactive models.
        if (allocated (phs_config_template_other)) &
           deallocate (phs_config_template_other)
     end do
-
-    if (intg%process%is_nlo_calculation ()) then
-       call intg%process%init_nlo_settings (var_list, fks_template)
-       call intg%process%check_if_threshold_method ()
-       i_core_real = intg%process%get_i_core_nlo_type (NLO_REAL)
-       i_core_born = intg%process%get_i_core_nlo_type (BORN)
-       call msg_print_color ("setup region data", COL_RED)
-       call intg%process%setup_region_data (i_real, &
-            intg%process%get_constants(i_core_born), &
-            intg%process%get_constants(i_core_real))
-    end if
-
-    if (intg%process%needs_extra_code ()) then
-       config => intg%process%get_component_def_ptr (1)
-       call intg%process%create_and_load_extra_libraries &
-            (local%beam_structure, var_list, local%os_data)
-    end if
 
     if (verb)  call intg%process%write (screen = .true.)
 
@@ -5464,7 +5460,6 @@ local changes to currently inactive models.
          call dispatch_phs (phs_config_template_other, local%var_list, &
             local%os_data, intg%process_id, mapping_defs, phs_par, &
             var_str ('fks'))
-         call dispatch_fks_s (fks_template, local%var_list)
       else
          call dispatch_phs (phs_config_template_other, local%var_list, &
             local%os_data, intg%process_id, mapping_defs, phs_par, &
@@ -5515,32 +5510,6 @@ local changes to currently inactive models.
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_SUB)
     end subroutine setup_subtraction_component
-
-    function needs_entry (me_method) result (val)
-      logical :: val
-      type(string_t), intent(in) :: me_method
-      val = char (me_method) == 'gosam' .or. char (me_method) == 'openloops'
-    end function needs_entry
-
-    subroutine fill_blha_template (nlo_type)
-      integer, intent(in) :: nlo_type
-      select case (nlo_type)
-      case (BORN)
-         if (needs_entry (var_list%get_sval (var_str ("$born_me_method")))) &
-            call blha_template%set_born ()
-      case (NLO_REAL)
-         if (needs_entry (var_list%get_sval (var_str ("$real_tree_me_method")))) &
-            call blha_template%set_real_trees ()
-      case (NLO_VIRTUAL)
-         if (needs_entry (var_list%get_sval (var_str ("$loop_me_method")))) &
-            call blha_template%set_loop ()
-      case (NLO_SUBTRACTION)
-         if (needs_entry (var_list%get_sval (var_str ("$correlation_me_method")))) then
-            call blha_template%set_subtraction ()
-            call blha_template%set_internal_color_correlations ()
-         end if
-      end select
-    end subroutine fill_blha_template
 
     subroutine setup_beams ()
       real(default) :: sqrts
@@ -8567,6 +8536,7 @@ does not affect parameters.
     type(process_t), intent(inout), target :: process
     class(model_data_t), intent(in), optional :: model
     type(rt_data_t), intent(in), optional, target :: local
+    integer :: i_component
     allocate (process_instance)
     call process_instance%init (process)
     if (process%is_nlo_calculation ()) then
@@ -8579,9 +8549,12 @@ does not affect parameters.
           end select
        end select
        if (process%needs_extra_code () .and. present (local)) then
-          call process%create_and_load_extra_libraries &
-               (local%beam_structure, process%get_var_list_ptr (), &
-               local%os_data)
+          !do i_component = 1, size (process%component)
+             call process%create_and_load_extra_libraries &
+                  !(process%get_component_def_ptr (i_component), &
+                  (local%beam_structure, process%get_var_list_ptr (), &
+                  local%os_data)
+          !end do
           call process_instance%setup_blha_helicities ()
        end if
     end if

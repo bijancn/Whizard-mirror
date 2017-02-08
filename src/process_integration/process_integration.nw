@@ -4613,33 +4613,83 @@ the process setup, data, and expressions, but no integration results.
 @ %def process_get_md5sum_cfg
 @ Initialize the [[i_core]]th core.
 <<Process: process: TBP>>=
-  procedure :: init_core => process_init_core
+  procedure :: init_cores => process_init_cores
 <<Process: procedures>>=
-  subroutine process_init_core (process, i_core, blha_template)
+  subroutine process_init_cores (process)
     class(process_t), intent(inout) :: process
-    integer, intent(in) :: i_core
-    type(blha_template_t), intent(in), optional :: blha_template
-    integer :: i_component
+    integer :: i_core, i_component
     type(process_component_def_t), pointer :: config
-    i_component = process%cm%i_core_to_first_i_component (i_core)
-    config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
-    associate (core => process%cm%cores(i_core)%core)
-       call core%init (config%get_core_def_ptr (), &
-            process%meta%lib, process%meta%id, i_component)
-    end associate
-    select type (core => process%cm%cores(i_core)%core)
-    class is (prc_blha_t)
-       if (present (blha_template)) then
-          call core%init_blha (blha_template)
-       else
-          call msg_bug ("process_init_cores: BLHA core cannot " // &
-               "be initialized - missing template")
-       end if
-       call core%init_driver (process%config%os_data)
-    end select
-  end subroutine process_init_core
+    do i_core = 1, process%get_n_cores ()
+       i_component = process%cm%i_core_to_first_i_component (i_core)
+       config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
+       associate (core => process%cm%cores(i_core)%core)
+          call core%init (config%get_core_def_ptr (), &
+               process%meta%lib, process%meta%id, i_component)
+       end associate
+    end do
+  end subroutine process_init_cores
 
 @ %def process_init_core
+@
+<<Process: process: TBP>>=
+  procedure :: init_blha_cores => process_init_blha_cores
+<<Process: procedures>>=
+  subroutine process_init_blha_cores (process, blha_template, var_list)
+    class(process_t), intent(inout) :: process
+    type(blha_template_t), intent(inout) :: blha_template
+    type(var_list_t), intent(in), pointer :: var_list
+    integer :: i_core
+    integer :: n_in, n_legs, n_flv
+    select type (pcm => process%pcm)
+    type is (pcm_nlo_t)
+       do i_core = 1, process%get_n_cores ()
+         call fill_blha_template (process%get_nlo_type (i_core))
+         select type (core => process%cm%cores(i_core)%core)
+         class is (prc_blha_t)
+            n_in = pcm%region_data%get_n_in ()
+            if (process%cm%core_is_radiation(i_core)) then
+               n_legs = pcm%region_data%get_n_legs_real ()
+               n_flv = pcm%region_data%get_n_flv_real ()
+            else
+               n_legs = pcm%region_data%get_n_legs_born ()
+               n_flv = pcm%region_data%get_n_flv_born ()
+            end if
+            call core%init_blha (blha_template, pcm%region_data%get_n_in(), &
+                 n_legs, n_flv)
+            call core%init_driver (process%config%os_data)
+         end select
+         call blha_template%reset ()
+       end do
+    end select
+  contains
+    function needs_entry (me_method) result (val)
+      logical :: val
+      type(string_t), intent(in) :: me_method
+      val = char (me_method) == 'gosam' .or. char (me_method) == 'openloops'
+    end function needs_entry
+
+    subroutine fill_blha_template (nlo_type)
+      integer, intent(in) :: nlo_type
+      select case (nlo_type)
+      case (BORN)
+         if (needs_entry (var_list%get_sval (var_str ("$born_me_method")))) &
+            call blha_template%set_born ()
+      case (NLO_REAL)
+         if (needs_entry (var_list%get_sval (var_str ("$real_tree_me_method")))) &
+            call blha_template%set_real_trees ()
+      case (NLO_VIRTUAL)
+         if (needs_entry (var_list%get_sval (var_str ("$loop_me_method")))) &
+            call blha_template%set_loop ()
+      case (NLO_SUBTRACTION)
+         if (needs_entry (var_list%get_sval (var_str ("$correlation_me_method")))) then
+            call blha_template%set_subtraction ()
+            call blha_template%set_internal_color_correlations ()
+         end if
+      end select
+    end subroutine fill_blha_template
+  end subroutine process_init_blha_cores
+
+@ %def process_init_blha_cores
 @
 <<Process: process: TBP>>=
   procedure :: get_n_cores => process_get_n_cores
@@ -5555,7 +5605,7 @@ process internals directly that would otherwise be hidden.
     call process%core_manager_register (BORN, 1, var_str ("test_me"))
     call process%allocate_cm_arrays (1)
     call process%allocate_core (1, core)
-    call process%init_core (1)
+    call process%init_cores ()
   end subroutine process_setup_test_cores
 
 @ %def process_setup_test_cores
@@ -5859,7 +5909,9 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
     logical :: use_cms, use_collier
     type(string_t) :: openloops_extra_cmd
     type(string_t) :: ew_scheme
-    call process%component(1)%config%get_coupling_powers (alpha_power, alphas_power)
+    type(process_component_def_t), pointer :: config => null ()
+    config => process%meta%lib%get_component_def_ptr (process%meta%id, 1)
+    call config%get_coupling_powers (alpha_power, alphas_power)
     associate (cm => process%cm)
        associate (var_list => process%meta%var_list)
           openloops_phs_tolerance = var_list%get_ival (var_str ("openloops_phs_tolerance"))
@@ -5909,38 +5961,40 @@ Could also be moved to the [[core_manager_t]].
     logical, dimension(process%cm%n_cores) :: loaded
     integer :: n_excess, n_in
     integer, dimension(:,:), allocatable :: flv_born, flv_real
+    type(process_component_def_t), pointer :: config => null ()
 
     loaded = .false.
     select type (pcm => process%pcm)
     type is (pcm_nlo_t)
-       call pcm%region_data%get_flv_states (flv_born, flv_real)
+       call pcm%region_data%get_all_flv_states (flv_born, flv_real)
        n_in = pcm%region_data%get_n_in ()
     end select
     if (process%needs_extra_code (only_blha = .true.)) &
          call process%create_blha_interface (flv_born, flv_real, n_in, beam_structure)
     do i_component = 1, process%meta%n_components
-       associate (config => process%component(i_component)%config)
-          i_core = process%get_i_core_nlo_type (config%get_nlo_type ())
-          if (config%can_be_integrated () .or. &
-               process%get_nlo_type (i_core) == NLO_SUBTRACTION) then
-             if (.not. loaded (i_core)) then
-                select type (core => process%cm%cores(i_core)%core)
-                class is (prc_user_defined_base_t)
-                   libname = process%get_library_name ()
-                   if (process%cm%core_is_radiation(i_core)) then
-                      call core%create_and_load_extra_libraries &
-                           (flv_real, var_list, os_data, libname, &
-                           process%config%model, i_core)
-                   else
-                      call core%create_and_load_extra_libraries &
-                           (flv_born, var_list, os_data, libname, &
-                           process%config%model, i_core)
-                   end if
-                end select
-                loaded(i_core) = .true.
-             end if
+       config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
+       i_core = process%get_i_core_nlo_type (config%get_nlo_type ())
+       if (config%can_be_integrated () .or. &
+            process%get_nlo_type (i_core) == NLO_SUBTRACTION) then
+          if (.not. loaded (i_core)) then
+             select type (core => process%cm%cores(i_core)%core)
+             class is (prc_user_defined_base_t)
+                libname = process%get_library_name ()
+                if (process%cm%core_is_radiation(i_core)) then
+                   call core%data%set_flv_state (flv_real)
+                   call core%create_and_load_extra_libraries &
+                        (flv_real, var_list, os_data, libname, &
+                        process%config%model, i_core)
+                else
+                   call core%data%set_flv_state (flv_born)
+                   call core%create_and_load_extra_libraries &
+                        (flv_born, var_list, os_data, libname, &
+                        process%config%model, i_core)
+                end if
+             end select
+             loaded(i_core) = .true.
           end if
-       end associate
+       end if
     end do
   end subroutine process_create_and_load_extra_libraries
 
