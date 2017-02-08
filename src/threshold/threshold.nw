@@ -10716,7 +10716,6 @@ end module ttv_formfactors
      integer :: offshell_strategy
      logical :: factorized_computation
      logical :: interference
-     logical :: factorized_interference_term
      logical :: only_interference_term
      logical :: nlo
      logical :: no_nlo_width_in_signal_propagators
@@ -10763,7 +10762,6 @@ end module ttv_formfactors
     settings%helicity_approximation%extra = btest(offshell_strategy_in, 10)
     settings%force_minus_one = btest(offshell_strategy_in, 11)
     settings%flip_relative_sign = btest(offshell_strategy_in, 12)
-    settings%factorized_interference_term = btest(offshell_strategy_in, 13)
     if (top_helicity_selection > -1) then
        settings%helicity_approximation%ultra = .true.
        bit_top = btest (top_helicity_selection, 0)
@@ -10817,8 +10815,6 @@ end module ttv_formfactors
     write (u, '(A,L1)') "settings%factorized_computation = ", &
          settings%factorized_computation
     write (u, '(A,L1)') "settings%interference = ", settings%interference
-    write (u, '(A,L1)') "settings%factorized_interference_term = ", &
-         settings%factorized_interference_term
     write (u, '(A,L1)') "settings%only_interference_term = ", &
          settings%only_interference_term
     write (u, '(A,L1)') "settings%Z_disabled = ", &
@@ -10875,7 +10871,7 @@ end module ttv_formfactors
   end subroutine formfactor_disable
 
 @ %def formfactor_disable
-@
+@ This function actually returns $\tilde{F}$, i.e. $F-1$.
 <<ttv formfactors: formfactor: TBP>>=
   procedure :: compute => formfactor_compute
 <<ttv formfactors: procedures>>=
@@ -10900,15 +10896,17 @@ end module ttv_formfactors
           FF = expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
                (1-f) * AS_HARD, ps, vec_type) - one
        case (EXPANDED_SOFT)
-          FF = expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type) - one
+          FF = expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, &
+               vec_type) - one
        case (EXPANDED_SOFT_SWITCHOFF)
           f = f_switch_off (v_matching (ps%sqrts, GAM))
           FF = expanded_formfactor (f * AS_HARD, &
                f * alphas_soft (ps%sqrts), ps, vec_type) - one
        case (RESUMMED_ANALYTIC_LL)
-          FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts), ps, vec_type) - one
+          FF = formfactor_LL_analytic (alphas_soft (ps%sqrts), ps%sqrts, &
+               ps%p, vec_type) - one
        case (TREE)
-          FF = one
+          FF = zero
        case default
           FF = zero
        end select
@@ -10920,6 +10918,8 @@ end module ttv_formfactors
        call msg_debug2 (D_THRESHOLD, "formfactor%active", formfactor%active)
        call msg_debug2 (D_THRESHOLD, "FF_mode", FF_mode)
        call msg_debug2 (D_THRESHOLD, "FF", FF)
+       call msg_debug2 (D_THRESHOLD, "v", sqrts_to_v (ps%sqrts, GAM))
+       call msg_debug2 (D_THRESHOLD, "vec_type", vec_type)
        call ps%write ()
     end if
   end function formfactor_compute
@@ -11197,12 +11197,13 @@ where the variables are from.
 
     !!! global hard parameters incl. hard alphas used in *all* form factors
     RESCALE_H    = h_in
-    MU_HARD = M1S * RESCALE_H
-    AS_HARD   = running_as (MU_HARD, az, mz, 2, NF)
+    MU_HARD      = M1S * RESCALE_H
+    AS_HARD      = running_as (MU_HARD, az, mz, 2, NF)
+    call msg_debug (D_THRESHOLD, "AS_HARD", AS_HARD)
     call threshold%settings%setup_flags (int(ff_in), threshold%settings%offshell_strategy, &
          int (top_helicity_selection))
     if (threshold%settings%nlo) then
-       GAM_M1S = top_width_sm_qcd_nlo (one / aemi, sw, m1s, mw, mb, AS_HARD) + gam_inv
+       GAM_M1S = top_width_sm_qcd_nlo_jk (one / aemi, sw, m1s, mw, mb, AS_HARD) + gam_inv
     else
        GAM_M1S = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
     end if
@@ -11234,12 +11235,12 @@ where the variables are from.
     NUSTAR_DYNAMIC = NUSTAR_FIXED  < zero
     RESCALE_F = f_in
     GAM = zero
-    call update_global_sqrts_dependent_variables (2. * M1S)    
+    call update_global_sqrts_dependent_variables (2. * M1S)
     mtpole_init = MTPOLE
     mpole_out = mtpole_init
     !!! compute the total top width from t->bW decay plus optional invisible width
     if (threshold%settings%nlo) then
-       GAM = top_width_sm_qcd_nlo (one / aemi, sw, MTPOLE, mw, mb, AS_HARD) + gam_inv
+       GAM = top_width_sm_qcd_nlo_jk (one / aemi, sw, MTPOLE, mw, mb, AS_HARD) + gam_inv
     else
        GAM = top_width_sm_lo (one / aemi, sw, Vtb, MTPOLE, mw, mb) + gam_inv
     end if
@@ -11478,6 +11479,11 @@ where the variables are from.
        AS_USOFT = AS_USOFT * f
     end if
     MTPOLE = m1s_to_mpole (sqrts)
+    call msg_debug (D_THRESHOLD, "nu_soft", nu_soft)
+    call msg_debug (D_THRESHOLD, "MTPOLE", MTPOLE)
+    call msg_debug (D_THRESHOLD, "AS_SOFT", AS_SOFT)
+    call msg_debug (D_THRESHOLD, "AS_LL_SOFT", AS_LL_SOFT)
+    call msg_debug (D_THRESHOLD, "AS_USOFT", AS_USOFT)
   end subroutine update_global_sqrts_dependent_variables
 
   !!! Coulomb potential coefficients needed by TOPPIK
@@ -11653,55 +11659,6 @@ where the variables are from.
 
 @
 <<ttv formfactors: procedures>>=
-  function formfactor_LL_analytic_p0 (a_soft, ps, vec_type) result (c)
-    real(default), intent(in) :: a_soft
-    type(phase_space_point_t), intent(in) :: ps
-    integer, intent(in) :: vec_type
-    complex(default) :: c
-    c = one
-    if (.not. threshold%settings%initialized_parameters) return
-    select case (vec_type)
-      case (1)
-        c = formfactor_LL_analytic_p0_swave (CF*a_soft, ps%en, ps%p, ps%p0, ps%mpole, GAM)
-      case (2)
-        !!! not implemented
-!        c = formfactor_LL_analytic_p0_pwave (CF*a_soft, en, p, p0, MTPOLE, GAM)
-        c = one
-      case default
-        call msg_fatal ("unknown ttZ/ttA vertex component, vec_type = " // char(vec_type))
-    end select
-  end function formfactor_LL_analytic_p0
-
-@
-<<ttv formfactors: procedures>>=
-  function formfactor_LL_analytic_p0_swave (a, en, p, p0, m, w) result (c)
-    real(default), intent(in) :: a
-    real(default), intent(in) :: en
-    real(default), intent(in) :: p
-    real(default), intent(in) :: p0
-    real(default), intent(in) :: m
-    real(default), intent(in) :: w
-    complex(default) :: c
-    complex(default) :: k, la, z1, z2
-    complex(default) :: aa, bb, cc, dd
-    real(default), parameter :: eps = 1.E-3
-    k  = sqrt( -m*en -imago*m*w )
-    la = a * m / 2. / k
-    aa = eps
-    bb = 1.+eps
-    cc = 1. + eps - la
-    dd = (k-imago*(p-abs(p0))) / (2.*k)
-    z1 = nr_hypgeo (aa, bb, cc, dd)
-    dd = (k+imago*(p+abs(p0))) / (2.*k)
-    z2 = nr_hypgeo (aa, bb, cc, dd)
-    !!! DGamma(x) is Fortran 2008: use NR's implementation
-    c  = one - imago*k*la * &
-           nr_gamma(eps) * nr_gamma(1.+eps) * nr_gamma(real(1.-la)) * &
-           ( -z1 + z2 ) / (p*nr_gamma(real(cc)))
-  end function formfactor_LL_analytic_p0_swave
-
-@
-<<ttv formfactors: procedures>>=
   pure function nustar (sqrts) result (nu)
     real(default), intent(in) :: sqrts
     real(default) :: nu
@@ -11716,14 +11673,15 @@ where the variables are from.
     end if
   end function nustar
 
-@
+@ We recompute [[alpha_soft]] for form factors that do not call
+[[update_global_parameters]] (it is called in the scan for the (N)LL
+grid).
 <<ttv formfactors: procedures>>=
   pure function alphas_soft (sqrts) result (a_soft)
     real(default) :: a_soft
     real(default), intent(in) :: sqrts
     real(default) :: mu_soft, nusoft
     nusoft = RESCALE_F * nustar (sqrts)
-    ! TODO: (bcn 2015-10-13) can we use the global MU_SOFT here?
     mu_soft = M1S * RESCALE_H * nusoft
     a_soft = running_as (mu_soft, AS_HARD, MU_HARD, NRQCD_ORDER, NF)
   end function alphas_soft
@@ -11889,6 +11847,9 @@ where the variables are from.
        alphas_hard = AS_HARD
     end if
     ff_toppik = ff_toppik * current_coeff (alphas_hard, AS_LL_SOFT, AS_USOFT, vec_type)
+    call msg_debug (D_THRESHOLD, &
+         "current_coeff (alphas_hard, AS_LL_SOFT, AS_USOFT, vec_type)", &
+         current_coeff (alphas_hard, AS_LL_SOFT, AS_USOFT, vec_type))
   end subroutine scan_formfactor_over_p_TOPPIK
 
 @
@@ -11900,7 +11861,7 @@ where the variables are from.
     call msg_debug (D_THRESHOLD, "scan_formfactor_over_p")
     select case (NRQCD_ORDER)
       case (0)
-!        ff = scan_formfactor_over_p_LL_analytic (a_soft, vec_type, i_sq)
+       ! ff = scan_formfactor_over_p_LL_analytic (AS_SOFT, sqrts, vec_type)
         call scan_formfactor_over_p_TOPPIK (AS_SOFT, sqrts, vec_type, ff_toppik=ff)
       case (1)
         call scan_formfactor_over_p_TOPPIK (AS_SOFT, sqrts, vec_type, ff_toppik=ff)
@@ -12126,83 +12087,6 @@ where the variables are from.
         call msg_fatal ("unknown ttZ/ttA vertex component, vec_type = " // char(vec_type))
     end select
   end function minus_q2_V
-
-@
-<<ttv formfactors: procedures>>=
-  function scan_formfactor_over_p_p0 (sqrts, vec_type) result (ff_p0)
-    real(default), intent(in) :: sqrts
-    complex(default), dimension(n_p_p0dep,POINTS_P0) :: ff_p0
-    integer, intent(in) :: vec_type
-    complex(single), dimension(:,:,:), allocatable :: Vmat
-    complex(default), dimension(:), allocatable :: Tvec
-    integer :: i_p, i_p0, i_q
-    real(default) :: en, p, p0
-    type(phase_space_point_t) :: ps
-    type(p0_q_integrand_t) :: q_integrand
-    complex(default) :: q_integral, ff
-    real(default) :: current_c1, alphas_hard, f
-    if (vec_type==2) return
-    call msg_warning ("DEPRECATED FEATURE: " // &
-         "p0 dependence as implemented breaks gauge invariance!")
-    call msg_debug (D_THRESHOLD, "scan_formfactor_over_p_p0")
-    call msg_debug (D_THRESHOLD, "threshold%settings%ext_vinput", &
-         threshold%settings%ext_vinput)
-    en = sqrts_to_en (sqrts, MTPOLE)
-    call msg_debug (D_THRESHOLD, "en", en)
-    if (threshold%settings%ext_vinput) then
-       call msg_debug (D_THRESHOLD, "Allocate and compute Vmat and Tvec")
-      allocate (Vmat(POINTS_P0,n_p_p0dep,n_q))
-      allocate (Tvec(n_q))
-      select case (NRQCD_ORDER)
-         case (0)
-           Vmat = Vmatrix(0,vec_type,:,:,:) * AS_SOFT
-         case (1)
-           Vmat = Vmatrix(0,vec_type,:,:,:) * (AS_SOFT + AS_SOFT**2 *B0*log(MU_SOFT)/(2*pi)) + &
-                  Vmatrix(1,vec_type,:,:,:) * AS_SOFT**2
-         case default
-           call msg_fatal ("NRQCD_ORDER = " // char(NRQCD_ORDER))
-      end select
-      do i_q = 1, n_q
-         Tvec(i_q) = ff_p_spline%interpolate(q_grid(i_q)) * &
-              G0p_tree(en,q_grid(i_q),MTPOLE,GAM)
-!         Tvec(i_q) = formfactor_LL_analytic (AS_SOFT, sqrts, q_grid(i_q), vec_type) * &
-!                     G0p_tree(en,q_grid(i_q),MTPOLE,GAM)
-      end do
-    end if
-    if (SWITCHOFF_RESUMMED) then
-       f = f_switch_off (v_matching (sqrts, GAM))
-       alphas_hard = AS_HARD * f
-    else
-       alphas_hard = AS_HARD
-    end if
-    !!! AS_SOFT @ LL in current coefficient!
-    current_c1 = current_coeff (alphas_hard, AS_LL_SOFT, AS_USOFT, vec_type)
-    call msg_debug (D_THRESHOLD, "Integrate over q for each p, p0")
-    do i_p = 1, n_p_p0dep
-       p = p_grid(i_p)
-       do i_p0 = 1, POINTS_P0
-          p0 = p0_grid(i_p0)
-          call ps%init_nonrel (sqrts, p, p0)
-          if (threshold%settings%ext_vinput) then
-             !!! Andre's matrix summation
-             q_integral = sum (Vmat(i_p0,i_p,:) * Tvec)
-          else if (NRQCD_ORDER > 0) then
-             !!! numerical integration using NR's Gaussian summation
-             call compute_support_points (en, i_p, i_p0, 10)
-!             q_integral = 1./(2.*pi)**2 * nr_qgaus (integrand, q_grid)
-             call q_integrand%update (AS_SOFT, ps, vec_type)
-             q_integral = 1./(2.*pi)**2 * solve_qgaus (q_integrand, q_grid)
-          else
-             !!! analytic FF incl. p0 dependence @ LL
-             q_integral = formfactor_LL_analytic_p0 (AS_SOFT, ps, vec_type) - one
-          end if
-          !!! q_integral is a pure correction of O(alphas): add tree level ~ 1 again
-          ff = current_c1 * (one + q_integral)
-          !if (matching_version > 0)  call match_resummed_formfactor (ff, ps, vec_type)
-          ff_p0(i_p,i_p0) = ff
-       end do
-    end do
-  end function scan_formfactor_over_p_p0
 
 @
 <<ttv formfactors: procedures>>=
