@@ -138,7 +138,7 @@ AC_SUBST([FC_MAJOR_VERSION])
 
 # Catch optimization problem of gcc/gfortran 7 
 AM_CONDITIONAL([FC_IS_GFORTRAN_7],
-  [test test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_major_version" = "7"])
+  [test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_major_version" = "7"])
 
 ])
 ### end WO_FC_GET_VENDOR_AND_VERSION
