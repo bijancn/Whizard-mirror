@@ -525,6 +525,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/cuts.ref \
     functional_tests/ref-output/user_cuts.ref \
     functional_tests/ref-output/user_prc_threshold_1.ref \
+    functional_tests/ref-output/user_prc_threshold_3.ref \
     functional_tests/ref-output/qedtest_1.ref \
     functional_tests/ref-output/qedtest_2.ref \
     functional_tests/ref-output/qedtest_5.ref \
@@ -1017,6 +1018,7 @@ MISC_TESTS_SIN = \
     functional_tests/user_cuts.sin \
     functional_tests/user_prc_threshold_1.sin \
     functional_tests/user_prc_threshold_2.sin \
+    functional_tests/user_prc_threshold_3.sin \
     ilc_ext.sin
 
 MSSM_EXT_M4 = \
@@ -1069,7 +1071,8 @@ NLO_EXT_SIN = \
     extra_nlo_uu_powheg.sin \
     extra_nlo_threshold.sin \
     extra_threshold_factorized.sin \
-    extra_nlo_methods_gosam.sin
+    extra_nlo_methods_gosam.sin \
+    extra_nlo_jets.sin
 
 all-local: $(TESTSUITES_SIN)
 

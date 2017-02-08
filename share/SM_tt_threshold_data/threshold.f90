@@ -347,8 +347,10 @@ contains
        owf_t_3 = ubar (ttv_mtpole (p12 * p12), p_ofs(3), s_OS(3))
        owf_t_4 = v (ttv_mtpole (p12 * p12), p_ofs(4), s_OS(4))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
-       owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
-            .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+       if (.not. threshold%settings%Z_disabled) then
+          owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
+               .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+       end if
     else
        if (present (hi)) then
           s = table_spin_states(1:2,hi)
@@ -363,8 +365,10 @@ contains
        owf_e_1 = u (mass(11), - p_ofs(1), s(1))
        owf_e_2 = vbar (mass(11), - p_ofs(2), s(2))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
-       owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
-            .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+       if (.not. threshold%settings%Z_disabled) then
+          owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
+               .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+       end if
     end if
   end subroutine compute_production_owfs
 
@@ -409,7 +413,11 @@ contains
     if (process_mode == PROC_MODE_TT) then
        blob_Z_vec = gncup(1) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + extra_tree)
        blob_Z_ax = gncup(2) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2) + extra_tree)
-       amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
+       if (.not. threshold%settings%Z_disabled) then
+          amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
+       else
+          amp = zero
+       end if
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
             (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + extra_tree)
     else if (process_mode == PROC_MODE_WBWB) then
@@ -436,7 +444,11 @@ contains
        if (threshold%settings%factorized_computation) then
           owf_t_3 = ubar (sqrt (ptop * ptop), ptop, h_t)
           owf_t_4 = v (sqrt (ptopbar * ptopbar), ptopbar, h_tbar)
-          amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
+          if (.not. threshold%settings%Z_disabled) then
+             amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
+          else
+             amp = zero
+          end if
           amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * ttv_vec
        else
           top_width = ttv_wtpole (p12*p12, ffi)
@@ -444,7 +456,11 @@ contains
                + f_fvl (gccq33, owf_b_5, owf_Wp_3))
           owf_wb_46 = pr_psi (ptopbar, mtop, wd_tl (ptopbar, top_width), .false., &
                + f_vlf (gccq33, owf_Wm_4, owf_b_6))
-          amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
+          if (.not. threshold%settings%Z_disabled) then
+             amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
+          else
+             amp = zero
+          end if
           amp = amp + owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
        end if
     else
@@ -611,11 +627,11 @@ contains
           end do
        end do
        dec1 = zero
-       do h_t = -1, 1, 2
+       do h_tbar = -1, 1, 2
           dec1 = dec1 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 1))
        end do
        dec2 = zero
-       do h_tbar = -1, 1, 2
+       do h_t = -1, 1, 2
           dec2 = dec2 + abs2(born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 2))
        end do
        amp = prod * abs2 (propagators) * dec1 * dec2 / 4
