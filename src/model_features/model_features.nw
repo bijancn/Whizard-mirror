@@ -53,7 +53,7 @@ module auto_components
   use diagnostics
   use model_data
   use pdg_arrays
-  use flavors, only: flavor_t
+  use physics_defs, only: PHOTON, GLUON, Z_BOSON, W_BOSON
 
 <<Standard module head>>
 
@@ -548,7 +548,8 @@ Filters vertices which do not match the desired NLO pattern.
     private
     logical :: qed = .false.
     logical :: qcd = .true.
-    type(pdg_list_t) :: pl_additional_radiation
+    logical :: ew = .false.
+    integer :: n_corr_types
   contains
   <<Auto components: constraint coupling: TBP>>
   end type constraint_coupling_t
@@ -558,15 +559,12 @@ Filters vertices which do not match the desired NLO pattern.
 <<Auto components: public>>=
   public :: constrain_couplings
 <<Auto components: procedures>>=
-  function constrain_couplings (qcd, qed, pl_additional_radiation) result (c)
+  function constrain_couplings (qcd, qed, n_corr_types) result (c)
     type(constraint_coupling_t) :: c
     logical, intent(in) :: qcd, qed
-    type(pdg_list_t), intent(in), optional :: pl_additional_radiation
+    integer, intent(in) :: n_corr_types
     c%qcd = qcd; c%qed = qed
-    if (present (pl_additional_radiation)) then
-       if (allocated (pl_additional_radiation%a)) &
-            c%pl_additional_radiation = pl_additional_radiation
-    end if
+    c%n_corr_types = n_corr_types
   end function constrain_couplings
 
 @ %def constrain_couplings
@@ -580,60 +578,21 @@ Filters vertices which do not match the desired NLO pattern.
     type(pdg_array_t), intent(in) :: pa
     type(pdg_list_t), intent(inout) :: pl
     logical, intent(out) :: passed
-    type(flavor_t), dimension(:), allocatable :: flv
-    integer :: i, j
-    allocate (flv(1 + pl%get_size()))
-    call flv(1)%init (pa%get(1), table%model)
+    type(pdg_list_t) :: pl_vertex
+    type(pdg_array_t) :: pdg_gluon, pdg_photon, pdg_W_Z, pdg_gauge_bosons
+    integer :: i
+    call pl_vertex%init (pl%get_size () + 1)
+    call pl_vertex%set (1, pa)
     do i = 1, pl%get_size ()
-       call flv(i + 1)%init (pl%a(i)%get(1), table%model)
+       call pl_vertex%set (i + 1, pl%get(i))
     end do
-    if (c%qcd .and. .not. c%qed) then
-       passed = vertex_is_qcd (flv)
-    else if (.not. c%qcd .and. c%qed) then
-       passed = .not. vertex_is_qcd (flv)
-    else if (c%qcd .and. c%qed) then
-       passed = .true.
-    end if
-    if (passed) then
-       do i = 1, size (flv)
-          if (flv(i)%get_width() /= 0) passed = check_for_add_rad (flv(i))
-       end do
-    end if
-  contains
-    function vertex_is_qcd (flv) result (is_qcd)
-      logical :: is_qcd
-      type(flavor_t), dimension(:), allocatable, intent(in) :: flv
-      integer :: i
-      is_qcd = .true.
-      do i = 1, size (flv)
-         if (flv(i)%get_color_type () == 1) then
-            is_qcd = .false.
-            exit
-         end if
-      end do
-    end function vertex_is_qcd
-    function check_for_add_rad (flv) result(is_add_rad)
-      logical :: is_add_rad
-      type(flavor_t), intent(in) :: flv
-      type(flavor_t), dimension(:), allocatable :: flv_add_rad
-      integer :: i, j
-      if (c%pl_additional_radiation%get_size() == 0) then
-         is_add_rad = .false.
-      else
-         allocate (flv_add_rad(c%pl_additional_radiation%get_size()))
-         do i = 1, c%pl_additional_radiation%get_size ()
-            call flv_add_rad(i)%init (c%pl_additional_radiation%a(i)%get(1), table%model)
-         end do
-         do j = 1, size (flv_add_rad)
-            if (flv == flv_add_rad(j)) then
-               is_add_rad = .true.
-               exit
-            else
-               is_add_rad = .false.
-            end if
-         end do
-      end if
-    end function
+    pdg_gluon = GLUON; pdg_photon = PHOTON
+    pdg_W_Z = [W_BOSON,-W_BOSON, Z_BOSON]
+    if (c%qcd) pdg_gauge_bosons = pdg_gauge_bosons // pdg_gluon
+    if (c%qed) pdg_gauge_bosons = pdg_gauge_bosons // pdg_photon
+    passed = .false.
+    if (pl_vertex .match. pdg_gauge_bosons) passed = .true.
+    if (.not. c%ew .and. (pl_vertex .match. pdg_W_Z)) passed = .false.
   end subroutine constraint_coupling_check_before_insert
 
 @ %def constraint_coupling_check_before_insert
@@ -2535,7 +2494,7 @@ initialization phase (more precisely: at the moment only in the
       call constraints%set (n, constrain_n_tot (generator%n_tot))
       n = 2
       call constraints%set (n, constrain_couplings (generator%qcd_enabled, &
-           generator%qed_enabled, generator%pl_additional_radiation))
+           generator%qed_enabled, n_corr_types))
       n = n + 1
       if (set_n_loop) then
          call constraints%set (n, constrain_n_loop(generator%n_loops))
@@ -3358,56 +3317,47 @@ end module radiation_generator_uti
     call test_process (generator, pdg_in, pdg_out, u)
     deallocate (pdg_out)
 
-    write (u, "(A)") "* Process 4: Z + jets. Z considered in radiation generation."
-    allocate (pdg_out(3))
-    allocate (pdg_add_rad(1))
-    pdg_out(1) = 2; pdg_out(2) = -2; pdg_out(3) = 23
-    pdg_add_rad(1) = 23
-    call test_process (generator, pdg_in, pdg_out, u, pdg_add_rad = pdg_add_rad)
-    deallocate (pdg_out)
-    deallocate (pdg_add_rad)
-
-    write (u, "(A)") "* Process 5: W + jets"
+    write (u, "(A)") "* Process 4: W + jets"
     allocate (pdg_out(3))
     pdg_out(1) = 1; pdg_out(2) = -2; pdg_out(3) = -24
     call test_process (generator, pdg_in, pdg_out, u)
     deallocate (pdg_out)
 
-    write (u, "(A)") "* Process 6: Top Decay"
+    write (u, "(A)") "* Process 5: Top Decay"
     allocate (pdg_out(4))
     pdg_out(1) = 24; pdg_out(2) = -24
     pdg_out(3) = 5; pdg_out(4) = -5
     call test_process (generator, pdg_in, pdg_out, u)
     deallocate (pdg_out)
 
-    write (u, "(A)") "* Process 7: Production of four quarks"
+    write (u, "(A)") "* Process 6: Production of four quarks"
     allocate (pdg_out(4))
     pdg_out(1) = 2; pdg_out(2) = -2;
     pdg_out(3) = 2; pdg_out(4) = -2
     call test_process (generator, pdg_in, pdg_out, u)
     deallocate (pdg_out)
 
-    write (u, "(A)") "* Process 8: Neutrino pair-production"
+    write (u, "(A)") "* Process 7: Neutrino pair-production"
     allocate (pdg_out(2))
     pdg_out(1) = 12; pdg_out(2) = -12
     call test_process (generator, pdg_in, pdg_out, u, .true.)
     deallocate (pdg_out); deallocate (pdg_in)
 
-    write (u, "(A)") "* Process 9: Drell-Yan lepto-production"
+    write (u, "(A)") "* Process 8: Drell-Yan lepto-production"
     allocate (pdg_in (2)); allocate (pdg_out (2))
     pdg_in(1) = 2; pdg_in(2) = -2
     pdg_out(1) = 11; pdg_out(2) = -11
     call test_process (generator, pdg_in, pdg_out, u, .true.)
     deallocate (pdg_out); deallocate (pdg_in)
 
-    write (u, "(A)") "* Process 10: WZ production at hadron-colliders"
+    write (u, "(A)") "* Process 9: WZ production at hadron-colliders"
     allocate (pdg_in (2)); allocate (pdg_out (2))
     pdg_in(1) = 1; pdg_in(2) = -2
     pdg_out(1) = -24; pdg_out(2) = 23
     call test_process (generator, pdg_in, pdg_out, u, .true.)
     deallocate (pdg_out); deallocate (pdg_in)
 
-    write (u, "(A)") "* Process 11: Positron-neutrino production"
+    write (u, "(A)") "* Process 10: Positron-neutrino production"
     allocate (pdg_in (2)); allocate (pdg_out (2))
     pdg_in(1) = -1; pdg_in(2) = 2
     pdg_out(1) = -11; pdg_out(2) = 12
