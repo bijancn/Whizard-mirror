@@ -4678,12 +4678,12 @@ the process setup, data, and expressions, but no integration results.
     type(var_list_t), intent(in), pointer :: var_list
     integer :: i_core
     integer :: n_in, n_legs, n_flv
-    select type (pcm => process%pcm)
-    type is (pcm_nlo_t)
-       do i_core = 1, process%get_n_cores ()
-         call fill_blha_template (process%get_nlo_type (i_core))
-         select type (core => process%cm%cores(i_core)%core)
-         class is (prc_blha_t)
+    do i_core = 1, process%get_n_cores ()
+      call fill_blha_template (process%get_nlo_type (i_core))
+      select type (core => process%cm%cores(i_core)%core)
+      class is (prc_blha_t)
+         select type (pcm => process%pcm)
+         type is (pcm_nlo_t)
             n_in = pcm%region_data%get_n_in ()
             if (process%cm%core_is_radiation(i_core)) then
                n_legs = pcm%region_data%get_n_legs_real ()
@@ -4692,13 +4692,16 @@ the process setup, data, and expressions, but no integration results.
                n_legs = pcm%region_data%get_n_legs_born ()
                n_flv = pcm%region_data%get_n_flv_born ()
             end if
-            call core%init_blha (blha_template, pcm%region_data%get_n_in(), &
-                 n_legs, n_flv)
-            call core%init_driver (process%config%os_data)
+         class default
+            n_in = core%data%n_in
+            n_legs = core%data%get_n_tot ()
+            n_flv = core%data%n_flv
          end select
-         call blha_template%reset ()
-       end do
-    end select
+         call core%init_blha (blha_template, n_in, n_legs, n_flv)
+         call core%init_driver (process%config%os_data)
+      end select
+      call blha_template%reset ()
+    end do
   contains
     function needs_entry (me_method) result (val)
       logical :: val
@@ -5960,12 +5963,6 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
           ew_scheme = var_list%get_sval (var_str ("$blha_ew_scheme"))
           call blha_master%set_ew_scheme (ew_scheme)
        end associate
-       !call cm%get_flv_states (flv_born, flv_real, n_in)
-       !select type (pcm => process%pcm)
-       !type is (pcm_nlo_t)
-       !   call pcm%region_data%get_flv_states (flv_born, flv_real)
-       !   n_in = pcm%region_data%get_n_in ()
-       !end select
        call blha_master%set_methods (process%is_nlo_calculation (), process%meta%var_list)
        call blha_master%allocate_config_files ()
        call blha_master%setup_additional_features (openloops_phs_tolerance, &
@@ -6007,6 +6004,13 @@ Could also be moved to the [[core_manager_t]].
     type is (pcm_nlo_t)
        call pcm%region_data%get_all_flv_states (flv_born, flv_real)
        n_in = pcm%region_data%get_n_in ()
+    class default
+       i_core = process%get_i_core_nlo_type (BORN)
+       associate (core => process%cm%cores(i_core)%core)
+          allocate (flv_born (core%data%get_n_tot (), core%data%n_flv))
+          flv_born = core%data%flv_state
+          n_in = core%data%n_in
+       end associate
     end select
     if (process%needs_extra_code (only_blha = .true.)) &
          call process%create_blha_interface (flv_born, flv_real, n_in, beam_structure)
