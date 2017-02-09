@@ -549,7 +549,7 @@ Filters vertices which do not match the desired NLO pattern.
     logical :: qed = .false.
     logical :: qcd = .true.
     logical :: ew = .false.
-    integer :: n_corr_types
+    integer :: n_nlo_correction_types
   contains
   <<Auto components: constraint coupling: TBP>>
   end type constraint_coupling_t
@@ -559,12 +559,12 @@ Filters vertices which do not match the desired NLO pattern.
 <<Auto components: public>>=
   public :: constrain_couplings
 <<Auto components: procedures>>=
-  function constrain_couplings (qcd, qed, n_corr_types) result (c)
+  function constrain_couplings (qcd, qed, n_nlo_correction_types) result (c)
     type(constraint_coupling_t) :: c
     logical, intent(in) :: qcd, qed
-    integer, intent(in) :: n_corr_types
+    integer, intent(in) :: n_nlo_correction_types
     c%qcd = qcd; c%qed = qed
-    c%n_corr_types = n_corr_types
+    c%n_nlo_correction_types = n_nlo_correction_types
   end function constrain_couplings
 
 @ %def constrain_couplings
@@ -2298,7 +2298,7 @@ initialization phase (more precisely: at the moment only in the
     logical :: is_photon = .false.
     logical :: fs_photon = .false.
     logical :: only_final_state = .true.
-    type(pdg_list_t) :: pl_in, pl_out, pl_additional_radiation
+    type(pdg_list_t) :: pl_in, pl_out, pl_nlo_decay_products
     type(split_constraints_t) :: constraints
     integer :: n_tot
     integer :: n_in, n_out
@@ -2322,20 +2322,20 @@ initialization phase (more precisely: at the moment only in the
   procedure :: init_pdg_array => radiation_generator_init_pdg_array
 <<radiation generator: procedures>>=
   subroutine radiation_generator_init_pdg_list &
-       (generator, pl_in, pl_out, pl_additional_radiation, qcd, qed)
+       (generator, pl_in, pl_out, pl_nlo_decay_products, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_list_t), intent(in) :: pl_in, pl_out
-    type(pdg_list_t), intent(in), optional :: pl_additional_radiation
+    type(pdg_list_t), intent(in), optional :: pl_nlo_decay_products
     logical, intent(in), optional :: qcd, qed
     if (present (qcd))  generator%qcd_enabled = qcd
     if (present (qed))  generator%qed_enabled = qed
     generator%pl_in = pl_in
     generator%pl_out = pl_out
-    if (allocated(generator%pl_additional_radiation%a)) &
-         deallocate(generator%pl_additional_radiation%a)
-    if (present (pl_additional_radiation)) then
-       if (allocated (pl_additional_radiation%a)) &
-            generator%pl_additional_radiation = pl_additional_radiation
+    if (allocated(generator%pl_nlo_decay_products%a)) &
+         deallocate(generator%pl_nlo_decay_products%a)
+    if (present (pl_nlo_decay_products)) then
+       if (allocated (pl_nlo_decay_products%a)) &
+            generator%pl_nlo_decay_products = pl_nlo_decay_products
     end if
     generator%is_gluon = pl_in%search_for_particle (GLUON)
     generator%fs_gluon = pl_out%search_for_particle (GLUON)
@@ -2348,12 +2348,12 @@ initialization phase (more precisely: at the moment only in the
   end subroutine radiation_generator_init_pdg_list
 
   subroutine radiation_generator_init_pdg_array &
-       (generator, pdg_in, pdg_out, pdg_additional_radiation, qcd, qed)
+       (generator, pdg_in, pdg_out, pdg_nlo_decay_products, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_array_t), intent(in), dimension(:) :: pdg_in, pdg_out
-    type(pdg_array_t), intent(in), dimension(:), optional :: pdg_additional_radiation
+    type(pdg_array_t), intent(in), dimension(:), optional :: pdg_nlo_decay_products
     logical, intent(in), optional :: qcd, qed
-    type(pdg_list_t) :: pl_in, pl_out, pl_additional_radiation
+    type(pdg_list_t) :: pl_in, pl_out, pl_nlo_decay_products
     integer :: i
     call pl_in%init(size (pdg_in))
     call pl_out%init(size (pdg_out))
@@ -2363,15 +2363,15 @@ initialization phase (more precisely: at the moment only in the
     do i = 1, size (pdg_out)
        call pl_out%set (i, pdg_out(i))
     end do
-    if (present (pdg_additional_radiation)) then
-       if (all (pdg_additional_radiation%get_length () > 0)) then
-          call pl_additional_radiation%init(size (pdg_additional_radiation))
-          do i = 1, size (pdg_additional_radiation)
-             call pl_additional_radiation%set (i, pdg_additional_radiation(i))
+    if (present (pdg_nlo_decay_products)) then
+       if (all (pdg_nlo_decay_products%get_length () > 0)) then
+          call pl_nlo_decay_products%init(size (pdg_nlo_decay_products))
+          do i = 1, size (pdg_nlo_decay_products)
+             call pl_nlo_decay_products%set (i, pdg_nlo_decay_products(i))
           end do
        end if
     end if
-    call generator%init (pl_in, pl_out, pl_additional_radiation, qcd, qed)
+    call generator%init (pl_in, pl_out, pl_nlo_decay_products, qcd, qed)
   end subroutine radiation_generator_init_pdg_array
 
 @ %def radiation_generator_init_pdg_list radiation_generator_init_pdg_array
@@ -2479,9 +2479,9 @@ initialization phase (more precisely: at the moment only in the
     integer :: last_index
     integer :: n_new_particles, n_skip
     integer, dimension(:), allocatable :: i_skip
-    integer :: n_corr_types, n_rad_prt
+    integer :: n_nlo_correction_types
 
-    n_corr_types = count ([generator%qcd_enabled, generator%qed_enabled])
+    n_nlo_correction_types = count ([generator%qcd_enabled, generator%qed_enabled])
 
     allocate (i_skip (generator%n_tot))
     i_skip = -1
@@ -2494,7 +2494,7 @@ initialization phase (more precisely: at the moment only in the
       call constraints%set (n, constrain_n_tot (generator%n_tot))
       n = 2
       call constraints%set (n, constrain_couplings (generator%qcd_enabled, &
-           generator%qed_enabled, n_corr_types))
+           generator%qed_enabled, n_nlo_correction_types))
       n = n + 1
       if (set_n_loop) then
          call constraints%set (n, constrain_n_loop(generator%n_loops))
@@ -2529,28 +2529,38 @@ initialization phase (more precisely: at the moment only in the
          n = n + 1
       end if
       if (set_selected_particles) then
-         n_rad_prt = n_corr_types + generator%pl_additional_radiation%get_size ()
-         if (generator%only_final_state ) then
-            call pl_insert%init (generator%n_out + n_rad_prt)
-            do i = 1, generator%n_out
-               call pl_insert%set(i, generator%pl_out%get(i))
+         if (generator%pl_nlo_decay_products%get_size () == 0) then
+            if (generator%only_final_state ) then
+               call pl_insert%init (generator%n_out + n_nlo_correction_types)
+               do i = 1, generator%n_out
+                  call pl_insert%set(i, generator%pl_out%get(i))
+               end do
+               last_index = generator%n_out + 1
+            else
+               call generator%pl_in%create_antiparticles (pl_antiparticles, n_new_particles)
+               call pl_insert%init (generator%n_tot + n_new_particles &
+                    + n_nlo_correction_types)
+               do i = 1, generator%n_in
+                  call pl_insert%set(i, generator%pl_in%get(i))
+               end do
+               do i = 1, generator%n_out
+                  j = i + generator%n_in
+                  call pl_insert%set(j, generator%pl_out%get(i))
+               end do
+               do i = 1, n_new_particles
+                  j = i + generator%n_in + generator%n_out
+                  call pl_insert%set(j, pl_antiparticles%get(i))
+               end do
+               last_index = generator%n_tot + n_new_particles + 1
+            end if
+         else if (generator%pl_nlo_decay_products%get_size () > 0) then
+            call pl_insert%init (n_nlo_correction_types &
+                 + generator%pl_nlo_decay_products%get_size ())
+            last_index = 1
+            do i = 1, generator%pl_nlo_decay_products%get_size ()
+               call pl_insert%set (last_index, generator%pl_nlo_decay_products%get(i))
+               last_index = last_index + 1
             end do
-            last_index = generator%n_out + 1
-         else
-            call generator%pl_in%create_antiparticles (pl_antiparticles, n_new_particles)
-            call pl_insert%init (generator%n_tot + n_new_particles + n_rad_prt)
-            do i = 1, generator%n_in
-               call pl_insert%set(i, generator%pl_in%get(i))
-            end do
-            do i = 1, generator%n_out
-               j = i + generator%n_in
-               call pl_insert%set(j, generator%pl_out%get(i))
-            end do
-            do i = 1, n_new_particles
-               j = i + generator%n_in + generator%n_out
-               call pl_insert%set(j, pl_antiparticles%get(i))
-            end do
-            last_index = generator%n_tot + n_new_particles + 1
          end if
          pdg_gluon = GLUON; pdg_photon = PHOTON
          if (generator%qcd_enabled) then
@@ -2561,12 +2571,7 @@ initialization phase (more precisely: at the moment only in the
          if (generator%qed_enabled) then
             pdg_add = pdg_photon
             call pl_insert%set (last_index, pdg_add)
-            last_index = last_index + 1
          end if
-         do i = 1, generator%pl_additional_radiation%get_size ()
-            call pl_insert%set (last_index, generator%pl_additional_radiation%get(i))
-            last_index = last_index + 1
-         end do
          call constraints%set (n, constrain_insert (pl_insert))
       end if
    end associate
@@ -3085,7 +3090,7 @@ end module radiation_generator_uti
   subroutine radiation_generator_1 (u)
     integer, intent(in) :: u
     type(radiation_generator_t) :: generator
-    type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out, pdg_add_rad
+    type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out, pdg_decay_products
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
     type(model_t), pointer :: model => null ()
@@ -3118,12 +3123,14 @@ end module radiation_generator_uti
     write (u, "(A)") "* Process 2: Quark-antiquark production with additional gluon. &
          &Down quarks considered in radiation generation."
     allocate (pdg_out(3))
-    allocate (pdg_add_rad(2))
+    allocate (pdg_decay_products(4))
     pdg_out(1) = 2; pdg_out(2) = -2; pdg_out(3) = 21
-    pdg_add_rad(1) = 1; pdg_add_rad(2) = -1
-    call test_process (generator, pdg_in, pdg_out, u, pdg_add_rad = pdg_add_rad)
+    pdg_decay_products(1) = 2; pdg_decay_products(2) = -2
+    pdg_decay_products(3) = 1; pdg_decay_products(4) = -1
+    call test_process (generator, pdg_in, pdg_out, u, &
+         pdg_decay_products = pdg_decay_products)
     deallocate (pdg_out)
-    deallocate (pdg_add_rad)
+    deallocate (pdg_decay_products)
 
     write (u, "(A)") "* Process 3: Z + jets"
     allocate (pdg_out(3))
@@ -3161,10 +3168,10 @@ end module radiation_generator_uti
 
   contains
     subroutine test_process (generator, pdg_in, pdg_out, u, &
-       include_initial_state, pdg_add_rad)
+       include_initial_state, pdg_decay_products)
       type(radiation_generator_t), intent(inout) :: generator
       type(pdg_array_t), dimension(:), intent(in) :: pdg_in, pdg_out
-      type(pdg_array_t), dimension(:), intent(in), optional :: pdg_add_rad
+      type(pdg_array_t), dimension(:), intent(in), optional :: pdg_decay_products
       integer, intent(in) :: u
       logical, intent(in), optional :: include_initial_state
       type(string_t), dimension(:), allocatable :: prt_strings_in
@@ -3178,8 +3185,8 @@ end module radiation_generator_uti
       write (u, "(A)", advance = 'no') '* Outgoing: '
       call write_pdg_array (pdg_out, u)
 
-      call generator%init (pdg_in, pdg_out, pdg_additional_radiation = pdg_add_rad, &
-           qcd = .true., qed = .false.)
+      call generator%init (pdg_in, pdg_out, &
+           pdg_nlo_decay_products = pdg_decay_products, qcd = .true., qed = .false.)
       call generator%set_n (2, size(pdg_out), 0)
       if (yorn) call generator%set_initial_state_emissions ()
       call generator%set_constraints (.false., .false., .true., .true.)
@@ -3271,7 +3278,7 @@ end module radiation_generator_uti
   subroutine radiation_generator_3 (u)
     integer, intent(in) :: u
     type(radiation_generator_t) :: generator
-    type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out, pdg_add_rad
+    type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out, pdg_decay_products
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
     type(model_t), pointer :: model => null ()
@@ -3304,12 +3311,14 @@ end module radiation_generator_uti
     write (u, "(A)") "* Process 2: Quark-antiquark production with additional photon. &
          &Down quarks considered in radiation generation."
     allocate (pdg_out(3))
-    allocate (pdg_add_rad(2))
+    allocate (pdg_decay_products(4))
     pdg_out(1) = 2; pdg_out(2) = -2; pdg_out(3) = 22
-    pdg_add_rad(1) = 1; pdg_add_rad(2) = -1
-    call test_process (generator, pdg_in, pdg_out, u, pdg_add_rad = pdg_add_rad)
+    pdg_decay_products(1) = 2; pdg_decay_products(2) = -2
+    pdg_decay_products(3) = 1; pdg_decay_products(4) = -1
+    call test_process (generator, pdg_in, pdg_out, u, &
+         pdg_decay_products = pdg_decay_products)
     deallocate (pdg_out)
-    deallocate (pdg_add_rad)
+    deallocate (pdg_decay_products)
 
     write (u, "(A)") "* Process 3: Z + jets "
     allocate (pdg_out(3))
@@ -3366,10 +3375,10 @@ end module radiation_generator_uti
 
   contains
     subroutine test_process (generator, pdg_in, pdg_out, u, &
-       include_initial_state, pdg_add_rad)
+       include_initial_state, pdg_decay_products)
       type(radiation_generator_t), intent(inout) :: generator
       type(pdg_array_t), dimension(:), intent(in) :: pdg_in, pdg_out
-      type(pdg_array_t), dimension(:), intent(in), optional :: pdg_add_rad
+      type(pdg_array_t), dimension(:), intent(in), optional :: pdg_decay_products
       integer, intent(in) :: u
       logical, intent(in), optional :: include_initial_state
       type(string_t), dimension(:), allocatable :: prt_strings_in
@@ -3383,8 +3392,8 @@ end module radiation_generator_uti
       write (u, "(A)", advance = 'no') '* Outgoing: '
       call write_pdg_array (pdg_out, u)
 
-      call generator%init (pdg_in, pdg_out, pdg_additional_radiation = pdg_add_rad, &
-           qcd = .false., qed = .true.)
+      call generator%init (pdg_in, pdg_out, &
+           pdg_nlo_decay_products = pdg_decay_products, qcd = .false., qed = .true.)
       call generator%set_n (2, size(pdg_out), 0)
       if (yorn) call generator%set_initial_state_emissions ()
       call generator%set_constraints (.false., .false., .true., .true.)
