@@ -3,6 +3,7 @@ stages:
   - deploy
   - weekly
   - weekly-applications
+  - weekly-report
 
 variables:
   NAGFOR_OPTIONS: "-O1 -w=all -gline -C=all -nan -f2008"
@@ -389,3 +390,30 @@ run other examples:
   <<: *examples_definition
   script:
     - for s in Zprime.sin casc_dec.sin circe1.sin eeww_polarized.sin fourjetsLO.sin ; do whizard $s; done
+
+build whizard with gcc-trunk:
+  <<: *default_definition
+  <<: *docker_definition
+  stage: weekly-applications
+  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-trunk
+  only:
+    - triggers
+  except:
+  script:
+    - ../configure --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+
+notify slack weekly:
+  stage: weekly-report
+  tags:
+    - deployment
+  only:
+    - triggers
+  before_script:
+    - eval `ssh-agent -s`
+    - ssh-add /scratch/bcho/id_rsa
+  when: on_failure
+  script:
+    - echo "Weekly build on \`$CI_BUILD_REF_NAME\` failed! Commit \`$(git log -1 --oneline)\` See https://gitlab.tp.nt.uni-siegen.de/whizard/development/commit/$CI_BUILD_REF/builds" | slacktee.sh -a "warning" -p
