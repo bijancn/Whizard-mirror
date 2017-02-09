@@ -279,9 +279,21 @@ TESTS_REQ_PYTHIA6 = \
     pythia6_4.run \
     tauola_1.run \
     tauola_2.run \
-    mlm_matching_isr.run \
-    mlm_pythia6_isr.run
-XFAIL_TESTS_REQ_PYTHIA6 = 
+    mlm_pythia6_isr.run \
+    mlm_matching_isr.run
+
+if FC_IS_GFORTRAN_7
+if FC_EXT
+XFAIL_TESTS_REQ_PYTHIA6 = \
+    mlm_matching_isr.run
+else
+XFAIL_TESTS_REQ_PYTHIA6 =
+endif
+else
+XFAIL_TESTS_REQ_PYTHIA6 =
+endif
+
+
 
 TESTS_REQ_EV_ANA = \
     analyze_3.run
