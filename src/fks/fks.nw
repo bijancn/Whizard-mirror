@@ -596,27 +596,11 @@ emitter-radiation pairs. This is coped with using the linked list
     integer :: n_in = 0
     logical, dimension(:), allocatable :: massive
     logical, dimension(:), allocatable :: colored
-    logical, dimension(:), allocatable :: tagged_gluons
   contains
   <<fks regions: flv structure: TBP>>
   end type flv_structure_t
 
 @ %def flv_structure_t
-@
-<<fks regions: flv structure: TBP>>=
-  procedure :: tag_gluon => flv_structure_tag_gluon
-<<fks regions: procedures>>=
-  subroutine flv_structure_tag_gluon (flv, i)
-    class(flv_structure_t), intent(inout) :: flv
-    integer, intent(in) :: i
-    if (allocated (flv%tagged_gluons)) then
-       flv%tagged_gluons(i) = .true.
-    else
-       call msg_fatal ("Cannot tag gluon: Array not allocated!")
-    end if
-  end subroutine flv_structure_tag_gluon
-
-@ %def flv_strcuture_tag_gluon
 @
 Returns \texttt{true} if the two particles at position \texttt{i}
 and \texttt{j} in the flavor array can originate from the same
@@ -734,10 +718,6 @@ permutation of the final-state particles
        allocate (flv_out%colored (size (flv_in%colored)))
        flv_out%colored = flv_in%colored
     end if
-    if (allocated (flv_in%tagged_gluons)) then
-       allocate (flv_out%tagged_gluons (size (flv_in%tagged_gluons)))
-       flv_out%tagged_gluons = flv_in%tagged_gluons
-    end if
   end subroutine flv_structure_assign_flv
 
 @ %def flv_structure_assign_flv
@@ -763,8 +743,7 @@ permutation of the final-state particles
     integer, intent(in) :: index
     integer :: n1, n2
     n1 = size (flv%flst); n2 = n1 - 1
-    allocate (flv_new%flst (n2), flv_new%tagged_gluons (n2))
-    flv_new%tagged_gluons = .false.
+    allocate (flv_new%flst (n2))
     flv_new%nlegs = n2
     flv_new%n_in = flv%n_in
     if (index == 1) then
@@ -822,8 +801,7 @@ particle at position i1.
     type(flv_structure_t) :: flv_tmp
     integer :: n1, n2
     n1 = size (flv%flst); n2 = n1 - 1
-    allocate (flv_new%flst (n2), flv_new%tagged_gluons (n2))
-    flv_new%tagged_gluons = .false.
+    allocate (flv_new%flst (n2))
     flv_new%nlegs = n2
     flv_new%n_in = flv%n_in
     if (i1 < i2) then
@@ -887,8 +865,6 @@ flavor array
     flv%flst(1 : n) = aval(1 : n)
     flv%nlegs = n
     flv%n_in = n_in
-    allocate (flv%tagged_gluons (n))
-    flv%tagged_gluons = .false.
   end subroutine flv_structure_init
 
 @ %def flv_structure_init
@@ -907,15 +883,6 @@ flavor array
           write (u, '(I3,A1)', advance = 'no') flv%flst(i), ','
        end do
        write (u, '(I3,A1)') flv%flst(i), ']'
-       if (allocated (flv%tagged_gluons)) then
-          if (any (flv%tagged_gluons)) then
-             write (u, '(A)', advance = "no") "Tagged gluons: "
-             do i = 1, size (flv%tagged_gluons)
-                write (u, '(L1,1X)', advance = "no") flv%tagged_gluons(i)
-             end do
-             write (u, '(A)') ""
-          end if
-       end if
     else
        write (u, '(A)') '[not allocated]'
     end if
@@ -940,12 +907,9 @@ structure if the particle at position \texttt{emitter} is removed
        if (f1 == 21) then
           !!! Emitted particle is a gluon => just remove it
           flv_uborn = flv%remove_particle(n_legs)
-          !!! Tag if the other particle is a gluon too
-          if (f2 == 21) call flv_uborn%tag_gluon (n_legs - 1)
        else if (is_quark (f1) .and. is_quark (f2) .and. f1 + f2 == 0) then
           !!! Emission type is a gluon splitting into two quarks
           flv_uborn = flv%insert_particle(n_legs - 1, n_legs, 21)
-          call flv_uborn%tag_gluon (n_legs - 1)
        else
           call msg_fatal ("Create underlying Born: Unsupported splitting type.")
        end if
@@ -1022,7 +986,6 @@ structure if the particle at position \texttt{emitter} is removed
     if (allocated (flv%flst)) deallocate (flv%flst)
     if (allocated (flv%massive)) deallocate (flv%massive)
     if (allocated (flv%colored)) deallocate (flv%colored)
-    if (allocated (flv%tagged_gluons)) deallocate (flv%tagged_gluons)
   end subroutine flv_structure_final
 
 @ %def flv_structure_final
@@ -1148,11 +1111,6 @@ structure if the particle at position \texttt{emitter} is removed
        flv_tmp = flv_out%flst(i1)
        flv_out%flst(i1) = flv_out%flst(i2)
        flv_out%flst(i2) = flv_tmp
-       if (allocated (flv_out%tagged_gluons)) then
-          flag_tmp = flv_out%tagged_gluons(i1)
-          flv_out%tagged_gluons(i1) = flv_out%tagged_gluons(i2)
-          flv_out%tagged_gluons(i2) = flag_tmp
-       end if
     end do
   end function prod_perm_flv
 
@@ -1813,7 +1771,6 @@ $\sum_\alpha S_\alpha = 1$.
     type(flv_structure_t), dimension(:), allocatable :: flv_born
     type(flv_structure_t), dimension(:), allocatable :: flv_real
     integer, dimension(:), allocatable :: emitters
-    integer, dimension(:), allocatable :: tagged_gluons
     integer :: n_regions = 0
     integer :: n_emitters = 0
     integer :: n_flv_born = 0
@@ -1886,7 +1843,6 @@ $\sum_\alpha S_\alpha = 1$.
     reg_data%n_flv_real = maxval (reg_data%regions%real_index)
     call reg_data%find_emitters ()
     call reg_data%set_underlying_borns ()
-    call reg_data%find_tagged_gluons ()
     call reg_data%set_mass_and_color (model)
     call reg_data%set_splitting_info ()
   end subroutine region_data_init
@@ -2237,23 +2193,6 @@ computation, but should be generalized further in the future.
   end function region_data_get_emitter
 
 @ %def region_data_get_emitter
-@
-<<fks regions: reg data: TBP>>=
-  procedure :: get_tagged_gluon => region_data_get_tagged_gluon
-<<fks regions: procedures>>=
-  function region_data_get_tagged_gluon (reg_data, alr) result (i_gluon)
-    integer :: i_gluon
-    class(region_data_t), intent(in) :: reg_data
-    integer, intent(in) :: alr
-    integer :: i
-    integer, dimension(1) :: ii_gluon
-    associate (flv => reg_data%regions(alr)%flst_uborn)
-       ii_gluon = pack ([(i, i=1, flv%nlegs)], flv%tagged_gluons)
-    end associate
-    i_gluon = ii_gluon(1)
-  end function region_data_get_tagged_gluon
-
-@ %def region_data_get_tagged_gluon
 @
 <<fks regions: reg data: TBP>>=
   procedure :: map_real_to_born_index => region_data_map_real_to_born_index
@@ -2980,32 +2919,6 @@ of the present one is increased.
   end subroutine region_data_find_emitters
 
 @ %def region_data_find_emitters
-@
-<<fks regions: reg data: TBP>>=
-  procedure :: find_tagged_gluons => region_data_find_tagged_gluons
-<<fks regions: procedures>>=
-  subroutine region_data_find_tagged_gluons (reg_data)
-    class(region_data_t), intent(inout) :: reg_data
-    integer :: i, j, n_gluon
-    logical, dimension(reg_data%n_legs_born) :: gluon_count
-    gluon_count = .false.
-    do i = 1, reg_data%n_regions
-       gluon_count = gluon_count .or. reg_data%regions(i)%flst_uborn%tagged_gluons
-    end do
-    n_gluon = count (gluon_count)
-    if (n_gluon > 0) then
-       allocate (reg_data%tagged_gluons (n_gluon))
-       j = 1
-       do i = 1, reg_data%n_legs_born
-          if (gluon_count(i)) then
-             reg_data%tagged_gluons(j) = i
-             j = j + 1
-          end if
-       end do
-    end if
-  end subroutine region_data_find_tagged_gluons
-
-@ %def region_data_find_tagged_gluons
 @
 <<fks regions: reg data: TBP>>=
   procedure :: find_resonances => region_data_find_resonances
@@ -6547,7 +6460,7 @@ necessary to expand with $z$ once.
     allocate (rsub%sqme_real_non_sub (reg_data%n_flv_real, reg_data%n_phs))
     allocate (rsub%sc_required (reg_data%n_regions))
     do alr = 1, reg_data%n_regions
-       rsub%sc_required(alr) = any (reg_data%regions(alr)%flst_uborn%tagged_gluons)
+       rsub%sc_required(alr) = any (reg_data%regions(alr)%flst_uborn%flst == GLUON)
     end do
     if (rsub%requires_spin_correlations ()) then
        allocate (rsub%sqme_born_sc (0:3, 0:3, reg_data%n_legs_born, reg_data%n_flv_born))
@@ -7332,18 +7245,15 @@ to be more consistent with the evaluation of the Born phase space.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: get_spin_correlation_term => real_subtraction_get_spin_correlation_term
 <<real subtraction: procedures>>=
-  function real_subtraction_get_spin_correlation_term (rsub, alr, i_born) &
+  function real_subtraction_get_spin_correlation_term (rsub, alr, i_born, emitter) &
         result (mom_times_sqme)
     real(default) :: mom_times_sqme
     class(real_subtraction_t), intent(in) :: rsub
-    integer, intent(in) :: alr, i_born
-    integer :: emitter
+    integer, intent(in) :: alr, i_born, emitter
     real(default), dimension(0:3) :: k_perp
     integer :: i, mu, nu
 
     if (rsub%sc_required(alr)) then
-       if (debug2_active(D_SUBTRACTION)) call check_tagged_gluons
-       emitter = rsub%reg_data%get_tagged_gluon (alr)
        if (debug2_active(D_SUBTRACTION)) call check_me_consistency ()
        associate (real_kin => rsub%real_kinematics)
           if (emitter > rsub%reg_data%n_in) then
@@ -7365,11 +7275,6 @@ to be more consistent with the evaluation of the Born phase space.
        mom_times_sqme = zero
     end if
   contains
-    subroutine check_tagged_gluons ()
-      if (count (rsub%reg_data%flv_born(i_born)%tagged_gluons) > 1) &
-           call msg_fatal ("More than one gluon has been tagged")
-    end subroutine check_tagged_gluons
-
     subroutine check_me_consistency ()
       real(default) ::  sqme_sum
       call msg_debug2 (D_SUBTRACTION, "Spin-correlation: Consistency check")
@@ -7438,7 +7343,7 @@ to be more consistent with the evaluation of the Born phase space.
           else
              i_con = 1
           end if
-          mom_times_sqme_sc = rsub%get_spin_correlation_term (alr, sregion%uborn_index)
+          mom_times_sqme_sc = rsub%get_spin_correlation_term (alr, sregion%uborn_index, em)
           if (em <= rsub%sub_coll%n_in) then
              xi_max_pm = one - rsub%isr_kinematics%x(em)
              xi = rsub%real_kinematics%xi_tilde * xi_max_pm
@@ -7486,7 +7391,7 @@ to be more consistent with the evaluation of the Born phase space.
           else
              i_con = 1
           end if
-          mom_times_sqme_sc = rsub%get_spin_correlation_term (alr, sregion%uborn_index)
+          mom_times_sqme_sc = rsub%get_spin_correlation_term (alr, sregion%uborn_index, em)
           if (em <= rsub%sub_coll%n_in) then
              sqme_cs = rsub%sub_coll%compute_soft_limit_isr (sregion, &
                   rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
