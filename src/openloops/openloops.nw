@@ -72,15 +72,15 @@ end module prc_openloops
 @
 <<prc openloops: interfaces>>=
   abstract interface
-     subroutine ol_evaluate_sc (id, pp, emitter, polvect, res) bind(C)
+     subroutine ol_evaluate_scpowheg (id, pp, emitter, res, resmunu) bind(C)
        import
        integer(kind = c_int), value :: id, emitter
-       real(kind = c_double), intent(in) :: pp(5 * N_EXTERNAL), polvect(4)
-       real(kind = c_double), intent(out) :: res(N_EXTERNAL)
-     end subroutine ol_evaluate_sc
+       real(kind = c_double), intent(in) :: pp(5 * N_EXTERNAL)
+       real(kind = c_double), intent(out) :: res(N_EXTERNAL), resmunu(16)
+     end subroutine ol_evaluate_scpowheg
   end interface
 
-@ %def ol_evaluate_sc interface
+@ %def ol_evaluate_scpowheg interface
 @
 <<prc openloops: types>>=
   type, extends (prc_blha_writer_t) :: openloops_writer_t
@@ -105,8 +105,8 @@ end module prc_openloops
   type, extends (blha_driver_t) :: openloops_driver_t
     integer :: n_external = 0
     type(string_t) :: olp_file
-    procedure(ol_evaluate_sc), nopass, pointer :: &
-       evaluate_spin_correlations => null ()
+    procedure(ol_evaluate_scpowheg), nopass, pointer :: &
+         evaluate_spin_correlations_powheg => null ()
   contains
   <<prc openloops: openloops driver: TBP>>
   end type openloops_driver_t
@@ -378,12 +378,14 @@ end module prc_openloops
 
     call object%init_dlaccess_to_library (os_data, dlaccess, init_success)
 
-    c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("ol_evaluate_sc"))
-    call c_f_procpointer (c_fptr, object%evaluate_spin_correlations)
-    if (dlaccess_has_error (dlaccess)) &
-       call msg_fatal ("Could not load Openloops spin correlations!")
+    c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("ol_evaluate_scpowheg"))
+    call c_f_procpointer (c_fptr, object%evaluate_spin_correlations_powheg)
+    if (dlaccess_has_error (dlaccess)) then
+       call msg_fatal ("Could not load Openloops-powheg spin correlations!")
+    else
+       success = .true.
+    end if
 
-    success = .true.
   end subroutine openloops_driver_load_sc_procedure
 
 @ %def openloops_driver_load_sc_procedure
@@ -438,11 +440,13 @@ end module prc_openloops
     class(prc_openloops_t), intent(inout) :: object
     type(os_data_t), intent(in) :: os_data
     type(string_t) :: olp_file, olc_file
+    type(string_t) :: suffix
 
     select type (def => object%def)
     type is (openloops_def_t)
-       olp_file = def%basename // def%suffix // '.olp'
-       olc_file = def%basename // def%suffix // '.olc'
+       suffix = def%suffix
+       olp_file = def%basename // suffix // '.olp'
+       olc_file = def%basename // suffix // '.olc'
     class default
        call msg_bug ("prc_openloops_init_driver: core_def should be openloops-type")
     end select
@@ -451,6 +455,7 @@ end module prc_openloops
     type is (openloops_driver_t)
        driver%olp_file = olp_file
        driver%contract_file = olc_file
+       driver%nlo_suffix = suffix
     end select
   end subroutine prc_openloops_init_driver
 
@@ -600,8 +605,9 @@ end module prc_openloops
        prc_openloops_create_and_load_extra_libraries
 <<prc openloops: procedures>>=
   subroutine prc_openloops_create_and_load_extra_libraries ( &
-         core, var_list, os_data, libname, model, i_core)
+         core, flv_states, var_list, os_data, libname, model, i_core)
     class(prc_openloops_t), intent(inout) :: core
+    integer, intent(in), dimension(:,:), allocatable :: flv_states
     type(var_list_t), intent(in) :: var_list
     type(os_data_t), intent(in) :: os_data
     type(string_t), intent(in) :: libname
@@ -611,7 +617,7 @@ end module prc_openloops
     call core%set_n_external (core%data%get_n_tot ())
     call core%prepare_library (os_data, model)
     call core%start ()
-    call core%read_contract_file (core%data%flv_state)
+    call core%read_contract_file (flv_states)
     call core%print_parameter_file (i_core)
     call core%reset_helicity_list ()
   end subroutine prc_openloops_create_and_load_extra_libraries
@@ -622,44 +628,38 @@ end module prc_openloops
   procedure :: compute_sqme_sc => prc_openloops_compute_sqme_sc
 <<prc openloops: procedures>>=
   subroutine prc_openloops_compute_sqme_sc (object, &
-       i_flv, em, p, ren_scale, pol_vects, me_sc, bad_point)
+       i_flv, em, p, ren_scale, sqme_sc, bad_point)
     class(prc_openloops_t), intent(inout) :: object
     integer, intent(in) :: i_flv
     integer, intent(in) :: em
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: ren_scale
-    type(vector4_t), dimension(:) :: pol_vects
-    complex(default), intent(out) :: me_sc
+    real(default), intent(out), dimension(0:3, 0:3) :: sqme_sc
     logical, intent(out) :: bad_point
     real(double), dimension(5*N_EXTERNAL) :: mom
-    real(double), dimension(N_EXTERNAL) :: r
+    real(double), dimension(N_EXTERNAL) :: res
+    real(double), dimension(16) :: res_munu
     real(default) :: alpha_s
-    real(double), dimension(4) :: polvect
-    integer :: i
     if (object%i_sc(i_flv) > 0) then
        mom = object%create_momentum_array (p)
-       me_sc = zero
+       sqme_sc = zero
        if (vanishes (ren_scale)) &
-          call msg_fatal ("prc_openloops_compute_sqme_sc: ren_scale vanishes")
+            call msg_fatal ("prc_openloops_compute_sqme_sc: ren_scale vanishes")
        alpha_s = object%qcd%alpha%get (ren_scale)
-
-       forall(i=1:4) polvect(i) = pol_vects(em)%p(i-1)
 
        select type (driver => object%driver)
        type is (openloops_driver_t)
           call driver%set_alpha_s (alpha_s)
-          call driver%evaluate_spin_correlations (1, mom, em, polvect, r)
+          call driver%evaluate_spin_correlations_powheg &
+               (object%i_sc(i_flv), mom, em, res, res_munu)
        end select
-       do i = 1, N_EXTERNAL
-          if (i /= em) me_sc = me_sc + r(i)
-       end do
+       sqme_sc = reshape (res_munu, (/4,4/))
 
-       me_sc = me_sc / CA
        bad_point = .false.
        !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
-       if (object%includes_polarization ()) me_sc = four * me_sc
+       if (object%includes_polarization ()) sqme_sc = four * sqme_sc
     else
-       me_sc = zero
+       sqme_sc = zero
     end if
   end subroutine prc_openloops_compute_sqme_sc
 

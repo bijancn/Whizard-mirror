@@ -146,6 +146,7 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: types>>=
   type, abstract, extends (user_defined_driver_t) :: blha_driver_t
     type(string_t) :: contract_file
+    type(string_t) :: nlo_suffix
     logical :: include_polarizations = .false.
     logical :: switch_off_muon_yukawas = .false.
     real(default) :: external_top_yukawa = -1.0
@@ -379,7 +380,8 @@ end module blha_olp_interfaces
 
     n = size (p)
     if (n > 10) call msg_fatal ("Number of external particles exceeds" &
-                                 // "size of BLHA-internal momentum array")
+           // "size of BLHA-internal momentum array")
+
     mom = zero
     k = 1
     do i = 1, n
@@ -718,17 +720,17 @@ end module blha_olp_interfaces
     call c_f_procpointer (c_fptr, object%blha_olp_eval2)
     call check_for_error (var_str ("OLP_EvalSubProcess2"))
 
-    !!! Is OLP_Option really not implemented in OpenLoops?
+    !!! The following three functions are not implemented in OpenLoops.
+    !!! In another BLHA provider, they need to be implemented separately.
+
     !!! c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Option"))
     !!! call c_f_procpointer (c_fptr, object%blha_olp_option)
     !!! call check_for_error (var_str ("OLP_Option"))
 
-    !!! Is OLP_Polvec really not implemented in OpenLoops?
     !!! c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Polvec"))
     !!! call c_f_procpointer (c_fptr, object%blha_olp_polvec)
     !!! call check_for_error (var_str ("OLP_Polvec"))
 
-    !!! Is OLP_Finalize really not implemented in OpenLoops?
     !!! c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Finalize"))
     !!! call c_f_procpointer (c_fptr, object%blha_olp_finalize)
     !!! call check_for_error (var_str ("OLP_Finalize"))
@@ -750,7 +752,7 @@ end module blha_olp_interfaces
 @
 <<BLHA OLP interfaces: parameters>>=
   integer, parameter :: LEN_MAX_FLAVOR_STRING = 100
-  integer, parameter :: N_MAX_FLAVORS = 20
+  integer, parameter :: N_MAX_FLAVORS = 100
 <<BLHA OLP interfaces: blha driver: TBP>>=
   procedure :: read_contract_file => blha_driver_read_contract_file
 <<BLHA OLP interfaces: procedures>>=
@@ -781,6 +783,7 @@ end module blha_olp_interfaces
     label_count = 1
     i_hel = 0
     n_found = 0
+    give_warning = .false.
     do
       read (unit, "(A)", iostat = filestat) rd_line
       if (filestat == iostat_end) then
@@ -795,7 +798,8 @@ end module blha_olp_interfaces
                amp_type(label_count) = BLHA_AMP_TREE
             else if (rd_line(i_next : i_next + 6) == 'ccTree') then
                amp_type(label_count) = BLHA_AMP_CC
-            else if (rd_line(i_next : i_next + 6) == 'scTree') then
+            else if (rd_line(i_next : i_next + 6) == 'scTree' .or. &
+                 rd_line(i_next : i_next + 14) == 'sctree_polvect') then
                amp_type(label_count) = BLHA_AMP_SC
             else
                call msg_fatal ("AmplitudeType present but &
@@ -1074,7 +1078,7 @@ end module blha_olp_interfaces
     GF = model%get_real (var_str ('GF'))
     select type (driver => object%driver)
     class is (blha_driver_t)
-      call driver%set_GF (GF)
+       call driver%set_GF (GF)
     end select
   end subroutine prc_blha_set_GF
 
@@ -1128,7 +1132,8 @@ end module blha_olp_interfaces
     allocate (helicities (N_MAX_FLAVORS, object%data%n_in))
     select type (driver => object%driver)
     class is (blha_driver_t)
-       call driver%read_contract_file (flavors, amp_type, flv_index, label, helicities)
+       call driver%read_contract_file (flavors, amp_type, flv_index, &
+            label, helicities)
     end select
     object%n_proc = count (amp_type >= 0)
     do i_proc = 1, object%n_proc
@@ -1218,36 +1223,37 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: prc blha: TBP>>=
    procedure :: init_blha => prc_blha_init_blha
 <<BLHA OLP interfaces: procedures>>=
-  subroutine prc_blha_init_blha (object, blha_template)
+  subroutine prc_blha_init_blha (object, blha_template, n_in, &
+         n_particles, n_flv)
     class(prc_blha_t), intent(inout) :: object
     type(blha_template_t), intent(in) :: blha_template
+    integer, intent(in) :: n_in, n_particles, n_flv
     integer :: n_hel
-    object%n_particles = size (object%data%flv_state, 1)
-    object%n_flv = size (object%data%flv_state, 2)
+    object%n_particles = n_particles
+    object%n_flv = n_flv
     if (blha_template%compute_loop ()) then
        if (blha_template%include_polarizations) then
-          allocate (object%i_virt (object%n_flv * object%data%n_in * 2), &
-                    object%i_cc (object%n_flv * object%data%n_in * 2))
+          allocate (object%i_virt (n_flv * n_in * 2), &
+               object%i_cc (n_flv * n_in * 2))
           if (blha_template%use_internal_color_correlations) then
-             n_hel = object%n_flv * object%data%n_in * 4
+             n_hel = n_flv * n_in * 4
           else
-             n_hel = object%n_flv * object%data%n_in * 2
+             n_hel = n_flv * n_in * 2
           end if
-          allocate (object%i_hel (n_hel, object%data%n_in))
+          allocate (object%i_hel (n_hel, n_in))
        else
-          allocate (object%i_virt (object%n_flv), &
-                    object%i_cc (object%n_flv))
+          allocate (object%i_virt (n_flv), object%i_cc (n_flv))
        end if
        object%i_virt = 0
        object%i_cc = 0
     else if (blha_template%compute_subtraction ()) then
        if (blha_template%include_polarizations) then
-          allocate (object%i_tree (object%n_flv * 4), &
-             object%i_cc (object%n_flv * 4), &
-             object%i_sc (object%n_flv * 4))
+          allocate (object%i_tree (n_flv * 4), &
+               object%i_cc (n_flv * 4), &
+               object%i_sc (n_flv * 4))
        else
-          allocate (object%i_tree (object%n_flv), &
-             object%i_cc (object%n_flv) , object%i_sc (object%n_flv))
+          allocate (object%i_tree (n_flv), object%i_cc (n_flv) , &
+               object%i_sc (n_flv))
        end if
        object%i_tree = 0
        object%i_cc = 0
@@ -1255,11 +1261,11 @@ end module blha_olp_interfaces
     else if (blha_template%compute_real_trees () .or. blha_template%compute_born ()) then
        if (blha_template%include_polarizations) then
           n_hel = 4
-          allocate (object%i_hel (n_hel, object%data%n_in))
+          allocate (object%i_hel (n_hel, n_in))
        else
           n_hel = 1
        end if
-       allocate (object%i_tree (object%n_flv * n_hel))
+       allocate (object%i_tree (n_flv * n_hel))
        object%i_tree = 0
     end if
 
@@ -1396,8 +1402,8 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
 <<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: compute_sqme => prc_blha_compute_sqme
 <<BLHA OLP interfaces: procedures>>=
-  subroutine prc_blha_compute_sqme &
-         (object, i_flv, p, ren_scale, sqme, bad_point)
+  subroutine prc_blha_compute_sqme (object, i_flv, p, &
+      ren_scale, sqme, bad_point)
     class(prc_blha_t), intent(in) :: object
     integer, intent(in) :: i_flv
     type(vector4_t), intent(in), dimension(:) :: p
@@ -1411,7 +1417,7 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
     if (object%i_tree(i_flv) > 0) then
        mom = object%create_momentum_array (p)
        if (vanishes (ren_scale)) &
-          call msg_fatal ("prc_blha_compute_sqme: ren_scale vanishes")
+            call msg_fatal ("prc_blha_compute_sqme: ren_scale vanishes")
        mu_dble = dble(ren_scale)
        alpha_s = object%qcd%alpha%get (ren_scale)
        select type (driver => object%driver)
@@ -2129,11 +2135,10 @@ This types control the creation of BLHA-interface files
     class(model_data_t), intent(in), target :: model
     integer, intent(in) :: n_in
     integer, intent(in) :: alpha_power, alphas_power
-    integer, dimension(:,:), allocatable, intent(in) :: &
-         flv_born, flv_real
+    integer, intent(in), dimension(:,:), allocatable :: flv_born, flv_real
     integer :: i_file
     if (master%n_files < 1) &
-       call msg_fatal ("Attempting to generate OLP-files, but none are specified!")
+         call msg_fatal ("Attempting to generate OLP-files, but none are specified!")
     i_file = 1
     call master%generate_loop (basename, model, n_in, alpha_power, &
          alphas_power, flv_born, i_file)
@@ -2411,7 +2416,7 @@ subroutine blha_master_generate_born (master, basename, model, n_in, &
          model, blha_mode)
     call blha_configuration_append_processes (blha_cfg, n_in, &
          blha_flavor, amp_type)
-   call blha_configuration_set (blha_cfg, BLHA_VERSION_2, &
+    call blha_configuration_set (blha_cfg, BLHA_VERSION_2, &
          correction_type = BLHA_CT_QCD, &
          irreg = BLHA_IRREG_CDR, alphas_power = asp, &
          alpha_power = ap, ew_scheme = ew_scheme, &
@@ -2929,8 +2934,11 @@ Write the BLHA file. Internal mode is intented for md5summing only.
          case (BLHA_AMP_LOOP); buf = "Loop"
          case (BLHA_AMP_CC); buf = "ccTree"
          case (BLHA_AMP_SC)
-            buf = "scTree"
-            if (cfg%mode == BLHA_MODE_OPENLOOPS) write_process = .false.
+            if (cfg%mode == BLHA_MODE_OPENLOOPS) then
+               buf = "sctree_polvect"
+            else
+               buf = "scTree"
+            end if
          case (BLHA_AMP_TREE); buf = "Tree"
          case (BLHA_AMP_LOOPINDUCED); buf = "LoopInduced"
        end select
@@ -3088,7 +3096,7 @@ end module blha_uti
     call blha_master%set_methods (.true., var_list)
     call blha_master%allocate_config_files ()
     call blha_master%generate (proc_id, model, n_in, &
-       alpha_power, alphas_power, flv_born, flv_real)
+         alpha_power, alphas_power, flv_born, flv_real)
 
     call test_output (u)
 
@@ -3105,7 +3113,7 @@ end module blha_uti
     call blha_master%set_methods (.true., var_list)
     call blha_master%allocate_config_files ()
     call blha_master%generate (proc_id, model, n_in, &
-       alpha_power, alphas_power, flv_born, flv_real)
+         alpha_power, alphas_power, flv_born, flv_real)
 
     if (polrzd) then
        do i = 1, 4
