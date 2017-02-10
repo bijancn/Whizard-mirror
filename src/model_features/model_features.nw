@@ -312,7 +312,7 @@ check fails.
 <<Auto components: types>>=
   type, extends (split_constraint_t) :: constraint_insert
      private
-     type(pdg_list_t) :: pl_match
+     type(pdg_list_t) :: pl_match, pl_excluded_gauge_splittings
    contains
      procedure :: check_before_insert => constraint_insert_check_before_insert
   end type constraint_insert
@@ -321,10 +321,13 @@ check fails.
 <<Auto components: public>>=
   public :: constrain_insert
 <<Auto components: procedures>>=
-  function constrain_insert (pl_match) result (c)
+  function constrain_insert (pl_match, pl_excluded_gauge_splittings) result (c)
     type(pdg_list_t), intent(in) :: pl_match
+    type(pdg_list_t), intent(in), optional :: pl_excluded_gauge_splittings
     type(constraint_insert) :: c
     c%pl_match = pl_match
+    if (present (pl_excluded_gauge_splittings)) &
+    c%pl_excluded_gauge_splittings = pl_excluded_gauge_splittings
   end function constrain_insert
 
   subroutine constraint_insert_check_before_insert (c, table, pa, pl, passed)
@@ -333,7 +336,13 @@ check fails.
     type(pdg_array_t), intent(in) :: pa
     type(pdg_list_t), intent(inout) :: pl
     logical, intent(out) :: passed
-    call pl%match_replace (c%pl_match, passed)
+    if (is_massless_vector(pa%get()) &
+         .and. c%pl_excluded_gauge_splittings%get_size () /= 0) then
+       call pl%match_replace (c%pl_excluded_gauge_splittings, passed)
+       passed = .not. passed
+    else
+       call pl%match_replace (c%pl_match, passed)
+    end if
   end subroutine constraint_insert_check_before_insert
 
 @ %def constrain_insert
@@ -590,6 +599,7 @@ Filters vertices which do not match the desired NLO pattern.
     pdg_W_Z = [W_BOSON,-W_BOSON, Z_BOSON]
     if (c%qcd) pdg_gauge_bosons = pdg_gauge_bosons // pdg_gluon
     if (c%qed) pdg_gauge_bosons = pdg_gauge_bosons // pdg_photon
+    if (c%ew) pdg_gauge_bosons = pdg_gauge_bosons // pdg_W_Z
     passed = .false.
     if (pl_vertex .match. pdg_gauge_bosons) passed = .true.
     if (.not. c%ew .and. (pl_vertex .match. pdg_W_Z)) passed = .false.
@@ -2298,7 +2308,8 @@ initialization phase (more precisely: at the moment only in the
     logical :: is_photon = .false.
     logical :: fs_photon = .false.
     logical :: only_final_state = .true.
-    type(pdg_list_t) :: pl_in, pl_out, pl_nlo_decay_products
+    type(pdg_list_t) :: pl_in, pl_out
+    type(pdg_list_t) :: pl_splitting_constituents, pl_excluded_gauge_splittings
     type(split_constraints_t) :: constraints
     integer :: n_tot
     integer :: n_in, n_out
@@ -2322,21 +2333,23 @@ initialization phase (more precisely: at the moment only in the
   procedure :: init_pdg_array => radiation_generator_init_pdg_array
 <<radiation generator: procedures>>=
   subroutine radiation_generator_init_pdg_list &
-       (generator, pl_in, pl_out, pl_nlo_decay_products, qcd, qed)
+       (generator, pl_in, pl_out, pl_splitting_constituents, &
+       pl_excluded_gauge_splittings, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_list_t), intent(in) :: pl_in, pl_out
-    type(pdg_list_t), intent(in), optional :: pl_nlo_decay_products
+    type(pdg_list_t), intent(in), optional :: pl_splitting_constituents
+    type(pdg_list_t), intent(in), optional :: pl_excluded_gauge_splittings
     logical, intent(in), optional :: qcd, qed
     if (present (qcd))  generator%qcd_enabled = qcd
     if (present (qed))  generator%qed_enabled = qed
     generator%pl_in = pl_in
     generator%pl_out = pl_out
-    if (allocated(generator%pl_nlo_decay_products%a)) &
-         deallocate(generator%pl_nlo_decay_products%a)
-    if (present (pl_nlo_decay_products)) then
-       if (allocated (pl_nlo_decay_products%a)) &
-            generator%pl_nlo_decay_products = pl_nlo_decay_products
-    end if
+    if (allocated (generator%pl_splitting_constituents%a)) &
+         deallocate (generator%pl_splitting_constituents%a)
+    if (present (pl_splitting_constituents)) &
+         generator%pl_splitting_constituents = pl_splitting_constituents
+    if (present (pl_excluded_gauge_splittings)) &
+         generator%pl_excluded_gauge_splittings = pl_excluded_gauge_splittings
     generator%is_gluon = pl_in%search_for_particle (GLUON)
     generator%fs_gluon = pl_out%search_for_particle (GLUON)
     generator%is_photon = pl_in%search_for_particle (PHOTON)
@@ -2348,12 +2361,15 @@ initialization phase (more precisely: at the moment only in the
   end subroutine radiation_generator_init_pdg_list
 
   subroutine radiation_generator_init_pdg_array &
-       (generator, pdg_in, pdg_out, pdg_nlo_decay_products, qcd, qed)
+       (generator, pdg_in, pdg_out, pdg_splitting_constituents, &
+       pdg_excluded_gauge_splittings, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_array_t), intent(in), dimension(:) :: pdg_in, pdg_out
-    type(pdg_array_t), intent(in), dimension(:), optional :: pdg_nlo_decay_products
+    type(pdg_array_t), intent(in), dimension(:), optional :: pdg_splitting_constituents
+    type(pdg_array_t), intent(in), dimension(:), optional :: pdg_excluded_gauge_splittings
     logical, intent(in), optional :: qcd, qed
-    type(pdg_list_t) :: pl_in, pl_out, pl_nlo_decay_products
+    type(pdg_list_t) :: pl_in, pl_out
+    type(pdg_list_t) :: pl_splitting_constituents, pl_excluded_gauge_splittings
     integer :: i
     call pl_in%init(size (pdg_in))
     call pl_out%init(size (pdg_out))
@@ -2363,15 +2379,24 @@ initialization phase (more precisely: at the moment only in the
     do i = 1, size (pdg_out)
        call pl_out%set (i, pdg_out(i))
     end do
-    if (present (pdg_nlo_decay_products)) then
-       if (all (pdg_nlo_decay_products%get_length () > 0)) then
-          call pl_nlo_decay_products%init(size (pdg_nlo_decay_products))
-          do i = 1, size (pdg_nlo_decay_products)
-             call pl_nlo_decay_products%set (i, pdg_nlo_decay_products(i))
+    if (present (pdg_splitting_constituents)) then
+       if (all (pdg_splitting_constituents%get_length () > 0)) then
+          call pl_splitting_constituents%init(size (pdg_splitting_constituents))
+          do i = 1, size (pdg_splitting_constituents)
+             call pl_splitting_constituents%set (i, pdg_splitting_constituents(i))
           end do
        end if
     end if
-    call generator%init (pl_in, pl_out, pl_nlo_decay_products, qcd, qed)
+    if (present (pdg_excluded_gauge_splittings)) then
+       if (all (pdg_excluded_gauge_splittings%get_length () > 0)) then
+          call pl_splitting_constituents%init(size (pdg_excluded_gauge_splittings))
+          do i = 1, size (pdg_excluded_gauge_splittings)
+             call pl_splitting_constituents%set (i, pdg_excluded_gauge_splittings(i))
+          end do
+       end if
+    end if
+    call generator%init (pl_in, pl_out, pl_splitting_constituents, &
+        pl_excluded_gauge_splittings, qcd, qed)
   end subroutine radiation_generator_init_pdg_array
 
 @ %def radiation_generator_init_pdg_list radiation_generator_init_pdg_array
@@ -2529,7 +2554,7 @@ initialization phase (more precisely: at the moment only in the
          n = n + 1
       end if
       if (set_selected_particles) then
-         if (generator%pl_nlo_decay_products%get_size () == 0) then
+         if (generator%pl_splitting_constituents%get_size () == 0) then
             if (generator%only_final_state ) then
                call pl_insert%init (generator%n_out + n_nlo_correction_types)
                do i = 1, generator%n_out
@@ -2553,12 +2578,12 @@ initialization phase (more precisely: at the moment only in the
                end do
                last_index = generator%n_tot + n_new_particles + 1
             end if
-         else if (generator%pl_nlo_decay_products%get_size () > 0) then
+         else if (generator%pl_splitting_constituents%get_size () > 0) then
             call pl_insert%init (n_nlo_correction_types &
-                 + generator%pl_nlo_decay_products%get_size ())
+                 + generator%pl_splitting_constituents%get_size ())
             last_index = 1
-            do i = 1, generator%pl_nlo_decay_products%get_size ()
-               call pl_insert%set (last_index, generator%pl_nlo_decay_products%get(i))
+            do i = 1, generator%pl_splitting_constituents%get_size ()
+               call pl_insert%set (last_index, generator%pl_splitting_constituents%get(i))
                last_index = last_index + 1
             end do
          end if
@@ -2572,7 +2597,8 @@ initialization phase (more precisely: at the moment only in the
             pdg_add = pdg_photon
             call pl_insert%set (last_index, pdg_add)
          end if
-         call constraints%set (n, constrain_insert (pl_insert))
+         call constraints%set (n, constrain_insert (pl_insert, &
+              generator%pl_excluded_gauge_splittings))
       end if
    end associate
 
@@ -3186,7 +3212,7 @@ end module radiation_generator_uti
       call write_pdg_array (pdg_out, u)
 
       call generator%init (pdg_in, pdg_out, &
-           pdg_nlo_decay_products = pdg_decay_products, qcd = .true., qed = .false.)
+           pdg_splitting_constituents = pdg_decay_products, qcd = .true., qed = .false.)
       call generator%set_n (2, size(pdg_out), 0)
       if (yorn) call generator%set_initial_state_emissions ()
       call generator%set_constraints (.false., .false., .true., .true.)
@@ -3393,7 +3419,7 @@ end module radiation_generator_uti
       call write_pdg_array (pdg_out, u)
 
       call generator%init (pdg_in, pdg_out, &
-           pdg_nlo_decay_products = pdg_decay_products, qcd = .false., qed = .true.)
+           pdg_splitting_constituents = pdg_decay_products, qcd = .false., qed = .true.)
       call generator%set_n (2, size(pdg_out), 0)
       if (yorn) call generator%set_initial_state_emissions ()
       call generator%set_constraints (.false., .false., .true., .true.)

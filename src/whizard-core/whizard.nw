@@ -13826,7 +13826,7 @@ or arrays which would make the expansion ambiguous.
     logical :: qcd_corr, qed_corr
     type(string_t), dimension(:), allocatable :: prt_in_nlo, prt_out_nlo
     type(radiation_generator_t) :: radiation_generator
-    type(pdg_list_t) :: pl_in, pl_out, pl_nlo_decay_products
+    type(pdg_list_t) :: pl_in, pl_out, pl_splitting_constituents, pl_excluded_gauge_splittings
     type(string_t) :: born_me_method
     type(string_t) :: real_tree_me_method
     type(string_t) :: loop_me_method
@@ -13935,14 +13935,15 @@ or arrays which would make the expansion ambiguous.
        select case (char(nlo_correction_type))
        case ("QCD")
           qcd_corr = .true.; qed_corr = .false.
-       case ("EW")
+       case ("QED")
           qcd_corr = .false.; qed_corr = .true.
        case ("Full")
           qcd_corr =.true.; qed_corr = .true.
        case default
-          call msg_fatal ("Invalid NLO correction type! Valid inputs are: QCD, EW, Full (default: QCD)")
+          call msg_fatal ("Invalid NLO correction type! Valid inputs are: QCD, QED, Full (default: QCD)")
        end select
-       call check_for_nlo_gauge_boson_decay_products ()
+       call check_for_splitting_constituents ()
+       call check_for_excluded_gauge_boson_splitting_partners ()
        call setup_radiation_generator ()
     end if
     if (nlo_fixed_order) then
@@ -13957,34 +13958,66 @@ or arrays which would make the expansion ambiguous.
 @ %def check_for_nlo_corrections
 @
 <<Commands: cmd process execute procedures>>=
-  subroutine check_for_nlo_gauge_boson_decay_products ()
-    type(string_t) :: str_nlo_gauge_boson_decay_products
-    type(string_t), dimension(:), allocatable :: nlo_gauge_boson_decay_products
+  subroutine check_for_splitting_constituents ()
+    type(string_t) :: str_splitting_constituents
+    type(string_t), dimension(:), allocatable :: splitting_constituents
     type(pdg_list_t) :: pl_tmp, pl_anti
     integer :: i, n_anti
-    str_nlo_gauge_boson_decay_products = var_list%get_sval &
-         (var_str ("$nlo_gauge_boson_decay_products"))
-    if (str_nlo_gauge_boson_decay_products /= "") then
-       call split_string (str_nlo_gauge_boson_decay_products, &
-            var_str (":"), nlo_gauge_boson_decay_products)
-       call pl_tmp%init (size(nlo_gauge_boson_decay_products))
-       do i = 1, size (nlo_gauge_boson_decay_products)
+    str_splitting_constituents = var_list%get_sval &
+         (var_str ("$splitting_constituents"))
+    if (str_splitting_constituents /= "") then
+       call split_string (str_splitting_constituents, &
+            var_str (":"), splitting_constituents)
+       call pl_tmp%init (size (splitting_constituents))
+       do i = 1, size (splitting_constituents)
           call pl_tmp%set (i, &
-               cmd%local%model%get_pdg (nlo_gauge_boson_decay_products(i), .true.))
+               cmd%local%model%get_pdg (splitting_constituents(i), .true.))
        end do
        call pl_tmp%create_antiparticles (pl_anti, n_anti)
-       call pl_nlo_decay_products%init (pl_tmp%get_size() + n_anti)
+       call pl_splitting_constituents%init (pl_tmp%get_size () + n_anti)
        do i = 1, pl_tmp%get_size ()
-          call pl_nlo_decay_products%set (i, pl_tmp%get(i))
+          call pl_splitting_constituents%set (i, pl_tmp%get(i))
        end do
        do i = 1, n_anti
           j = i + pl_tmp%get_size ()
-          call pl_nlo_decay_products%set (j, pl_anti%get(i))
+          call pl_splitting_constituents%set (j, pl_anti%get(i))
        end do
     end if
-  end subroutine check_for_nlo_gauge_boson_decay_products
+  end subroutine check_for_splitting_constituents
 
-@ %def check_for_nlo_gauge_boson_decay_products
+@ %def check_for_splitting_constituents
+@
+<<Commands: cmd process execute procedures>>=
+  subroutine check_for_excluded_gauge_boson_splitting_partners ()
+    type(string_t) :: str_excluded_partners
+    type(string_t), dimension(:), allocatable :: excluded_partners
+    type(pdg_list_t) :: pl_tmp, pl_anti
+    integer :: i, n_anti
+    str_excluded_partners = var_list%get_sval &
+         (var_str ("$exclude_gauge_boson_splitting_partners"))
+    if (str_excluded_partners == "None") then
+       return
+    else
+       call split_string (str_excluded_partners, &
+            var_str (":"), excluded_partners)
+       call pl_tmp%init (size (excluded_partners))
+       do i = 1, size (excluded_partners)
+          call pl_tmp%set (i, &
+               cmd%local%model%get_pdg (excluded_partners(i), .true.))
+       end do
+       call pl_tmp%create_antiparticles (pl_anti, n_anti)
+       call pl_excluded_gauge_splittings%init (pl_tmp%get_size () + n_anti)
+       do i = 1, pl_tmp%get_size ()
+          call pl_excluded_gauge_splittings%set (i, pl_tmp%get(i))
+       end do
+       do i = 1, n_anti
+          j = i + pl_tmp%get_size ()
+          call pl_excluded_gauge_splittings%set (j, pl_anti%get(i))
+       end do
+    end if
+  end subroutine check_for_excluded_gauge_boson_splitting_partners
+
+@ %def check_for_excluded_gauge_boson_splitting_partners
 @
 <<Commands: cmd process execute procedures>>=
   subroutine determine_needed_components ()
@@ -14025,8 +14058,8 @@ or arrays which would make the expansion ambiguous.
   subroutine setup_radiation_generator ()
     call split_prt (prt_spec_in, n_in, pl_in)
     call split_prt (prt_spec_out, n_out, pl_out)
-    call radiation_generator%init (pl_in, pl_out, pl_nlo_decay_products, &
-         qcd = qcd_corr, qed = qed_corr)
+    call radiation_generator%init (pl_in, pl_out, pl_splitting_constituents, &
+         pl_excluded_gauge_splittings, qcd = qcd_corr, qed = qed_corr)
     call radiation_generator%set_n (n_in, n_out, 0)
     initial_state_colored = pdg_in%has_colored_particles()
     has_structure_functions = global%beam_structure%get_n_record () > 0
