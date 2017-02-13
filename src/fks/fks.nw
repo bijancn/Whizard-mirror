@@ -195,7 +195,9 @@ module fks_regions
 
 <<Use kinds>>
   use format_utils, only: write_separator
+  use numeric_utils, only: remove_duplicates_from_list, extend_integer_array
   use numeric_utils, only: remove_duplicates_from_list
+  use string_utils, only: str
   use io_units
 <<Use strings>>
   use constants
@@ -310,6 +312,35 @@ the [[ftuple]]-object.
   end subroutine ftuple_write
 
 @ %def ftuple_write
+@
+<<fks regions: procedures>>=
+  function ftuple_string (ftuples, latex)
+    type(string_t) :: ftuple_string
+    type(ftuple_t), intent(in), dimension(:) :: ftuples
+    logical, intent(in) :: latex
+    integer :: i, nreg
+    integer :: i1, i2
+    if (latex) then
+       ftuple_string = var_str ("$\left\{")
+    else
+       ftuple_string = var_str ("{")
+    end if
+    nreg = size(ftuples)
+    do i = 1, nreg
+       ftuple_string = ftuple_string // var_str ("(") // &
+            str (ftuples(i)%ireg(1)) // var_str (",") // &
+            str (ftuples(i)%ireg(2)) // var_str (")")
+       if (ftuples(i)%i_res > 0) ftuple_string = ftuple_string // var_str ("*")
+       if (i < nreg) ftuple_string = ftuple_string // var_str (",")
+    end do
+    if (latex) then
+       ftuple_string = ftuple_string // var_str ("\right\}$")
+    else
+       ftuple_string = ftuple_string // var_str ("}")
+    end if
+  end function ftuple_string
+
+@ %def ftuple_string
 @
 <<fks regions: ftuple: TBP>>=
   procedure :: get => ftuple_get
@@ -877,18 +908,31 @@ flavor array
     integer, intent(in), optional :: unit
     integer :: i, u
     u = given_output_unit (unit); if (u < 0) return
-    if (allocated (flv%flst)) then
-       write (u, '(A1)',advance = 'no') '['
-       do i = 1, size(flv%flst) - 1
-          write (u, '(I3,A1)', advance = 'no') flv%flst(i), ','
-       end do
-       write (u, '(I3,A1)') flv%flst(i), ']'
-    else
-       write (u, '(A)') '[not allocated]'
-    end if
+    write (u, '(A)') char (flv%to_string ())
   end subroutine flv_structure_write
 
 @ %def flv_structure_write
+@
+<<fks regions: flv structure: TBP>>=
+  procedure :: to_string => flv_structure_to_string
+<<fks regions: procedures>>=
+  function flv_structure_to_string (flv) result (flv_string)
+    type(string_t) :: flv_string
+    class(flv_structure_t), intent(in) :: flv
+    integer :: i, n
+    if (allocated (flv%flst)) then
+       flv_string = var_str ("[")
+       n = size (flv%flst)
+       do i = 1, n - 1
+          flv_string = flv_string // str (flv%flst(i)) // var_str(",")
+       end do
+       flv_string = flv_string // str (flv%flst(n)) // var_str("]")
+    else
+       flv_string = var_str ("[not allocated]")
+    end if
+  end function flv_structure_to_string
+
+@ %def flv_structure_to_string
 @ Creates the underlying Born flavor structure for a given real flavor
 structure if the particle at position \texttt{emitter} is removed
 <<fks regions: flv structure: TBP>>=
@@ -1329,42 +1373,7 @@ also be supplied by a symmetry factor, explained below.
           write(u, ireg_space_format, advance='no') ' '
        end do
     end if
-    write (u,'(A1)', advance = 'no') '{'
-    if (nreg > 1) then
-       do i = 1, nreg - 1
-          call sregion%ftuples(i)%get (i1, i2)
-          if (sregion%ftuples(i)%pseudo_isr) then
-             closing_bracket = ')*'
-          else
-             closing_bracket = ')'
-          end if
-          i_res = sregion%ftuples(i)%i_res
-          if (i_res > 0) then
-             write (u, ireg_format_resonant, advance = 'no') &
-                '(', i1, ',', i2, ';', i_res, closing_bracket
-          else
-             write(u, ireg_format, advance = 'no') '(', i1, ',', i2, closing_bracket
-          end if
-       end do
-    end if
-    call sregion%ftuples(nreg)%get (i1, i2)
-    i_res = sregion%ftuples(nreg)%i_res
-    if (sregion%ftuples(nreg)%pseudo_isr) then
-       closing_bracket = ')*}'
-    else
-       closing_bracket = ')}'
-    end if
-    if (i_res > 0) then
-       write (u, ireg_format_resonant, advance = 'no') &
-          '(', i1, ',', i2, '; ', i_res, closing_bracket
-    else
-       write (u, ireg_format, advance = 'no') '(', i1, ',', i2, closing_bracket
-    end if
-    if (nright > 0) then
-       do i = 1, nright
-          write(u, ireg_space_format, advance='no') ' '
-       end do
-    end if
+    write (u, '(A)') char (ftuple_string (sregion%ftuples, .false.))
     call write_vline (u)
     write (u,'(A1)',advance = 'no') '['
     do i = 1, nborn - 1
@@ -1377,6 +1386,24 @@ also be supplied by a symmetry factor, explained below.
   end subroutine singular_region_write
 
 @ %def singular_region_write
+@
+<<fks regions: singular region: TBP>>=
+  procedure :: write_latex => singular_region_write_latex
+<<fks regions: procedures>>=
+  subroutine singular_region_write_latex (region, unit)
+    class(singular_region_t), intent(in) :: region
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit); if (u < 0) return
+    write (u, "(I1,A3,A,A3,I2,A3,I1,A3,I1,A3,A,A3,I2,A3,A,A3)") &
+           region%alr, " & ", char (region%flst_real%to_string ()), &
+           " & ", region%real_index, " & ", region%emitter, " & ", &
+           region%mult, " & ", char (ftuple_string (region%ftuples, .true.)), &
+           " & ", region%uborn_index, " & ",  char (region%flst_uborn%to_string ()), &
+           " \\"
+  end subroutine singular_region_write_latex
+
+@ %def singular_region_write_latex
 @ In case of a $g \rightarrow gg$ or $g \rightarrow qq$ splitting, the factor
 \begin{equation*}
  \frac{2E_{\rm{em}}}{E_{\rm{em}} + E_{\rm{rad}}}
@@ -2513,7 +2540,8 @@ are therefore equivalent.
     integer, dimension(:,:), allocatable :: ftuple_index
     integer :: n_born, n_real
     integer :: n_legreal
-    integer, parameter :: maxnregions = 200
+    integer, parameter :: n_regions_start = 20
+    integer, parameter :: increment_list = 50
     integer :: i_born, i_real, i_reg, i_ftuple
     integer :: last_registered_i_born, last_registered_i_real
 
@@ -2522,8 +2550,8 @@ are therefore equivalent.
     n_legreal = size (reg_data%flv_real(1)%flst)
     allocate (ftuples_tmp (n_born,n_real))
     allocate (ftuple_index (n_born,n_real))
-    allocate (emitter_tmp (maxnregions))
-    allocate (flst_alr_tmp (maxnregions))
+    allocate (emitter_tmp (n_regions_start))
+    allocate (flst_alr_tmp (n_regions_start))
     i_reg = 0
     ftuple_index = 0
     i_ftuple = 0
@@ -2555,6 +2583,19 @@ are therefore equivalent.
     deallocate (ftuple_index)
 
   contains
+    subroutine extend_flv_array (flv)
+      type(flv_structure_t), intent(inout), dimension(:), allocatable :: flv
+      type(flv_structure_t), dimension(:), allocatable :: flv_store
+      integer :: n
+      n = size (flv)
+      allocate (flv_store (n))
+      flv_store = flv
+      deallocate (flv)
+      allocate (flv (n + increment_list))
+      flv(1:n) = flv_store
+      deallocate (flv_store)
+    end subroutine extend_flv_array
+
     function incr_i_ftuple_if_required (i_born, i_real, i_ftuple_in) result (i_ftuple)
       integer :: i_ftuple
       integer, intent(in) :: i_born, i_real, i_ftuple_in
@@ -2581,6 +2622,7 @@ are therefore equivalent.
                valid2 = flv_real%valid_pair(leg2, leg1, born_flavor, model)
                if (valid1 .or. valid2) then
                   i_reg = i_reg + 1
+                  if (i_reg > size (flst_alr_tmp)) call extend_flv_array (flst_alr_tmp)
                   if(valid1) then
                      flst_alr_tmp(i_reg) = create_alr (flv_real, &
                           reg_data%n_in, leg1, leg2)
@@ -2594,6 +2636,8 @@ are therefore equivalent.
                   i_ftuple = incr_i_ftuple_if_required (i_born, i_real, i_ftuple)
                   call ftuples_tmp(i_born,i_real)%append (current_ftuple)
                   ftuple_index(i_born,i_real) = i_ftuple
+                  if (i_reg > size (emitter_tmp)) &
+                       call extend_integer_array (emitter_tmp, increment_list)
                   emitter_tmp(i_reg) = n_legreal - 1
                end if
             end associate
@@ -2633,7 +2677,10 @@ are therefore equivalent.
                i_ftuple = incr_i_ftuple_if_required (i_born, i_real, i_ftuple)
                call ftuples_tmp(i_born,i_real)%append (current_ftuple)
                ftuple_index(i_born,i_real) = i_real
+               if (i_reg > size (emitter_tmp)) &
+                    call extend_integer_array (emitter_tmp, increment_list)
                emitter_tmp(i_reg) = emitter
+               if (i_reg > size (flst_alr_tmp)) call extend_flv_array (flst_alr_tmp)
                flst_alr_tmp(i_reg) = &
                     create_alr (flv_real, reg_data%n_in, emitter, leg)
             end if
@@ -3326,20 +3373,51 @@ resonances are possible for all ftuples
 <<fks regions: reg data: TBP>>=
   procedure :: write_to_file => region_data_write_to_file
 <<fks regions: procedures>>=
-  subroutine region_data_write_to_file (reg_data, proc_id)
+  subroutine region_data_write_to_file (reg_data, proc_id, latex)
      class(region_data_t), intent(inout) :: reg_data
      type(string_t), intent(in) :: proc_id
+     logical, intent(in) :: latex
      type(string_t) :: filename
      integer :: u
 
      filename = proc_id // "_fks_regions.log"
      u = free_unit ()
      open (u, file=char(filename), action = "write", status="replace")
-     call reg_data%write (u)
+     if (latex) then
+        call reg_data%write_latex (u)
+     else
+        call reg_data%write (u)
+     end if
      close (u)
   end subroutine region_data_write_to_file
 
 @ %def region_data_write_to_file
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: write_latex => region_data_write_latex
+<<fks regions: procedures>>=
+  subroutine region_data_write_latex (reg_data, unit)
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in), optional :: unit
+    integer :: i, u
+    u = given_output_unit (unit); if (u < 0) return
+    write (u, "(A)") "%FKS region data, automatically created by WHIZARD"
+    write (u, "(A)") "\begin{table}"
+    write (u, "(A)") "\begin{center}"
+    write (u, "(A)") "\begin{tabular} {|c|c|c|c|c|c|c|c|}"
+    write (u, "(A)") "\hline"
+    write (u, "(A)") "$\alpha_r$ & $f_r$ & $i_r$ & $em$ & $mult$ & $\mathcal{P}_{\rm{FKS}}$ & $i_b$ & $f_b$ \\"
+    write (u, "(A)") "\hline"
+    do i = 1, reg_data%n_regions
+       call reg_data%regions(i)%write_latex (u)
+    end do
+    write (u, "(A)") "\hline"
+    write (u, "(A)") "\end{tabular}"
+    write (u, "(A)") "\end{center}"
+    write (u, "(A)") "\end{table}"
+  end subroutine region_data_write_latex
+
+@ %def region_data_write_latex
 @ Creates a table with information about all singular regions and
 writes it to a file.
 @ Returns the index of the real flavor structure an ftuple belongs to.
@@ -3419,8 +3497,8 @@ writes it to a file.
 
     function ftuple_title_format () result (frmt)
        type(string_t) :: frmt
-       character(len=2) :: frmt_char
-       write (frmt_char, '(I2)') 10 * maxnregions + 1
+       character(len=3) :: frmt_char
+       write (frmt_char, '(I3)') 10 * maxnregions + 1
        frmt = var_str (frmt_char)
     end function ftuple_title_format
 
@@ -4349,6 +4427,8 @@ end module fks_regions_uti
     call test(fks_regions_3, "fks_regions_3", &
          "Test the creation of singular regions for initial-state radiation", &
          u, results)
+    call test(fks_regions_4, "fks_regions_4", &
+         "Check Latex output", u, results)
   end subroutine fks_regions_test
 
 @ %def fks_regions_test
@@ -4673,6 +4753,36 @@ end module fks_regions_uti
 
 @ %def fks_regions_3
 @
+<<fks regions: test declarations>>=
+  public :: fks_regions_4
+<<fks regions: tests>>=
+  subroutine fks_regions_4 (u)
+    integer, intent(in) :: u
+    integer :: n_flv_born, n_flv_real
+    integer :: n_legs_born, n_legs_real
+    integer :: n_in
+    integer, dimension(:,:), allocatable :: flv_born, flv_real
+    type(region_data_t) :: reg_data
+    write (u, "(A)") "* Test output: fks_regions_4"
+    write (u, "(A)") "* Create table of singular regions for ee -> qq"
+    write (u, "(A)")
+
+    n_flv_born = 1; n_flv_real = 1
+    n_legs_born = 4; n_legs_real = 5
+    n_in = 2
+
+    allocate (flv_born (n_legs_born, n_flv_born))
+    allocate (flv_real (n_legs_real, n_flv_real))
+    flv_born (:, 1) = [11, -11, 2, -2]
+    flv_real (:, 1) = [11, -11, 2, -2, 21]
+    call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%write_latex (u)
+
+  end subroutine fks_regions_4
+
+@ %def fks_regions_4
+@
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Virtual contribution to the cross section}
 <<[[virtual.f90]]>>=
