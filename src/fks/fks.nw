@@ -270,7 +270,7 @@ the [[ftuple]]-object.
   end interface
 
 <<fks regions: procedures>>=
-  subroutine ftuple_assign (ftuple_out, ftuple_in)
+  pure subroutine ftuple_assign (ftuple_out, ftuple_in)
     type(ftuple_t), intent(out) :: ftuple_out
     type(ftuple_t), intent(in) :: ftuple_in
     ftuple_out%ireg = ftuple_in%ireg
@@ -291,7 +291,20 @@ the [[ftuple]]-object.
   end function ftuple_equal
 
 @ %def ftuple_equal
+@
+<<fks regions: procedures>>=
+  elemental function ftuple_compare (f1, f2) result (greater)
+    logical :: greater
+    type(ftuple_t), intent(in) :: f1, f2
+    if (f1%ireg(1) == f2%ireg(1)) then
+       greater = f1%ireg(2) > f2%ireg(2)
+    else
+       greater = f1%ireg(1) > f2%ireg(2)
+    end if
+  end function ftuple_compare
 
+@ %def ftuple_compare
+@
 <<fks regions: ftuple: TBP>>=
   procedure :: write => ftuple_write
 <<fks regions: procedures>>=
@@ -485,22 +498,22 @@ emitter-radiation pairs. This is coped with using the linked list
    select type (list)
    type is (ftuple_list_t)
    if (list%index == 0) then
-      nullify(list%next)
+      nullify (list%next)
       list%index = 1
       list%ftuple = ftuple
    else
       current => list
       do
        if (associated (current%next)) then
-         current => current%next
+          current => current%next
        else
-         allocate (current%next)
-         nullify (current%next%next)
-         nullify (current%next%equiv)
-         current%next%prev => current
-         current%next%index = current%index + 1
-         current%next%ftuple = ftuple
-         exit
+          allocate (current%next)
+          nullify (current%next%next)
+          nullify (current%next%equiv)
+          current%next%prev => current
+          current%next%index = current%index + 1
+          current%next%ftuple = ftuple
+          exit
        end if
      end do
    end if
@@ -540,30 +553,25 @@ emitter-radiation pairs. This is coped with using the linked list
   procedure :: get_entry => ftuple_list_get_entry
 <<fks regions: procedures>>=
   function ftuple_list_get_entry (list, index) result (entry)
-   class(ftuple_list_t), intent(in), target :: list
-   integer, intent(in) :: index
-   type(ftuple_list_t), pointer :: entry
-   type(ftuple_list_t), pointer :: current
-   integer :: i
-   entry => null()
-   select type (list)
-   type is (ftuple_list_t)
-      current => list
-      if (index <= list%get_n_tuples ()) then
-         if (index == 1) then
-            entry => current
-         else
-            do i = 1, index - 1
-               current => current%next
-            end do
-            entry => current
-         end if
-      else
-         call msg_fatal &
-              ("Index must be smaller or equal than the total number of regions!")
-      end if
-   end select
- end function ftuple_list_get_entry
+    type(ftuple_list_t), pointer :: entry
+    class(ftuple_list_t), intent(in), target :: list
+    integer, intent(in) :: index
+    type(ftuple_list_t), pointer :: current
+    integer :: i
+    entry => null()
+    select type (list)
+    type is (ftuple_list_t)
+       current => list
+       if (index == 1) then
+          entry => current
+       else
+          do i = 1, index - 1
+             current => current%next
+          end do
+          entry => current
+       end if
+    end select
+  end function ftuple_list_get_entry
 
 @ %def ftuple_list_get_entry
 @
@@ -571,9 +579,9 @@ emitter-radiation pairs. This is coped with using the linked list
   procedure :: get_ftuple => ftuple_list_get_ftuple
 <<fks regions: procedures>>=
   function ftuple_list_get_ftuple (list, index)  result (ftuple)
+    type(ftuple_t) :: ftuple
     class(ftuple_list_t), intent(in), target :: list
     integer, intent(in) :: index
-    type(ftuple_t) :: ftuple
     type(ftuple_list_t), pointer :: entry
     entry => list%get_entry (index)
     ftuple = entry%ftuple
@@ -587,11 +595,20 @@ emitter-radiation pairs. This is coped with using the linked list
   subroutine ftuple_list_set_equiv (list, i1, i2)
     class(ftuple_list_t), intent(in) :: list
     integer, intent(in) :: i1, i2
-    type(ftuple_list_t), pointer :: list1, list2
+    type(ftuple_list_t), pointer :: list1, list2 => null ()
+    type(ftuple_t) :: f1, f2
     select type (list)
     type is (ftuple_list_t)
+    if (verbose) print *, 'Set equiv: '
+    f1 = list%get_ftuple (i1)
+    f2 = list%get_ftuple (i2)
+    if (list%compare (i1, i2)) then
+       list1 => list%get_entry (i2)
+       list2 => list%get_entry (i1)
+    else
        list1 => list%get_entry (i1)
        list2 => list%get_entry (i2)
+    end if
        do
           if (associated (list1%equiv)) then
              list1 => list1%equiv
@@ -631,7 +648,40 @@ emitter-radiation pairs. This is coped with using the linked list
     end select
   end function ftuple_list_check_equiv
 
-@ %def ftuple_list_check_equiv
+@ %def ftuple_list_sort
+@
+<<fks regions: ftuple list: TBP>>=
+  procedure :: to_array => ftuple_list_to_array
+<<fks regions: procedures>>=
+  subroutine ftuple_list_to_array (ftuple_list, ftuple_array, equivalences)
+    class(ftuple_list_t), intent(in), target :: ftuple_list
+    type(ftuple_t), intent(out), dimension(:), allocatable :: ftuple_array
+    logical, intent(out), dimension(:,:), allocatable :: equivalences
+    integer :: i_tuple, n
+    type(ftuple_list_t), pointer :: current => null ()
+    integer :: i1, i2
+    n = ftuple_list%get_n_tuples ()
+    allocate (ftuple_array (n), equivalences (n, n))
+    equivalences = .false.
+    current => ftuple_list
+    i_tuple = 1
+    do
+       ftuple_array(i_tuple) = current%ftuple
+       if (associated (current%equiv)) then
+          i1 = current%index
+          i2 = current%equiv%index
+          equivalences (i1, i2) = .true.
+       end if
+       if (associated (current%next)) then
+          current => current%next
+          i_tuple = i_tuple + 1
+       else
+          exit
+       end if
+    end do
+  end subroutine ftuple_list_to_array
+
+@ %def ftuple_list_to_array
 @ Class for working with the flavor specification arrays.
 <<fks regions: public>>=
   public :: flv_structure_t
@@ -1192,7 +1242,7 @@ structure if the particle at position \texttt{emitter} is removed
 @ %def flavor_permutation_apply_integer
 @
 <<fks regions: procedures>>=
-  function flavor_permutation_apply_ftuple (perm, f_in) result (f_out)
+  elemental function flavor_permutation_apply_ftuple (perm, f_in) result (f_out)
     type(ftuple_t) :: f_out
     class(flavor_permutation_t), intent(in) :: perm
     type(ftuple_t), intent(in) :: f_in
@@ -1218,22 +1268,23 @@ structure if the particle at position \texttt{emitter} is removed
 @ %def flavor_permutation_apply_ftuple
 @
 <<fks regions: procedures>>=
-  subroutine apply_permutations_on_ftuple_list (perm, ftuples)
+  subroutine apply_permutations_on_ftuple_array (perm, ftuples)
     type(flavor_permutation_t), intent(in) :: perm
-    type(ftuple_list_t), intent(inout), target :: ftuples
-    type(ftuple_list_t), pointer :: current => null ()
-    current => ftuples
-    do
-       current%ftuple = perm%apply (current%ftuple)
-       if (associated (current%next)) then
-          current => current%next
-       else
-          exit
-       end if
-    end do
-  end subroutine apply_permutations_on_ftuple_list
+    type(ftuple_t), intent(inout), dimension(:) :: ftuples
+    integer :: i
+    ftuples = perm%apply (ftuples)
+    !current => ftuples
+    !do
+    !   current%ftuple = perm%apply (current%ftuple)
+    !   if (associated (current%next)) then
+    !      current => current%next
+    !   else
+    !      exit
+    !   end if
+    !end do
+  end subroutine apply_permutations_on_ftuple_array
 
-@ %def apply_permutations_on_ftuple_list
+@ %def apply_permutations_on_ftuple_array
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with
 an $\alpha_r$- and resonance-index, with a real flavor structure and
@@ -1280,17 +1331,17 @@ also be supplied by a symmetry factor, explained below.
   procedure :: init => singular_region_init
 <<fks regions: procedures>>=
   subroutine singular_region_init (sregion, alr, mult, i_res, &
-         flst_real, flst_uborn, flv_born, emitter, ftuples)
+         flst_real, flst_uborn, flv_born, emitter, ftuples, equivalences)
     class(singular_region_t), intent(out) :: sregion
     integer, intent(in) :: alr, mult, i_res
     type(flv_structure_t), intent(in) :: flst_real
     type(flv_structure_t), intent(in) :: flst_uborn
     type(flv_structure_t), dimension(:), intent(in) :: flv_born
     integer, intent(in) :: emitter
-    type(ftuple_list_t), intent(in), target :: ftuples
-    type(ftuple_list_t), pointer :: current_region
-    integer :: i, i1, i2, nlegs
-    call msg_debug (D_SUBTRACTION, "singular_region_init")
+    type(ftuple_t), intent(inout), dimension(:) :: ftuples
+    logical, intent(inout), dimension(:,:) :: equivalences
+    integer :: i, i1, i2
+    integer :: n_regions, n_legs
     call debug_input_values ()
     sregion%alr = alr
     sregion%mult = mult
@@ -1298,16 +1349,20 @@ also be supplied by a symmetry factor, explained below.
     sregion%flst_real = flst_real
     sregion%flst_uborn = flst_uborn
     sregion%emitter = emitter
-    sregion%nregions = ftuples%get_n_tuples ()
-    nlegs = size (flst_real%flst)
+    n_regions = size (ftuples)
+    sregion%nregions = size (ftuples)
+    n_legs = size (flst_real%flst)
     allocate (sregion%ftuples (sregion%nregions))
+    call sort_equivalences ()
     do i = 1, sregion%nregions
-       current_region => ftuples%get_entry (i)
-       if (.not. associated (current_region%equiv)) then
-          call current_region%ftuple%get (i1, i2)
-          if (i2 /= nlegs) call current_region%ftuple%set (i1, nlegs)
+       sregion%ftuples = ftuples
+       if (.not. any (equivalences(i,:))) then
+       !current_region => ftuples%get_entry (i)
+       !if (.not. associated (current_region%equiv)) then
+          call ftuples(i)%get (i1, i2)
+          if (i2 /= n_legs) call ftuples(i)%set (i1, n_legs)
        end if
-       sregion%ftuples (i) = current_region%ftuple
+       !sregion%ftuples (i) = current_region%ftuple
     end do
     do i = 1, size(flv_born)
        if (flv_born (i) == sregion%flst_uborn) then
@@ -1316,7 +1371,23 @@ also be supplied by a symmetry factor, explained below.
        end if
     end do
   contains
+    subroutine sort_equivalences ()
+      integer :: i, j
+      do i = 1, n_regions
+         do j = 1, n_regions
+            if (equivalences(i,j)) then
+               if (ftuple_compare (ftuples(i), ftuples(j))) then
+                  equivalences(i,j) = .false.
+                  equivalences(j,i) = .true.
+               end if
+            end if
+         end do
+      end do
+    end subroutine sort_equivalences
+
     subroutine debug_input_values()
+      integer :: i
+      call msg_debug2 (D_SUBTRACTION, "singular_region_init")
       if (debug2_active (D_SUBTRACTION)) then
          print *, 'alr =    ', alr
          print *, 'mult =    ', mult
@@ -1325,7 +1396,9 @@ also be supplied by a symmetry factor, explained below.
          call flst_uborn%write ()
          print *, 'emitter =    ', emitter
          print *, 'ftuples: '
-         call ftuples%write (verbose = .true.)
+         do i = 1, size (ftuples)
+            call ftuples(i)%write ()
+         end do
       end if
     end subroutine debug_input_values
   end subroutine singular_region_init
@@ -2874,6 +2947,8 @@ of the present one is increased.
 
     subroutine init_regions_with_permuted_flavors ()
        type(flavor_permutation_t) :: perm_list
+       type(ftuple_t), dimension(:), allocatable :: ftuple_array
+       logical, dimension(:,:), allocatable :: equivalences
        integer :: i, j
        do j = 1, n_regions
           do i = 1, reg_data%n_flv_born
@@ -2886,16 +2961,20 @@ of the present one is increased.
                 flst_emitter(j) = perm_list%apply (flst_emitter(j))
              end if
           end do
+          call ftuples(index(j))%to_array (ftuple_array, equivalences)
           do i = 1, size (reg_data%flv_real)
              if (reg_data%flv_real(i) == flv_alr_registered(j)) then
                 call perm_list%reset ()
                 call perm_list%init (flv_alr_registered(j), reg_data%flv_real(i), &
                      reg_data%n_in, reg_data%n_legs_real)
-                call apply_permutations_on_ftuple_list (perm_list, ftuples(index(j)))
+                call apply_permutations_on_ftuple_array (perm_list, ftuple_array)
              end if
           end do
           call reg_data%regions(j)%init (j, mult(j), 0, flv_alr_registered(j), &
-               flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuples(index(j)))
+               flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuple_array, &
+               equivalences)
+          if (allocated (ftuple_array)) deallocate (ftuple_array)
+          if (allocated (equivalences)) deallocate (equivalences)
        end do
     end subroutine init_regions_with_permuted_flavors
 
