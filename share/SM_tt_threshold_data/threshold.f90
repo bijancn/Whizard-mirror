@@ -1328,7 +1328,7 @@ contains
     integer, intent(in) :: n_tot
     real(c_default_float), dimension(0:3,n_tot) :: p_ofs_work
     if (test_onshell) then
-       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF)
+       call compute_born (n_tot, p_ofs_work, TREE, amp_no_FF, tree_contrib=.true.)
        do hi = 1, size(amp_omega_full)
           call assert_equal (output_unit, amp_omega_full(hi), &
                amp_no_FF(hi), "Signal \= Factorized", exit_on_fail=.true., &
@@ -1387,7 +1387,7 @@ contains
     end select
     if (test_ward)  amp2 = 0
     if (threshold%settings%only_interference_term) then
-       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF, tree_contrib=.false.)
+       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF, tree_contrib=.true.)
        amp2 = sum (2 * real (amp_omega_full * conjg (amp_with_FF)))
     end if
   end function compute_born_special_cases
