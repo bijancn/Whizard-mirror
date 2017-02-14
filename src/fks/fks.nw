@@ -664,13 +664,16 @@ emitter-radiation pairs. This is coped with using the linked list
 <<fks regions: ftuple list: TBP>>=
   procedure :: to_array => ftuple_list_to_array
 <<fks regions: procedures>>=
-  subroutine ftuple_list_to_array (ftuple_list, ftuple_array, equivalences)
+  subroutine ftuple_list_to_array (ftuple_list, ftuple_array, equivalences, ordered)
     class(ftuple_list_t), intent(in), target :: ftuple_list
     type(ftuple_t), intent(out), dimension(:), allocatable :: ftuple_array
     logical, intent(out), dimension(:,:), allocatable :: equivalences
+    logical, intent(in) :: ordered
     integer :: i_tuple, n
     type(ftuple_list_t), pointer :: current => null ()
     integer :: i1, i2
+    type(ftuple_t) :: ftuple_tmp
+    logical, dimension(:), allocatable :: eq_tmp
     n = ftuple_list%get_n_tuples ()
     allocate (ftuple_array (n), equivalences (n, n))
     equivalences = .false.
@@ -690,6 +693,32 @@ emitter-radiation pairs. This is coped with using the linked list
           exit
        end if
     end do
+    if (ordered) then
+       allocate (eq_tmp (n))
+       do i1 = 2, n
+          i2 = i1
+          do while (i2 > 1 .and. ftuple_compare (ftuple_array(i2 - 1), ftuple_array(i2)))
+             ftuple_tmp = ftuple_array(i2 - 1)
+             eq_tmp = equivalences(i2, :)
+             ftuple_array(i2 - 1) = ftuple_array(i2)
+             ftuple_array(i2) = ftuple_tmp
+             equivalences(i2 - 1, :) = equivalences(i2, :)
+             equivalences(i2, :) = eq_tmp
+             i2 = i2 - 1
+          end do
+       end do
+       deallocate (eq_tmp)
+    end if
+  contains
+    subroutine print_equivalences ()
+      integer :: i, i1, i2
+      print *, 'Equivalence matrix: '
+      do i = 1, size (ftuple_array)
+         call ftuple_array(i)%get(i1,i2)
+         print *, 'i: ', i, '(', i1, i2, '): ', equivalences(i,:)
+      end do
+    end subroutine print_equivalences
+
   end subroutine ftuple_list_to_array
 
 @ %def ftuple_list_to_array
@@ -1282,17 +1311,30 @@ structure if the particle at position \texttt{emitter} is removed
   subroutine apply_permutations_on_ftuple_array (perm, ftuples)
     type(flavor_permutation_t), intent(in) :: perm
     type(ftuple_t), intent(inout), dimension(:) :: ftuples
-    integer :: i
+    logical, intent(inout), dimension(:,:) :: equivalences
+    type(ftuple_t), dimension(:), allocatable :: ftuples_save
+    integer :: i, j, n
+    integer, dimension(:), allocatable :: old_to_new
+    logical, dimension(:,:), allocatable :: eq_tmp
+    n = size (ftuples)
+    allocate (ftuples_save (n))
+    ftuples_save = ftuples
+    allocate (old_to_new (n))
+    old_to_new = [(i, i = 1, n)]
     ftuples = perm%apply (ftuples)
-    !current => ftuples
-    !do
-    !   current%ftuple = perm%apply (current%ftuple)
-    !   if (associated (current%next)) then
-    !      current => current%next
-    !   else
-    !      exit
-    !   end if
-    !end do
+    do i = 1, n
+       do j = 1, n
+          if (ftuples_save(i) == ftuples(j)) old_to_new(i) = j
+       end do
+    end do
+    allocate (eq_tmp (n, n))
+    do i = 1, n
+       eq_tmp(i,:) = equivalences(old_to_new(i),:)
+    end do
+    equivalences = eq_tmp
+    deallocate (ftuples_save)
+    deallocate (old_to_new)
+    deallocate (eq_tmp)
   end subroutine apply_permutations_on_ftuple_array
 
 @ %def apply_permutations_on_ftuple_array
@@ -1364,7 +1406,7 @@ also be supplied by a symmetry factor, explained below.
     sregion%nregions = size (ftuples)
     n_legs = size (flst_real%flst)
     allocate (sregion%ftuples (sregion%nregions))
-    call sort_equivalences ()
+
     do i = 1, sregion%nregions
        sregion%ftuples = ftuples
        if (.not. any (equivalences(i,:))) then
@@ -1379,20 +1421,6 @@ also be supplied by a symmetry factor, explained below.
        end if
     end do
   contains
-    subroutine sort_equivalences ()
-      integer :: i, j
-      do i = 1, n_regions
-         do j = 1, n_regions
-            if (equivalences(i,j)) then
-               if (ftuple_compare (ftuples(i), ftuples(j))) then
-                  equivalences(i,j) = .false.
-                  equivalences(j,i) = .true.
-               end if
-            end if
-         end do
-      end do
-    end subroutine sort_equivalences
-
     subroutine debug_input_values()
       integer :: i
       call msg_debug2 (D_SUBTRACTION, "singular_region_init")
@@ -2970,13 +2998,13 @@ of the present one is increased.
                 flst_emitter(j) = perm_list%apply (flst_emitter(j))
              end if
           end do
-          call ftuples(index(j))%to_array (ftuple_array, equivalences)
+          call ftuples(index(j))%to_array (ftuple_array, equivalences, .true.)
           do i = 1, size (reg_data%flv_real)
              if (reg_data%flv_real(i) == flv_alr_registered(j)) then
                 call perm_list%reset ()
                 call perm_list%init (flv_alr_registered(j), reg_data%flv_real(i), &
                      reg_data%n_in, reg_data%n_legs_real)
-                call apply_permutations_on_ftuple_array (perm_list, ftuple_array)
+                call apply_permutations_on_ftuple_array (perm_list, ftuple_array, equivalences)
              end if
           end do
           call reg_data%regions(j)%init (j, mult(j), 0, flv_alr_registered(j), &
