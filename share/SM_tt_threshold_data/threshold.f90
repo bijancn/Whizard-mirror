@@ -434,22 +434,22 @@ contains
        blob_Z_vec = gncup(1) * ttv_vec
        blob_Z_ax = gncup(2) * ttv_ax
        mtop = ttv_mtpole (p12 * p12)
-       if (threshold%settings%onshell_projection%production) then
-          if (debug_active (D_THRESHOLD)) then
-             call assert_equal (u, sqrt (ptop_ons(1) * ptop_ons(1)), &
-                  mtop, "Production: ptop is projected", exit_on_fail=.true., &
-                  rel_smallness=tiny_07)
-             call assert_equal (u, sqrt (ptop_ons(2) * ptop_ons(2)), &
-                  mtop, "Production: ptopbar is projected", exit_on_fail=.true., &
-                  rel_smallness=tiny_07)
-          end if
-          ptop = ptop_ons(1)
-          ptopbar = ptop_ons(2)
-       else
-          ptop = ptop_ofs(1)
-          ptopbar = ptop_ofs(2)
-       end if
        if (threshold%settings%factorized_computation) then
+          if (threshold%settings%onshell_projection%production) then
+             if (debug_active (D_THRESHOLD)) then
+                call assert_equal (u, sqrt (ptop_ons(1) * ptop_ons(1)), &
+                     mtop, "Production: ptop is projected", exit_on_fail=.true., &
+                     rel_smallness=tiny_07)
+                call assert_equal (u, sqrt (ptop_ons(2) * ptop_ons(2)), &
+                     mtop, "Production: ptopbar is projected", exit_on_fail=.true., &
+                     rel_smallness=tiny_07)
+             end if
+             ptop = ptop_ons(1)
+             ptopbar = ptop_ons(2)
+          else
+             ptop = ptop_ofs(1)
+             ptopbar = ptop_ofs(2)
+          end if
           owf_t_3 = ubar (sqrt (ptop * ptop), ptop, h_t)
           owf_t_4 = v (sqrt (ptopbar * ptopbar), ptopbar, h_tbar)
           if (.not. threshold%settings%Z_disabled) then
@@ -460,9 +460,9 @@ contains
           amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * ttv_vec
        else
           top_width = ttv_wtpole (p12*p12, ffi)
-          owf_wb_35 = pr_psibar (ptop, mtop, wd_tl (ptop, top_width), .false., &
+          owf_wb_35 = pr_psibar (ptop_ofs(1), mtop, wd_tl (ptop_ofs(1), top_width), .false., &
                + f_fvl (gccq33, owf_b_5, owf_Wp_3))
-          owf_wb_46 = pr_psi (ptopbar, mtop, wd_tl (ptopbar, top_width), .false., &
+          owf_wb_46 = pr_psi (ptop_ofs(2), mtop, wd_tl (ptop_ofs(2), top_width), .false., &
                + f_vlf (gccq33, owf_Wm_4, owf_b_6))
           if (.not. threshold%settings%Z_disabled) then
              amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
