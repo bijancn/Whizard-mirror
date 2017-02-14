@@ -2310,7 +2310,7 @@ initialization phase (more precisely: at the moment only in the
     logical :: fs_photon = .false.
     logical :: only_final_state = .true.
     type(pdg_list_t) :: pl_in, pl_out
-    type(pdg_list_t) :: pl_splitting_constituents, pl_excluded_gauge_splittings
+    type(pdg_list_t) :: pl_excluded_gauge_splittings
     type(split_constraints_t) :: constraints
     integer :: n_tot
     integer :: n_in, n_out
@@ -2334,21 +2334,15 @@ initialization phase (more precisely: at the moment only in the
   procedure :: init_pdg_array => radiation_generator_init_pdg_array
 <<radiation generator: procedures>>=
   subroutine radiation_generator_init_pdg_list &
-       (generator, pl_in, pl_out, pl_splitting_constituents, &
-       pl_excluded_gauge_splittings, qcd, qed)
+       (generator, pl_in, pl_out, pl_excluded_gauge_splittings, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_list_t), intent(in) :: pl_in, pl_out
-    type(pdg_list_t), intent(in), optional :: pl_splitting_constituents
     type(pdg_list_t), intent(in), optional :: pl_excluded_gauge_splittings
     logical, intent(in), optional :: qcd, qed
     if (present (qcd))  generator%qcd_enabled = qcd
     if (present (qed))  generator%qed_enabled = qed
     generator%pl_in = pl_in
     generator%pl_out = pl_out
-    if (allocated (generator%pl_splitting_constituents%a)) &
-         deallocate (generator%pl_splitting_constituents%a)
-    if (present (pl_splitting_constituents)) &
-         generator%pl_splitting_constituents = pl_splitting_constituents
     if (present (pl_excluded_gauge_splittings)) &
          generator%pl_excluded_gauge_splittings = pl_excluded_gauge_splittings
     generator%is_gluon = pl_in%search_for_particle (GLUON)
@@ -2362,15 +2356,13 @@ initialization phase (more precisely: at the moment only in the
   end subroutine radiation_generator_init_pdg_list
 
   subroutine radiation_generator_init_pdg_array &
-       (generator, pdg_in, pdg_out, pdg_splitting_constituents, &
-       pdg_excluded_gauge_splittings, qcd, qed)
+       (generator, pdg_in, pdg_out, pdg_excluded_gauge_splittings, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_array_t), intent(in), dimension(:) :: pdg_in, pdg_out
-    type(pdg_array_t), intent(in), dimension(:), optional :: pdg_splitting_constituents
     type(pdg_array_t), intent(in), dimension(:), optional :: pdg_excluded_gauge_splittings
     logical, intent(in), optional :: qcd, qed
     type(pdg_list_t) :: pl_in, pl_out
-    type(pdg_list_t) :: pl_splitting_constituents, pl_excluded_gauge_splittings
+    type(pdg_list_t) :: pl_excluded_gauge_splittings
     type(pdg_array_t), dimension(:), allocatable :: pdg_excluded
     integer :: i
     call pl_in%init(size (pdg_in))
@@ -2381,14 +2373,6 @@ initialization phase (more precisely: at the moment only in the
     do i = 1, size (pdg_out)
        call pl_out%set (i, pdg_out(i))
     end do
-    if (present (pdg_splitting_constituents)) then
-       if (all (pdg_splitting_constituents%get_length () > 0)) then
-          call pl_splitting_constituents%init(size (pdg_splitting_constituents))
-          do i = 1, size (pdg_splitting_constituents)
-             call pl_splitting_constituents%set (i, pdg_splitting_constituents(i))
-          end do
-       end if
-    end if
     if (present (pdg_excluded_gauge_splittings)) then
        pdg_excluded = pdg_excluded_gauge_splittings
     else
@@ -2401,8 +2385,7 @@ initialization phase (more precisely: at the moment only in the
           call pl_excluded_gauge_splittings%set (i, pdg_excluded(i))
        end do
     end if
-    call generator%init (pl_in, pl_out, pl_splitting_constituents, &
-        pl_excluded_gauge_splittings, qcd, qed)
+    call generator%init (pl_in, pl_out, pl_excluded_gauge_splittings, qcd, qed)
   end subroutine radiation_generator_init_pdg_array
 
 @ %def radiation_generator_init_pdg_list radiation_generator_init_pdg_array
@@ -2560,38 +2543,28 @@ initialization phase (more precisely: at the moment only in the
          n = n + 1
       end if
       if (set_selected_particles) then
-         if (generator%pl_splitting_constituents%get_size () == 0) then
-            if (generator%only_final_state ) then
-               call pl_insert%init (generator%n_out + n_nlo_correction_types)
-               do i = 1, generator%n_out
-                  call pl_insert%set(i, generator%pl_out%get(i))
-               end do
-               last_index = generator%n_out + 1
-            else
-               call generator%pl_in%create_antiparticles (pl_antiparticles, n_new_particles)
-               call pl_insert%init (generator%n_tot + n_new_particles &
-                    + n_nlo_correction_types)
-               do i = 1, generator%n_in
-                  call pl_insert%set(i, generator%pl_in%get(i))
-               end do
-               do i = 1, generator%n_out
-                  j = i + generator%n_in
-                  call pl_insert%set(j, generator%pl_out%get(i))
-               end do
-               do i = 1, n_new_particles
-                  j = i + generator%n_in + generator%n_out
-                  call pl_insert%set(j, pl_antiparticles%get(i))
-               end do
-               last_index = generator%n_tot + n_new_particles + 1
-            end if
-         else if (generator%pl_splitting_constituents%get_size () > 0) then
-            call pl_insert%init (n_nlo_correction_types &
-                 + generator%pl_splitting_constituents%get_size ())
-            last_index = 1
-            do i = 1, generator%pl_splitting_constituents%get_size ()
-               call pl_insert%set (last_index, generator%pl_splitting_constituents%get(i))
-               last_index = last_index + 1
+         if (generator%only_final_state ) then
+            call pl_insert%init (generator%n_out + n_nlo_correction_types)
+            do i = 1, generator%n_out
+               call pl_insert%set(i, generator%pl_out%get(i))
             end do
+            last_index = generator%n_out + 1
+         else
+            call generator%pl_in%create_antiparticles (pl_antiparticles, n_new_particles)
+            call pl_insert%init (generator%n_tot + n_new_particles &
+                 + n_nlo_correction_types)
+            do i = 1, generator%n_in
+               call pl_insert%set(i, generator%pl_in%get(i))
+            end do
+            do i = 1, generator%n_out
+               j = i + generator%n_in
+               call pl_insert%set(j, generator%pl_out%get(i))
+            end do
+            do i = 1, n_new_particles
+               j = i + generator%n_in + generator%n_out
+               call pl_insert%set(j, pl_antiparticles%get(i))
+            end do
+            last_index = generator%n_tot + n_new_particles + 1
          end if
          pdg_gluon = GLUON; pdg_photon = PHOTON
          if (generator%qcd_enabled) then
@@ -2877,7 +2850,7 @@ initialization phase (more precisely: at the moment only in the
        call generator%setup_if_table (model)
        call generator%generate (prt_in, prt_out1)
        !call split_particle_strings (prt_out1, prt_out2) !!! Will need something like this for
-       call separate_particles (prt_out1, prt_out2)      !!! more than one light fermion flavour
+       call separate_particles (prt_out1, prt_out2)      !!! more than one light fermion flavor
        call sort_prt (prt_out2, model)
        if (.not. generator%prt_queue%contains (prt_out2)) &
             call generator%prt_queue%append (prt_out2)
@@ -3219,8 +3192,7 @@ end module radiation_generator_uti
     deallocate (pdg_out); deallocate (pdg_in)
 
   contains
-    subroutine test_process (generator, pdg_in, pdg_out, u, &
-       include_initial_state)
+    subroutine test_process (generator, pdg_in, pdg_out, u, include_initial_state)
       type(radiation_generator_t), intent(inout) :: generator
       type(pdg_array_t), dimension(:), intent(in) :: pdg_in, pdg_out
       integer, intent(in) :: u
@@ -3289,7 +3261,7 @@ end module radiation_generator_uti
     pdg_out(1) = 2; pdg_out(2) = -2
     allocate (pdg_excluded (10))
     !!! Workaround until generate_multiple
-    !!! can handle multiple fermion flavours:
+    !!! can handle multiple fermion flavors:
     pdg_excluded = [1, -1, 3, -3, 4, -4, 5, -5, 6, -6]
 
     write (u, "(A)") "* Leading order"
@@ -3425,8 +3397,7 @@ end module radiation_generator_uti
     deallocate (pdg_out); deallocate (pdg_in)
 
   contains
-    subroutine test_process (generator, pdg_in, pdg_out, u, &
-       include_initial_state)
+    subroutine test_process (generator, pdg_in, pdg_out, u, include_initial_state)
       type(radiation_generator_t), intent(inout) :: generator
       type(pdg_array_t), dimension(:), intent(in) :: pdg_in, pdg_out
       integer, intent(in) :: u
@@ -3494,7 +3465,7 @@ end module radiation_generator_uti
     pdg_out(1) = 11; pdg_out(2) = -11
     allocate ( pdg_excluded (16))
     !!! Workaround until generate_multiple
-    !!! can handle multiple fermion flavours:
+    !!! can handle multiple fermion flavors:
     pdg_excluded = [1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 13, -13, 15, -15]
 
     write (u, "(A)") "* Leading order"
