@@ -1387,7 +1387,11 @@ contains
     end select
     if (test_ward)  amp2 = 0
     if (threshold%settings%only_interference_term) then
-       call compute_born (n_tot, p_ofs_work, FF, amp_with_FF, tree_contrib=.true.)
+       if (FF == TREE) then
+          call compute_born (n_tot, p_ofs_work, FF, amp_with_FF, tree_contrib=.true.)
+       else
+          call compute_born (n_tot, p_ofs_work, FF, amp_with_FF, tree_contrib=.false.)
+       end if
        amp2 = sum (2 * real (amp_omega_full * conjg (amp_with_FF)))
     end if
   end function compute_born_special_cases
