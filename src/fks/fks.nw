@@ -265,8 +265,12 @@ the [[ftuple]]-object.
      module procedure ftuple_assign
   end interface
 
+  interface operator(==)
+     module procedure ftuple_equal
+  end interface
+
 <<fks regions: procedures>>=
-  subroutine ftuple_assign (ftuple_out, ftuple_in)
+  pure subroutine ftuple_assign (ftuple_out, ftuple_in)
     type(ftuple_t), intent(out) :: ftuple_out
     type(ftuple_t), intent(in) :: ftuple_in
     ftuple_out%ireg = ftuple_in%ireg
@@ -276,6 +280,30 @@ the [[ftuple]]-object.
   end subroutine ftuple_assign
 
 @ %def ftuple_assign
+@
+<<fks regions: procedures>>=
+  elemental function ftuple_equal (f1, f2) result (value)
+    logical :: value
+    type(ftuple_t), intent(in) :: f1, f2
+    value = all (f1%ireg == f2%ireg) .and. f1%i_res == f2%i_res &
+         .and. f1%splitting_type == f2%splitting_type &
+         .and. (f1%pseudo_isr .eqv. f2%pseudo_isr)
+  end function ftuple_equal
+
+@ %def ftuple_equal
+@
+<<fks regions: procedures>>=
+  elemental function ftuple_compare (f1, f2) result (greater)
+    logical :: greater
+    type(ftuple_t), intent(in) :: f1, f2
+    if (f1%ireg(1) == f2%ireg(1)) then
+       greater = f1%ireg(2) > f2%ireg(2)
+    else
+       greater = f1%ireg(1) > f2%ireg(2)
+    end if
+  end function ftuple_compare
+
+@ %def ftuple_compare
 @
 <<fks regions: ftuple: TBP>>=
   procedure :: write => ftuple_write
@@ -470,22 +498,22 @@ emitter-radiation pairs. This is coped with using the linked list
    select type (list)
    type is (ftuple_list_t)
    if (list%index == 0) then
-      nullify(list%next)
+      nullify (list%next)
       list%index = 1
       list%ftuple = ftuple
    else
       current => list
       do
        if (associated (current%next)) then
-         current => current%next
+          current => current%next
        else
-         allocate (current%next)
-         nullify (current%next%next)
-         nullify (current%next%equiv)
-         current%next%prev => current
-         current%next%index = current%index + 1
-         current%next%ftuple = ftuple
-         exit
+          allocate (current%next)
+          nullify (current%next%next)
+          nullify (current%next%equiv)
+          current%next%prev => current
+          current%next%index = current%index + 1
+          current%next%ftuple = ftuple
+          exit
        end if
      end do
    end if
@@ -493,6 +521,18 @@ emitter-radiation pairs. This is coped with using the linked list
   end subroutine ftuple_list_append
 
 @ %def ftuple_list_append
+@
+<<fks regions: ftuple list: TBP>>=
+  procedure :: compare => ftuple_list_compare
+<<fks regions: procedures>>=
+  function ftuple_list_compare (ftuple_list, i1, i2) result (greater)
+    logical :: greater
+    class(ftuple_list_t), intent(in) :: ftuple_list
+    integer, intent(in) :: i1, i2
+    greater = ftuple_compare (ftuple_list%get_ftuple (i1), ftuple_list%get_ftuple (i2))
+  end function ftuple_list_compare
+
+@ %def ftuple_list_compare
 @
 <<fks regions: ftuple list: TBP>>=
   procedure :: get_n_tuples => ftuple_list_get_n_tuples
@@ -525,30 +565,25 @@ emitter-radiation pairs. This is coped with using the linked list
   procedure :: get_entry => ftuple_list_get_entry
 <<fks regions: procedures>>=
   function ftuple_list_get_entry (list, index) result (entry)
-   class(ftuple_list_t), intent(in), target :: list
-   integer, intent(in) :: index
-   type(ftuple_list_t), pointer :: entry
-   type(ftuple_list_t), pointer :: current
-   integer :: i
-   entry => null()
-   select type (list)
-   type is (ftuple_list_t)
-      current => list
-      if (index <= list%get_n_tuples ()) then
-         if (index == 1) then
-            entry => current
-         else
-            do i = 1, index - 1
-               current => current%next
-            end do
-            entry => current
-         end if
-      else
-         call msg_fatal &
-              ("Index must be smaller or equal than the total number of regions!")
-      end if
-   end select
- end function ftuple_list_get_entry
+    type(ftuple_list_t), pointer :: entry
+    class(ftuple_list_t), intent(in), target :: list
+    integer, intent(in) :: index
+    type(ftuple_list_t), pointer :: current
+    integer :: i
+    entry => null()
+    select type (list)
+    type is (ftuple_list_t)
+       current => list
+       if (index == 1) then
+          entry => current
+       else
+          do i = 1, index - 1
+             current => current%next
+          end do
+          entry => current
+       end if
+    end select
+  end function ftuple_list_get_entry
 
 @ %def ftuple_list_get_entry
 @
@@ -556,9 +591,9 @@ emitter-radiation pairs. This is coped with using the linked list
   procedure :: get_ftuple => ftuple_list_get_ftuple
 <<fks regions: procedures>>=
   function ftuple_list_get_ftuple (list, index)  result (ftuple)
+    type(ftuple_t) :: ftuple
     class(ftuple_list_t), intent(in), target :: list
     integer, intent(in) :: index
-    type(ftuple_t) :: ftuple
     type(ftuple_list_t), pointer :: entry
     entry => list%get_entry (index)
     ftuple = entry%ftuple
@@ -572,11 +607,19 @@ emitter-radiation pairs. This is coped with using the linked list
   subroutine ftuple_list_set_equiv (list, i1, i2)
     class(ftuple_list_t), intent(in) :: list
     integer, intent(in) :: i1, i2
-    type(ftuple_list_t), pointer :: list1, list2
+    type(ftuple_list_t), pointer :: list1, list2 => null ()
+    type(ftuple_t) :: f1, f2
     select type (list)
     type is (ftuple_list_t)
-       list1 => list%get_entry (i1)
-       list2 => list%get_entry (i2)
+    f1 = list%get_ftuple (i1)
+    f2 = list%get_ftuple (i2)
+       if (list%compare (i1, i2)) then
+          list1 => list%get_entry (i2)
+          list2 => list%get_entry (i1)
+       else
+          list1 => list%get_entry (i1)
+          list2 => list%get_entry (i2)
+       end if
        do
           if (associated (list1%equiv)) then
              list1 => list1%equiv
@@ -616,7 +659,72 @@ emitter-radiation pairs. This is coped with using the linked list
     end select
   end function ftuple_list_check_equiv
 
-@ %def ftuple_list_check_equiv
+@ %def ftuple_list_sort
+@
+<<fks regions: ftuple list: TBP>>=
+  procedure :: to_array => ftuple_list_to_array
+<<fks regions: procedures>>=
+  subroutine ftuple_list_to_array (ftuple_list, ftuple_array, equivalences, ordered)
+    class(ftuple_list_t), intent(in), target :: ftuple_list
+    type(ftuple_t), intent(out), dimension(:), allocatable :: ftuple_array
+    logical, intent(out), dimension(:,:), allocatable :: equivalences
+    logical, intent(in) :: ordered
+    integer :: i_tuple, n
+    type(ftuple_list_t), pointer :: current => null ()
+    integer :: i1, i2
+    type(ftuple_t) :: ftuple_tmp
+    logical, dimension(:), allocatable :: eq_tmp
+    n = ftuple_list%get_n_tuples ()
+    allocate (ftuple_array (n), equivalences (n, n))
+    equivalences = .false.
+    select type (ftuple_list)
+    type is (ftuple_list_t)
+       current => ftuple_list
+       i_tuple = 1
+       do
+          ftuple_array(i_tuple) = current%ftuple
+          if (associated (current%equiv)) then
+             i1 = current%index
+             i2 = current%equiv%index
+             equivalences (i1, i2) = .true.
+          end if
+          if (associated (current%next)) then
+             current => current%next
+             i_tuple = i_tuple + 1
+          else
+             exit
+          end if
+       end do
+    end select
+    if (ordered) then
+       allocate (eq_tmp (n))
+       do i1 = 2, n
+          i2 = i1
+          do while (i2 > 1 .and. ftuple_compare (ftuple_array(i2 - 1), ftuple_array(i2)))
+             ftuple_tmp = ftuple_array(i2 - 1)
+             eq_tmp = equivalences(i2, :)
+             ftuple_array(i2 - 1) = ftuple_array(i2)
+             ftuple_array(i2) = ftuple_tmp
+             equivalences(i2 - 1, :) = equivalences(i2, :)
+             equivalences(i2, :) = eq_tmp
+             i2 = i2 - 1
+          end do
+       end do
+       deallocate (eq_tmp)
+    end if
+  contains
+    subroutine print_equivalences ()
+      integer :: i, i1, i2
+      print *, 'Equivalence matrix: '
+      do i = 1, size (ftuple_array)
+         call ftuple_array(i)%get(i1,i2)
+         print *, 'i: ', i, '(', i1, i2, '): ', equivalences(i,:)
+      end do
+    end subroutine print_equivalences
+
+  end subroutine ftuple_list_to_array
+
+@ %def ftuple_list_to_array
 @ Class for working with the flavor specification arrays.
 <<fks regions: public>>=
   public :: flv_structure_t
@@ -1177,7 +1285,7 @@ structure if the particle at position \texttt{emitter} is removed
 @ %def flavor_permutation_apply_integer
 @
 <<fks regions: procedures>>=
-  function flavor_permutation_apply_ftuple (perm, f_in) result (f_out)
+  elemental function flavor_permutation_apply_ftuple (perm, f_in) result (f_out)
     type(ftuple_t) :: f_out
     class(flavor_permutation_t), intent(in) :: perm
     type(ftuple_t), intent(in) :: f_in
@@ -1203,22 +1311,36 @@ structure if the particle at position \texttt{emitter} is removed
 @ %def flavor_permutation_apply_ftuple
 @
 <<fks regions: procedures>>=
-  subroutine apply_permutations_on_ftuple_list (perm, ftuples)
+  subroutine apply_permutations_on_ftuple_array (perm, ftuples, equivalences)
     type(flavor_permutation_t), intent(in) :: perm
-    type(ftuple_list_t), intent(inout), target :: ftuples
-    type(ftuple_list_t), pointer :: current => null ()
-    current => ftuples
-    do
-       current%ftuple = perm%apply (current%ftuple)
-       if (associated (current%next)) then
-          current => current%next
-       else
-          exit
-       end if
+    type(ftuple_t), intent(inout), dimension(:) :: ftuples
+    logical, intent(inout), dimension(:,:) :: equivalences
+    type(ftuple_t), dimension(:), allocatable :: ftuples_save
+    integer :: i, j, n
+    integer, dimension(:), allocatable :: old_to_new
+    logical, dimension(:,:), allocatable :: eq_tmp
+    n = size (ftuples)
+    allocate (ftuples_save (n))
+    ftuples_save = ftuples
+    allocate (old_to_new (n))
+    old_to_new = [(i, i = 1, n)]
+    ftuples = perm%apply (ftuples)
+    do i = 1, n
+       do j = 1, n
+          if (ftuples_save(i) == ftuples(j)) old_to_new(i) = j
+       end do
     end do
-  end subroutine apply_permutations_on_ftuple_list
+    allocate (eq_tmp (n, n))
+    do i = 1, n
+       eq_tmp(i,:) = equivalences(old_to_new(i),:)
+    end do
+    equivalences = eq_tmp
+    deallocate (ftuples_save)
+    deallocate (old_to_new)
+    deallocate (eq_tmp)
+  end subroutine apply_permutations_on_ftuple_array
 
-@ %def apply_permutations_on_ftuple_list
+@ %def apply_permutations_on_ftuple_array
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with
 an $\alpha_r$- and resonance-index, with a real flavor structure and
@@ -1265,17 +1387,17 @@ also be supplied by a symmetry factor, explained below.
   procedure :: init => singular_region_init
 <<fks regions: procedures>>=
   subroutine singular_region_init (sregion, alr, mult, i_res, &
-         flst_real, flst_uborn, flv_born, emitter, ftuples)
+         flst_real, flst_uborn, flv_born, emitter, ftuples, equivalences)
     class(singular_region_t), intent(out) :: sregion
     integer, intent(in) :: alr, mult, i_res
     type(flv_structure_t), intent(in) :: flst_real
     type(flv_structure_t), intent(in) :: flst_uborn
     type(flv_structure_t), dimension(:), intent(in) :: flv_born
     integer, intent(in) :: emitter
-    type(ftuple_list_t), intent(in), target :: ftuples
-    type(ftuple_list_t), pointer :: current_region
-    integer :: i, i1, i2, nlegs
-    call msg_debug (D_SUBTRACTION, "singular_region_init")
+    type(ftuple_t), intent(inout), dimension(:) :: ftuples
+    logical, intent(inout), dimension(:,:) :: equivalences
+    integer :: i, i1, i2
+    integer :: n_regions, n_legs
     call debug_input_values ()
     sregion%alr = alr
     sregion%mult = mult
@@ -1283,16 +1405,17 @@ also be supplied by a symmetry factor, explained below.
     sregion%flst_real = flst_real
     sregion%flst_uborn = flst_uborn
     sregion%emitter = emitter
-    sregion%nregions = ftuples%get_n_tuples ()
-    nlegs = size (flst_real%flst)
+    n_regions = size (ftuples)
+    sregion%nregions = size (ftuples)
+    n_legs = size (flst_real%flst)
     allocate (sregion%ftuples (sregion%nregions))
+
     do i = 1, sregion%nregions
-       current_region => ftuples%get_entry (i)
-       if (.not. associated (current_region%equiv)) then
-          call current_region%ftuple%get (i1, i2)
-          if (i2 /= nlegs) call current_region%ftuple%set (i1, nlegs)
+       sregion%ftuples = ftuples
+       if (.not. any (equivalences(i,:))) then
+          call ftuples(i)%get (i1, i2)
+          if (i2 /= n_legs) call ftuples(i)%set (i1, n_legs)
        end if
-       sregion%ftuples (i) = current_region%ftuple
     end do
     do i = 1, size(flv_born)
        if (flv_born (i) == sregion%flst_uborn) then
@@ -1302,6 +1425,8 @@ also be supplied by a symmetry factor, explained below.
     end do
   contains
     subroutine debug_input_values()
+      integer :: i
+      call msg_debug2 (D_SUBTRACTION, "singular_region_init")
       if (debug2_active (D_SUBTRACTION)) then
          print *, 'alr =    ', alr
          print *, 'mult =    ', mult
@@ -1310,7 +1435,10 @@ also be supplied by a symmetry factor, explained below.
          call flst_uborn%write ()
          print *, 'emitter =    ', emitter
          print *, 'ftuples: '
-         call ftuples%write (verbose = .true.)
+         do i = 1, size (ftuples)
+            call ftuples(i)%write (newline = .false.)
+         end do
+         print *, ''
       end if
     end subroutine debug_input_values
   end subroutine singular_region_init
@@ -1373,7 +1501,7 @@ also be supplied by a symmetry factor, explained below.
           write(u, ireg_space_format, advance='no') ' '
        end do
     end if
-    write (u, '(A)') char (ftuple_string (sregion%ftuples, .false.))
+    write (u, '(A)', advance = 'no') char (ftuple_string (sregion%ftuples, .false.))
     call write_vline (u)
     write (u,'(A1)',advance = 'no') '['
     do i = 1, nborn - 1
@@ -1488,6 +1616,21 @@ there is only a soft singularity if the radiated parton becomes soft.
   end function singular_region_has_collinear_divergence
 
 @ %def singular_region_has_collinear_divergence
+@
+<<fks regions: singular region: TBP>>=
+  procedure :: has_identical_ftuples => singular_region_has_identical_ftuples
+<<fks regions: procedures>>=
+  elemental function singular_region_has_identical_ftuples (sregion) result (value)
+    logical :: value
+    class(singular_region_t), intent(in) :: sregion
+    integer :: alr
+    value = .false.
+    do alr = 1, sregion%nregions
+       value = value .or. (count (sregion%ftuples(alr) == sregion%ftuples) > 1)
+    end do
+  end function singular_region_has_identical_ftuples
+
+@ %def singular_region_has_identical_ftuples
 @
 <<fks regions: interfaces>>=
   interface assignment(=)
@@ -2844,6 +2987,8 @@ of the present one is increased.
 
     subroutine init_regions_with_permuted_flavors ()
        type(flavor_permutation_t) :: perm_list
+       type(ftuple_t), dimension(:), allocatable :: ftuple_array
+       logical, dimension(:,:), allocatable :: equivalences
        integer :: i, j
        do j = 1, n_regions
           do i = 1, reg_data%n_flv_born
@@ -2856,16 +3001,20 @@ of the present one is increased.
                 flst_emitter(j) = perm_list%apply (flst_emitter(j))
              end if
           end do
+          call ftuples(index(j))%to_array (ftuple_array, equivalences, .true.)
           do i = 1, size (reg_data%flv_real)
              if (reg_data%flv_real(i) == flv_alr_registered(j)) then
                 call perm_list%reset ()
                 call perm_list%init (flv_alr_registered(j), reg_data%flv_real(i), &
                      reg_data%n_in, reg_data%n_legs_real)
-                call apply_permutations_on_ftuple_list (perm_list, ftuples(index(j)))
+                call apply_permutations_on_ftuple_array (perm_list, ftuple_array, equivalences)
              end if
           end do
           call reg_data%regions(j)%init (j, mult(j), 0, flv_alr_registered(j), &
-               flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuples(index(j)))
+               flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuple_array, &
+               equivalences)
+          if (allocated (ftuple_array)) deallocate (ftuple_array)
+          if (allocated (equivalences)) deallocate (equivalences)
        end do
     end subroutine init_regions_with_permuted_flavors
 
@@ -3439,7 +3588,7 @@ writes it to a file.
      end do
      flst_title = '(A' // flst_title_format(reg_data%n_legs_real) // ')'
      ftuple_title = '(A' // ftuple_title_format() // ')'
-     write (u,'(A,1X,I2)') 'Total number of regions: ', size(reg_data%regions)
+     write (u,'(A,1X,I3)') 'Total number of regions: ', size(reg_data%regions)
      write (u, '(A3)', advance = 'no') 'alr'
      call write_vline (u)
      write (u, char (flst_title), advance = 'no') 'flst_real'
@@ -3498,7 +3647,7 @@ writes it to a file.
     function ftuple_title_format () result (frmt)
        type(string_t) :: frmt
        character(len=3) :: frmt_char
-       write (frmt_char, '(I3)') 10 * maxnregions + 1
+       write (frmt_char, '(I3)') 5 * maxnregions + 1
        frmt = var_str (frmt_char)
     end function ftuple_title_format
 
@@ -3702,6 +3851,31 @@ position.
   end function region_data_has_pseudo_isr
 
 @ %def region_data_has_pseudo_isr
+@ Performs consistency checks on [[region_data]]. Up to now only
+checks that now [[futple]] appears more than once.
+<<fks regions: reg data: TBP>>=
+  procedure :: check_consistency => region_data_check_consistency
+<<fks regions: procedures>>=
+  subroutine region_data_check_consistency (reg_data)
+    class(region_data_t), intent(in) :: reg_data
+    integer :: i_reg
+    logical :: first_invalid_region
+    first_invalid_region = .true.
+    do i_reg = 1, reg_data%n_regions
+       if (reg_data%regions(i_reg)%has_identical_ftuples ()) then
+          if (first_invalid_region) then
+             call msg_error ("Region data invalid: Identical ftuples "&
+                  &"encountered in the following regions:")
+             first_invalid_region = .false.
+          end if
+          print *, 'i_reg: ', i_reg
+       end if
+    end do
+    if (.not. first_invalid_region) &
+         call msg_fatal ("Stop due to inconsistent region data!")
+  end subroutine region_data_check_consistency
+
+@ %def region_data_check_consistency
 @
 <<fks regions: reg data: TBP>>=
   procedure :: final => region_data_final
@@ -4595,7 +4769,10 @@ end module fks_regions_uti
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     type(region_data_t) :: reg_data
     write (u, "(A)") "* Test output: fks_regions_2"
-    write (u, "(A)") "* Create table of singular regions for ee -> qq"
+    write (u, "(A)") "* Create singular regions for multi-jet events with n_jet <= 5"
+    write (u, "(A)") "* with jet = u:U:d:D:s:S:c:C:b:B:gl"
+    write (u, "(A)")
+    write (u, "(A)") "* ee -> qq"
     write (u, "(A)")
 
     n_flv_born = 1; n_flv_real = 1
@@ -4614,7 +4791,7 @@ end module fks_regions_uti
     deallocate (flv_born, flv_real)
     call reg_data%final ()
 
-    write (u, "(A)") "* Create table of singular regions for ee -> qqg"
+    write (u, "(A)") "* ee -> qqg"
     write (u, "(A)")
     n_flv_born = 1; n_flv_real = 2
     n_legs_born = 5; n_legs_real = 6
@@ -4632,8 +4809,7 @@ end module fks_regions_uti
     deallocate (flv_born, flv_real)
     call reg_data%final ()
 
-    write (u, "(A)") "* Create table of singular regions for ee -> jet jet jet"
-    write (u, "(A)") "* with jet = u:U:d:D:s:S:c:C:b:B:gl"
+    write (u, "(A)") "* ee -> jet jet jet"
     write (u, "(A)")
     n_flv_born = 5; n_flv_real = 22
     n_legs_born = 5; n_legs_real = 6
@@ -4671,6 +4847,174 @@ end module fks_regions_uti
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
     call reg_data%write (u)
+
+    deallocate (flv_born, flv_real)
+    call reg_data%final ()
+
+    write (u, "(A)") "* ee -> 4 jet"
+    write (u, "(A)")
+    n_flv_born = 22; n_flv_real = 22
+    n_legs_born = 6; n_legs_real = 7
+    n_in = 2
+    allocate (flv_born (n_legs_born, n_flv_born))
+    allocate (flv_real (n_legs_real, n_flv_real))
+
+    flv_born (:, 1)   = [11, -11, -4, -4, 4, 4]
+    flv_born (:, 2)   = [11, -11, -4, -2, 2, 4]
+    flv_born (:, 3)   = [11, -11, -4, 4, 21, 21]
+    flv_born (:, 4)   = [11, -11, -4, -5, 4, 5]
+    flv_born (:, 5)   = [11, -11, -4, -3, 4, 3]
+    flv_born (:, 6)   = [11, -11, -4, -1, 2, 3]
+    flv_born (:, 7)   = [11, -11, -4, -1, 4, 1]
+    flv_born (:, 8)   = [11, -11, -2, -2, 2, 2]
+    flv_born (:, 9)   = [11, -11, -2, 2, 21, 21]
+    flv_born (:, 10)  = [11, -11, -2, -5, 2, 5]
+    flv_born (:, 11)  = [11, -11, -2, -3, 2, 3]
+    flv_born (:, 12)  = [11, -11, -2, -3, 4, 1]
+    flv_born (:, 13)  = [11, -11, -2, -1, 2, 1]
+    flv_born (:, 14)  = [11, -11, -5, -5, 5, 5]
+    flv_born (:, 15)  = [11, -11, -5, -3, 3, 5]
+    flv_born (:, 16)  = [11, -11, -5, -1, 1, 5]
+    flv_born (:, 17)  = [11, -11, -5, 5, 21, 21]
+    flv_born (:, 18)  = [11, -11, -3, -3, 3, 3]
+    flv_born (:, 19)  = [11, -11, -3, -1, 1, 3]
+    flv_born (:, 20)  = [11, -11, -3, -3, 21, 21]
+    flv_born (:, 21)  = [11, -11, -1, -1, 1, 1]
+    flv_born (:, 22)  = [11, -11, -1, 1, 21, 21]
+    flv_real (:, 1)   = [11, -11, -4, -4, 4, 4, 21]
+    flv_real (:, 2)   = [11, -11, -4, -2, 2, 4, 21]
+    flv_real (:, 3)   = [11, -11, -4, 4, 21, 21, 21]
+    flv_real (:, 4)   = [11, -11, -4, -5, 4, 5, 21]
+    flv_real (:, 5)   = [11, -11, -4, -3, 4, 3, 21]
+    flv_real (:, 6)   = [11, -11, -4, -1, 2, 3, 21]
+    flv_real (:, 7)   = [11, -11, -4, -1, 4, 1, 21]
+    flv_real (:, 8)   = [11, -11, -2, -2, 2, 2, 21]
+    flv_real (:, 9)   = [11, -11, -2, 2, 21, 21, 21]
+    flv_real (:, 10)  = [11, -11, -2, -5, 2, 5, 21]
+    flv_real (:, 11)  = [11, -11, -2, -3, 2, 3, 21]
+    flv_real (:, 12)  = [11, -11, -2, -3, 4, 1, 21]
+    flv_real (:, 13)  = [11, -11, -2, -1, 2, 1, 21]
+    flv_real (:, 14)  = [11, -11, -5, -5, 5, 5, 21]
+    flv_real (:, 15)  = [11, -11, -5, -3, 3, 5, 21]
+    flv_real (:, 16)  = [11, -11, -5, -1, 1, 5, 21]
+    flv_real (:, 17)  = [11, -11, -5, 5, 21, 21, 21]
+    flv_real (:, 18)  = [11, -11, -3, -3, 3, 3, 21]
+    flv_real (:, 19)  = [11, -11, -3, -1, 1, 3, 21]
+    flv_real (:, 20)  = [11, -11, -3, 3, 21, 21, 21]
+    flv_real (:, 21)  = [11, -11, -1, -1, 1, 1, 21]
+    flv_real (:, 22)  = [11, -11, -1, 1, 21, 21, 21]
+
+    call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%write (u)
+
+    deallocate (flv_born, flv_real)
+    call reg_data%final ()
+
+    write (u, "(A)") "* ee -> 5 jet"
+    write (u, "(A)")
+    n_flv_born = 22; n_flv_real = 67
+    n_legs_born = 7; n_legs_real = 8
+    n_in = 2
+    allocate (flv_born (n_legs_born, n_flv_born))
+    allocate (flv_real (n_legs_real, n_flv_real))
+
+
+    flv_born (:,1)  = [11,-11,-4,-4,4,4,21]
+    flv_born (:,2)  = [11,-11,-4,-2,2,4,21]
+    flv_born (:,3)  = [11,-11,-4,4,21,21,21]
+    flv_born (:,4)  = [11,-11,-4,-5,4,5,21]
+    flv_born (:,5)  = [11,-11,-4,-3,4,3,21]
+    flv_born (:,6)  = [11,-11,-4,-1,2,3,21]
+    flv_born (:,7)  = [11,-11,-4,-1,4,1,21]
+    flv_born (:,8)  = [11,-11,-2,-2,2,2,21]
+    flv_born (:,9)  = [11,-11,-2,2,21,21,21]
+    flv_born (:,10) = [11,-11,-2,-5,2,5,21]
+    flv_born (:,11) = [11,-11,-2,-3,2,3,21]
+    flv_born (:,12) = [11,-11,-2,-3,4,1,21]
+    flv_born (:,13) = [11,-11,-2,-1,2,1,21]
+    flv_born (:,14) = [11,-11,-5,-5,5,5,21]
+    flv_born (:,15) = [11,-11,-5,-3,3,5,21]
+    flv_born (:,16) = [11,-11,-5,-1,1,5,21]
+    flv_born (:,17) = [11,-11,-5,5,21,21,21]
+    flv_born (:,18) = [11,-11,-3,-3,3,3,21]
+    flv_born (:,19) = [11,-11,-3,-1,1,3,21]
+    flv_born (:,20) = [11,-11,-3,3,21,21,21]
+    flv_born (:,21) = [11,-11,-1,-1,1,1,21]
+    flv_born (:,22) = [11,-11,-1,1,21,21,21]
+
+    flv_real (:,1)  = [11,-11,-4,-4,-4,4,4,4]
+    flv_real (:,2)  = [11,-11,-4,-4,-2,2,4,4]
+    flv_real (:,3)  = [11,-11,-4,-4,4,4,21,21]
+    flv_real (:,4)  = [11,-11,-4,-4,-5,4,4,5]
+    flv_real (:,5)  = [11,-11,-4,-4,-3,4,4,3]
+    flv_real (:,6)  = [11,-11,-4,-4,-1,2,4,3]
+    flv_real (:,7)  = [11,-11,-4,-4,-1,4,4,1]
+    flv_real (:,8)  = [11,-11,-4,-2,-2,2,2,4]
+    flv_real (:,9)  = [11,-11,-4,-2,2,4,21,21]
+    flv_real (:,10) = [11,-11,-4,-2,-5,2,4,5]
+    flv_real (:,11) = [11,-11,-4,-2,-3,2,4,3]
+    flv_real (:,12) = [11,-11,-4,-2,-3,4,4,1]
+    flv_real (:,13) = [11,-11,-4,-2,-1,2,2,3]
+    flv_real (:,14) = [11,-11,-4,-2,-1,2,4,1]
+    flv_real (:,15) = [11,-11,-4,4,21,21,21,21]
+    flv_real (:,16) = [11,-11,-4,-5,4,5,21,21]
+    flv_real (:,17) = [11,-11,-4,-5,-5,4,5,5]
+    flv_real (:,18) = [11,-11,-4,-5,-3,4,3,5]
+    flv_real (:,19) = [11,-11,-4,-5,-1,2,3,5]
+    flv_real (:,20) = [11,-11,-4,-5,-1,4,1,5]
+    flv_real (:,21) = [11,-11,-4,-3,4,3,21,21]
+    flv_real (:,22) = [11,-11,-4,-3,-3,4,3,3]
+    flv_real (:,23) = [11,-11,-4,-3,-1,2,3,3]
+    flv_real (:,24) = [11,-11,-4,-3,-1,4,1,3]
+    flv_real (:,25) = [11,-11,-4,-1,2,3,21,21]
+    flv_real (:,26) = [11,-11,-4,-1,4,1,21,21]
+    flv_real (:,27) = [11,-11,-4,-1,-1,2,1,3]
+    flv_real (:,28) = [11,-11,-4,-1,-1,4,1,1]
+    flv_real (:,29) = [11,-11,-2,-2,-2,2,2,2]
+    flv_real (:,30) = [11,-11,-2,-2,2,2,21,21]
+    flv_real (:,31) = [11,-11,-2,-2,-5,2,2,5]
+    flv_real (:,32) = [11,-11,-2,-2,-3,2,2,3]
+    flv_real (:,33) = [11,-11,-2,-2,-3,2,4,1]
+    flv_real (:,34) = [11,-11,-2,-2,-1,2,2,1]
+    flv_real (:,35) = [11,-11,-2,2,21,21,21,21]
+    flv_real (:,36) = [11,-11,-2,-5,2,5,21,21]
+    flv_real (:,37) = [11,-11,-2,-5,-5,2,5,5]
+    flv_real (:,38) = [11,-11,-2,-5,-3,2,3,5]
+    flv_real (:,39) = [11,-11,-2,-5,-3,4,1,5]
+    flv_real (:,40) = [11,-11,-2,-5,-1,2,1,5]
+    flv_real (:,41) = [11,-11,-2,-3,2,3,21,21]
+    flv_real (:,42) = [11,-11,-2,-3,4,1,21,21]
+    flv_real (:,43) = [11,-11,-2,-3,-3,2,3,3]
+    flv_real (:,44) = [11,-11,-2,-3,-3,4,1,3]
+    flv_real (:,45) = [11,-11,-2,-3,-1,2,1,3]
+    flv_real (:,46) = [11,-11,-2,-3,-1,4,1,1]
+    flv_real (:,47) = [11,-11,-2,-1,2,1,21,21]
+    flv_real (:,48) = [11,-11,-2,-1,-1,2,1,1]
+    flv_real (:,49) = [11,-11,-5,-5,-5,5,5,5]
+    flv_real (:,50) = [11,-11,-5,-5,-3,3,5,5]
+    flv_real (:,51) = [11,-11,-5,-5,-1,1,5,5]
+    flv_real (:,52) = [11,-11,-5,-5,5,5,21,21]
+    flv_real (:,53) = [11,-11,-5,-3,-3,3,3,5]
+    flv_real (:,54) = [11,-11,-5,-3,-1,1,3,5]
+    flv_real (:,55) = [11,-11,-5,-3,3,5,21,21]
+    flv_real (:,56) = [11,-11,-5,-1,-1,1,1,5]
+    flv_real (:,57) = [11,-11,-5,-1,1,5,21,21]
+    flv_real (:,58) = [11,-11,-5,5,21,21,21,21]
+    flv_real (:,59) = [11,-11,-3,-3,-3,3,3,3]
+    flv_real (:,60) = [11,-11,-3,-3,-1,1,3,3]
+    flv_real (:,61) = [11,-11,-3,-3,3,3,21,21]
+    flv_real (:,62) = [11,-11,-3,-1,-1,1,1,3]
+    flv_real (:,63) = [11,-11,-3,-1,1,3,21,21]
+    flv_real (:,64) = [11,-11,-3,3,21,21,21,21]
+    flv_real (:,65) = [11,-11,-1,-1,-1,1,1,1]
+    flv_real (:,66) = [11,-11,-1,-1,1,1,21,21]
+    flv_real (:,67) = [11,-11,-1,1,21,21,21,21]
+
+    call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%write (u)
+
+    deallocate (flv_born, flv_real)
+    call reg_data%final ()
 
   end subroutine fks_regions_2
 
