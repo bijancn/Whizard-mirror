@@ -44,15 +44,16 @@ if test -n "$OPENLOOPS_DIR"; then
 fi
 
 if test "$enable_openloops" = "yes" -a "$openloops_lib" != "no"; then
-    AC_MSG_CHECKING([for standard OpenLoops process])
-    if test -f "$OPENLOOPS_DIR/proclib/libopenloops_ppll_lt.info"; then
-       AC_MSG_RESULT([ OpenLoops process ppll is installed])
+    AC_MSG_CHECKING([for standard OpenLoops processes])
+    
+    if test -f "$OPENLOOPS_DIR/proclib/libopenloops_ppll_lt.info" && test -f "$OPENLOOPS_DIR/proclib/libopenloops_eett_lt.info" && test -n "`$GREP 'eexttxg' $OPENLOOPS_DIR/proclib/libopenloops_eett_lt.info`"; then
+       AC_MSG_RESULT([ OpenLoops processes ppll/eett are installed])
        OPENLOOPS_AVAILABLE_FLAG=".true."
     else
-       AC_MSG_RESULT([ OpenLoops process ppll is not installed])
+       AC_MSG_RESULT([ OpenLoops processes ppll/eett are not installed])
        AC_MSG_NOTICE([error: *************************************************************])
        AC_MSG_NOTICE([error: OpenLoops standard process is not installed, please install  ])
-       AC_MSG_NOTICE([error:    ppll                                                      ])
+       AC_MSG_NOTICE([error:    ppll and eett with compile_extra=1                        ])
        AC_MSG_NOTICE([error: *************************************************************])
        OPENLOOPS_AVAILABLE_FLAG=".false."
        enable_openloops="no"

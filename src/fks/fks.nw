@@ -195,10 +195,13 @@ module fks_regions
 
 <<Use kinds>>
   use format_utils, only: write_separator
+  use numeric_utils, only: remove_duplicates_from_list, extend_integer_array
   use numeric_utils, only: remove_duplicates_from_list
+  use string_utils, only: str
   use io_units
 <<Use strings>>
   use constants
+  use permutations
   use diagnostics
   use flavors
   use process_constants
@@ -247,7 +250,7 @@ the [[ftuple]]-object.
   public :: ftuple_t
 <<fks regions: types>>=
   type :: ftuple_t
-    integer, dimension(2) :: ireg
+    integer, dimension(2) :: ireg = [-1,-1]
     integer :: i_res = 0
     integer :: splitting_type
     logical :: pseudo_isr = .false.
@@ -262,8 +265,12 @@ the [[ftuple]]-object.
      module procedure ftuple_assign
   end interface
 
+  interface operator(==)
+     module procedure ftuple_equal
+  end interface
+
 <<fks regions: procedures>>=
-  subroutine ftuple_assign (ftuple_out, ftuple_in)
+  pure subroutine ftuple_assign (ftuple_out, ftuple_in)
     type(ftuple_t), intent(out) :: ftuple_out
     type(ftuple_t), intent(in) :: ftuple_in
     ftuple_out%ireg = ftuple_in%ireg
@@ -274,25 +281,94 @@ the [[ftuple]]-object.
 
 @ %def ftuple_assign
 @
+<<fks regions: procedures>>=
+  elemental function ftuple_equal (f1, f2) result (value)
+    logical :: value
+    type(ftuple_t), intent(in) :: f1, f2
+    value = all (f1%ireg == f2%ireg) .and. f1%i_res == f2%i_res &
+         .and. f1%splitting_type == f2%splitting_type &
+         .and. (f1%pseudo_isr .eqv. f2%pseudo_isr)
+  end function ftuple_equal
+
+@ %def ftuple_equal
+@
+<<fks regions: procedures>>=
+  elemental function ftuple_compare (f1, f2) result (greater)
+    logical :: greater
+    type(ftuple_t), intent(in) :: f1, f2
+    if (f1%ireg(1) == f2%ireg(1)) then
+       greater = f1%ireg(2) > f2%ireg(2)
+    else
+       greater = f1%ireg(1) > f2%ireg(2)
+    end if
+  end function ftuple_compare
+
+@ %def ftuple_compare
+@
 <<fks regions: ftuple: TBP>>=
   procedure :: write => ftuple_write
 <<fks regions: procedures>>=
-  subroutine ftuple_write (ftuple, unit)
+  subroutine ftuple_write (ftuple, unit, newline)
     class(ftuple_t), intent(in) :: ftuple
     integer, intent(in), optional :: unit
+    logical, intent(in), optional :: newline
     integer :: u
+    logical :: nl
     u = given_output_unit (unit); if (u < 0) return
-    if (ftuple%i_res > 0) then
-       print *, 'Check : ', ftuple%i_res
-       write (u, "(A1,I1,A1,I1,A1,I1,A1)") &
-         '(', ftuple%ireg(1), ',', ftuple%ireg(2), ';', ftuple%i_res, ')'
+    nl = .true.; if (present(newline)) nl = newline
+    if (all (ftuple%ireg > -1)) then
+       if (ftuple%i_res > 0) then
+          if (nl) then
+             write (u, "(A1,I1,A1,I1,A1,I1,A1)") &
+                 '(', ftuple%ireg(1), ',', ftuple%ireg(2), ';', ftuple%i_res, ')'
+          else
+             write (u, "(A1,I1,A1,I1,A1,I1,A1)", advance = "no") &
+                 '(', ftuple%ireg(1), ',', ftuple%ireg(2), ';', ftuple%i_res, ')'
+          end if
+       else
+          if (nl) then
+             write (u, "(A1,I1,A1,I1,A1)") &
+                  '(', ftuple%ireg(1), ',', ftuple%ireg(2), ')'
+          else
+             write (u, "(A1,I1,A1,I1,A1)", advance = "no") &
+                  '(', ftuple%ireg(1), ',', ftuple%ireg(2), ')'
+          end if
+       end if
     else
-       write (u, "(A1,I1,A1,I1,A1)") &
-         '(', ftuple%ireg(1), ',', ftuple%ireg(2), ')'
+       write (u, "(A)") "(Empty)"
     end if
   end subroutine ftuple_write
 
 @ %def ftuple_write
+@
+<<fks regions: procedures>>=
+  function ftuple_string (ftuples, latex)
+    type(string_t) :: ftuple_string
+    type(ftuple_t), intent(in), dimension(:) :: ftuples
+    logical, intent(in) :: latex
+    integer :: i, nreg
+    integer :: i1, i2
+    if (latex) then
+       ftuple_string = var_str ("$\left\{")
+    else
+       ftuple_string = var_str ("{")
+    end if
+    nreg = size(ftuples)
+    do i = 1, nreg
+       ftuple_string = ftuple_string // var_str ("(") // &
+            str (ftuples(i)%ireg(1)) // var_str (",") // &
+            str (ftuples(i)%ireg(2)) // var_str (")")
+       if (ftuples(i)%i_res > 0) ftuple_string = ftuple_string // var_str ("*")
+       if (i < nreg) ftuple_string = ftuple_string // var_str (",")
+    end do
+    if (latex) then
+       ftuple_string = ftuple_string // var_str ("\right\}$")
+    else
+       ftuple_string = ftuple_string // var_str ("}")
+    end if
+  end function ftuple_string
+
+@ %def ftuple_string
 @
 <<fks regions: ftuple: TBP>>=
   procedure :: get => ftuple_get
@@ -384,20 +460,28 @@ emitter-radiation pairs. This is coped with using the linked list
 <<fks regions: ftuple list: TBP>>=
   procedure :: write => ftuple_list_write
 <<fks regions: procedures>>=
-  subroutine ftuple_list_write (list)
+  subroutine ftuple_list_write (list, unit, verbose)
     class(ftuple_list_t), intent(in), target :: list
+    integer, intent(in), optional :: unit
+    logical, intent(in), optional :: verbose
     type(ftuple_list_t), pointer :: current
+    logical :: verb
+    integer :: u
+    u = given_output_unit (unit); if (u < 0) return
+    verb = .false.; if (present (verbose)) verb = verbose
     select type (list)
     type is (ftuple_list_t)
        current => list
        do
-          call current%ftuple%write
+          call current%ftuple%write (unit = u, newline = .false.)
+          if (verb .and. associated (current%equiv)) write (u, '(A)', advance = "no") "'"
           if (associated (current%next)) then
              current => current%next
           else
              exit
           end if
        end do
+       write (u, *) ""
     end select
   end subroutine ftuple_list_write
 
@@ -414,22 +498,22 @@ emitter-radiation pairs. This is coped with using the linked list
    select type (list)
    type is (ftuple_list_t)
    if (list%index == 0) then
-      nullify(list%next)
+      nullify (list%next)
       list%index = 1
       list%ftuple = ftuple
    else
       current => list
       do
        if (associated (current%next)) then
-         current => current%next
+          current => current%next
        else
-         allocate (current%next)
-         nullify (current%next%next)
-         nullify (current%next%equiv)
-         current%next%prev => current
-         current%next%index = current%index + 1
-         current%next%ftuple = ftuple
-         exit
+          allocate (current%next)
+          nullify (current%next%next)
+          nullify (current%next%equiv)
+          current%next%prev => current
+          current%next%index = current%index + 1
+          current%next%ftuple = ftuple
+          exit
        end if
      end do
    end if
@@ -439,11 +523,23 @@ emitter-radiation pairs. This is coped with using the linked list
 @ %def ftuple_list_append
 @
 <<fks regions: ftuple list: TBP>>=
+  procedure :: compare => ftuple_list_compare
+<<fks regions: procedures>>=
+  function ftuple_list_compare (ftuple_list, i1, i2) result (greater)
+    logical :: greater
+    class(ftuple_list_t), intent(in) :: ftuple_list
+    integer, intent(in) :: i1, i2
+    greater = ftuple_compare (ftuple_list%get_ftuple (i1), ftuple_list%get_ftuple (i2))
+  end function ftuple_list_compare
+
+@ %def ftuple_list_compare
+@
+<<fks regions: ftuple list: TBP>>=
   procedure :: get_n_tuples => ftuple_list_get_n_tuples
 <<fks regions: procedures>>=
-  function ftuple_list_get_n_tuples (list) result(n_tuples)
-    class(ftuple_list_t), intent(in), target :: list
+  impure elemental function ftuple_list_get_n_tuples (list) result(n_tuples)
     integer :: n_tuples
+    class(ftuple_list_t), intent(in), target :: list
     type(ftuple_list_t), pointer :: current
     n_tuples = 0
     select type (list)
@@ -469,30 +565,25 @@ emitter-radiation pairs. This is coped with using the linked list
   procedure :: get_entry => ftuple_list_get_entry
 <<fks regions: procedures>>=
   function ftuple_list_get_entry (list, index) result (entry)
-   class(ftuple_list_t), intent(in), target :: list
-   integer, intent(in) :: index
-   type(ftuple_list_t), pointer :: entry
-   type(ftuple_list_t), pointer :: current
-   integer :: i
-   entry => null()
-   select type (list)
-   type is (ftuple_list_t)
-      current => list
-      if (index <= list%get_n_tuples ()) then
-         if (index == 1) then
-            entry => current
-         else
-            do i = 1, index - 1
-               current => current%next
-            end do
-            entry => current
-         end if
-      else
-         call msg_fatal &
-              ("Index must be smaller or equal than the total number of regions!")
-      end if
-   end select
- end function ftuple_list_get_entry
+    type(ftuple_list_t), pointer :: entry
+    class(ftuple_list_t), intent(in), target :: list
+    integer, intent(in) :: index
+    type(ftuple_list_t), pointer :: current
+    integer :: i
+    entry => null()
+    select type (list)
+    type is (ftuple_list_t)
+       current => list
+       if (index == 1) then
+          entry => current
+       else
+          do i = 1, index - 1
+             current => current%next
+          end do
+          entry => current
+       end if
+    end select
+  end function ftuple_list_get_entry
 
 @ %def ftuple_list_get_entry
 @
@@ -500,9 +591,9 @@ emitter-radiation pairs. This is coped with using the linked list
   procedure :: get_ftuple => ftuple_list_get_ftuple
 <<fks regions: procedures>>=
   function ftuple_list_get_ftuple (list, index)  result (ftuple)
+    type(ftuple_t) :: ftuple
     class(ftuple_list_t), intent(in), target :: list
     integer, intent(in) :: index
-    type(ftuple_t) :: ftuple
     type(ftuple_list_t), pointer :: entry
     entry => list%get_entry (index)
     ftuple = entry%ftuple
@@ -516,11 +607,19 @@ emitter-radiation pairs. This is coped with using the linked list
   subroutine ftuple_list_set_equiv (list, i1, i2)
     class(ftuple_list_t), intent(in) :: list
     integer, intent(in) :: i1, i2
-    type(ftuple_list_t), pointer :: list1, list2
+    type(ftuple_list_t), pointer :: list1, list2 => null ()
+    type(ftuple_t) :: f1, f2
     select type (list)
     type is (ftuple_list_t)
-       list1 => list%get_entry (i1)
-       list2 => list%get_entry (i2)
+    f1 = list%get_ftuple (i1)
+    f2 = list%get_ftuple (i2)
+       if (list%compare (i1, i2)) then
+          list1 => list%get_entry (i2)
+          list2 => list%get_entry (i1)
+       else
+          list1 => list%get_entry (i1)
+          list2 => list%get_entry (i2)
+       end if
        do
           if (associated (list1%equiv)) then
              list1 => list1%equiv
@@ -560,7 +659,72 @@ emitter-radiation pairs. This is coped with using the linked list
     end select
   end function ftuple_list_check_equiv
 
-@ %def ftuple_list_check_equiv
+@ %def ftuple_list_sort
+@
+<<fks regions: ftuple list: TBP>>=
+  procedure :: to_array => ftuple_list_to_array
+<<fks regions: procedures>>=
+  subroutine ftuple_list_to_array (ftuple_list, ftuple_array, equivalences, ordered)
+    class(ftuple_list_t), intent(in), target :: ftuple_list
+    type(ftuple_t), intent(out), dimension(:), allocatable :: ftuple_array
+    logical, intent(out), dimension(:,:), allocatable :: equivalences
+    logical, intent(in) :: ordered
+    integer :: i_tuple, n
+    type(ftuple_list_t), pointer :: current => null ()
+    integer :: i1, i2
+    type(ftuple_t) :: ftuple_tmp
+    logical, dimension(:), allocatable :: eq_tmp
+    n = ftuple_list%get_n_tuples ()
+    allocate (ftuple_array (n), equivalences (n, n))
+    equivalences = .false.
+    select type (ftuple_list)
+    type is (ftuple_list_t)
+       current => ftuple_list
+       i_tuple = 1
+       do
+          ftuple_array(i_tuple) = current%ftuple
+          if (associated (current%equiv)) then
+             i1 = current%index
+             i2 = current%equiv%index
+             equivalences (i1, i2) = .true.
+          end if
+          if (associated (current%next)) then
+             current => current%next
+             i_tuple = i_tuple + 1
+          else
+             exit
+          end if
+       end do
+    end select
+    if (ordered) then
+       allocate (eq_tmp (n))
+       do i1 = 2, n
+          i2 = i1
+          do while (i2 > 1 .and. ftuple_compare (ftuple_array(i2 - 1), ftuple_array(i2)))
+             ftuple_tmp = ftuple_array(i2 - 1)
+             eq_tmp = equivalences(i2, :)
+             ftuple_array(i2 - 1) = ftuple_array(i2)
+             ftuple_array(i2) = ftuple_tmp
+             equivalences(i2 - 1, :) = equivalences(i2, :)
+             equivalences(i2, :) = eq_tmp
+             i2 = i2 - 1
+          end do
+       end do
+       deallocate (eq_tmp)
+    end if
+  contains
+    subroutine print_equivalences ()
+      integer :: i, i1, i2
+      print *, 'Equivalence matrix: '
+      do i = 1, size (ftuple_array)
+         call ftuple_array(i)%get(i1,i2)
+         print *, 'i: ', i, '(', i1, i2, '): ', equivalences(i,:)
+      end do
+    end subroutine print_equivalences
+
+  end subroutine ftuple_list_to_array
+
+@ %def ftuple_list_to_array
 @ Class for working with the flavor specification arrays.
 <<fks regions: public>>=
   public :: flv_structure_t
@@ -612,11 +776,10 @@ $(i,j)$ is accepted as valid.
     integer, dimension(:), allocatable :: flv_orig
     valid = .false.
     if (all ([i, j] <= flv%n_in)) return
-    call model%match_vertex &
-         (flv%flst(i), flv%flst(j), flv_orig)
+    call model%match_vertex (flv%flst(i), flv%flst(j), flv_orig)
     n_orig = size (flv_orig)
     if (n_orig == 0) then
-      return
+       return
     else
       do k = 1, n_orig
          if (any ([i, j] <= flv%n_in)) then
@@ -645,10 +808,10 @@ permutation of the final-state particles
     equiv = .true.
     if (n /= size (flv2%flst)) then
        call msg_fatal &
-          ('flv_structure_equivalent: flavor arrays do not have equal lengths')
+            ('flv_structure_equivalent: flavor arrays do not have equal lengths')
     else if (flv1%n_in /= flv2%n_in) then
        call msg_fatal &
-          ('flv_structure_equivalent: flavor arrays do not have equal n_in')
+            ('flv_structure_equivalent: flavor arrays do not have equal n_in')
     else
        allocate (present(n))
        allocate (checked(n))
@@ -677,7 +840,7 @@ permutation of the final-state particles
 @ %def flv_structure_equivalent
 @
 <<fks regions: procedures>>=
-  subroutine flv_structure_assign_flv (flv_out, flv_in)
+  pure subroutine flv_structure_assign_flv (flv_out, flv_in)
     type(flv_structure_t), intent(out) :: flv_out
     type(flv_structure_t), intent(in) :: flv_in
     flv_out%nlegs = flv_in%nlegs
@@ -699,7 +862,7 @@ permutation of the final-state particles
 @ %def flv_structure_assign_flv
 @
 <<fks regions: procedures>>=
-  subroutine flv_structure_assign_integer (flv_out, iarray)
+  pure subroutine flv_structure_assign_integer (flv_out, iarray)
     type(flv_structure_t), intent(out) :: flv_out
     integer, intent(in), dimension(:) :: iarray
     flv_out%nlegs = size (iarray)
@@ -718,8 +881,7 @@ permutation of the final-state particles
     class(flv_structure_t), intent(in) :: flv
     integer, intent(in) :: index
     integer :: n1, n2
-    n1 = size (flv%flst)
-    n2 = n1 - 1
+    n1 = size (flv%flst); n2 = n1 - 1
     allocate (flv_new%flst (n2))
     flv_new%nlegs = n2
     flv_new%n_in = flv%n_in
@@ -777,9 +939,8 @@ particle at position i1.
     integer, intent(in) :: i1, i2, particle
     type(flv_structure_t) :: flv_tmp
     integer :: n1, n2
-    n1 = size (flv%flst)
-    n2 = n1 - 1
-    allocate (flv_new%flst(n2))
+    n1 = size (flv%flst); n2 = n1 - 1
+    allocate (flv_new%flst (n2))
     flv_new%nlegs = n2
     flv_new%n_in = flv%n_in
     if (i1 < i2) then
@@ -855,14 +1016,31 @@ flavor array
     integer, intent(in), optional :: unit
     integer :: i, u
     u = given_output_unit (unit); if (u < 0) return
-    write (u, '(A1)',advance = 'no') '['
-    do i = 1, size(flv%flst) - 1
-      write (u, '(I3,A1)', advance = 'no') flv%flst(i), ','
-    end do
-    write (u, '(I3,A1)') flv%flst(i), ']'
+    write (u, '(A)') char (flv%to_string ())
   end subroutine flv_structure_write
 
 @ %def flv_structure_write
+@
+<<fks regions: flv structure: TBP>>=
+  procedure :: to_string => flv_structure_to_string
+<<fks regions: procedures>>=
+  function flv_structure_to_string (flv) result (flv_string)
+    type(string_t) :: flv_string
+    class(flv_structure_t), intent(in) :: flv
+    integer :: i, n
+    if (allocated (flv%flst)) then
+       flv_string = var_str ("[")
+       n = size (flv%flst)
+       do i = 1, n - 1
+          flv_string = flv_string // str (flv%flst(i)) // var_str(",")
+       end do
+       flv_string = flv_string // str (flv%flst(n)) // var_str("]")
+    else
+       flv_string = var_str ("[not allocated]")
+    end if
+  end function flv_structure_to_string
+
+@ %def flv_structure_to_string
 @ Creates the underlying Born flavor structure for a given real flavor
 structure if the particle at position \texttt{emitter} is removed
 <<fks regions: flv structure: TBP>>=
@@ -923,16 +1101,246 @@ structure if the particle at position \texttt{emitter} is removed
 @ %def flv_structure_init_mass_and_color
 @
 <<fks regions: flv structure: TBP>>=
+  procedure :: get_last_two => flv_structure_get_last_two
+<<fks regions: procedures>>=
+  function flv_structure_get_last_two (flv, n) result (flst_last)
+    integer, dimension(2) :: flst_last
+    class(flv_structure_t), intent(in) :: flv
+    integer, intent(in) :: n
+    flst_last = [flv%flst(n - 1), flv%flst(n)]
+  end function flv_structure_get_last_two
+
+@ %def flv_structure_get_last_two
+@
+<<fks regions: procedures>>=
+  function flv_structure_search (flv1, flv2) result (index)
+    integer :: index
+    type(flv_structure_t), intent(in), dimension(:) :: flv1
+    type(flv_structure_t), intent(in) :: flv2
+    logical :: found
+    found = .false.
+    do index = 1, size (flv1)
+       if (flv1(index) == flv2) then
+          found = .true.
+          exit
+       end if
+    end do
+    if (.not. found) index = 0
+  end function flv_structure_search
+
+@ %def flv_structure_search
+@
+<<fks regions: flv structure: TBP>>=
   procedure :: final => flv_structure_final
 <<fks regions: procedures>>=
   subroutine flv_structure_final (flv)
     class(flv_structure_t), intent(inout) :: flv
     if (allocated (flv%flst)) deallocate (flv%flst)
-    if (allocated (flv%flst)) deallocate (flv%massive)
-    if (allocated (flv%flst)) deallocate (flv%colored)
+    if (allocated (flv%massive)) deallocate (flv%massive)
+    if (allocated (flv%colored)) deallocate (flv%colored)
   end subroutine flv_structure_final
 
 @ %def flv_structure_final
+@
+<<fks regions: types>>=
+  type :: flavor_permutation_t
+    integer, dimension(:,:), allocatable :: perms
+  contains
+  <<fks regions: flavor permutation: TBP>>
+  end type flavor_permutation_t
+
+@ %def flavor_permutation_t
+@
+<<fks regions: flavor permutation: TBP>>=
+  procedure :: init => flavor_permutation_init
+<<fks regions: procedures>>=
+  subroutine flavor_permutation_init (perm, flv_in, flv_ref, n_first, n_last)
+    class(flavor_permutation_t), intent(out) :: perm
+    type(flv_structure_t), intent(in) :: flv_in, flv_ref
+    integer, intent(in) :: n_first, n_last
+    integer :: flv1, flv2, tmp
+    integer :: i, j, j_min, i_perm
+    integer, dimension(:,:), allocatable :: perm_list_tmp
+    type(flv_structure_t) :: flv_copy
+    flv_copy = flv_ref
+    allocate (perm_list_tmp (factorial (n_last - n_first - 1), 2))
+    j_min = n_first + 1
+    i_perm = 0
+    do i = n_first + 1, n_last
+       flv1 = flv_in%flst(i)
+       do j = j_min, n_last
+          flv2 = flv_copy%flst(j)
+          if (flv1 == flv2 .and. i /= j) then
+             i_perm = i_perm + 1
+             tmp = flv_copy%flst(i)
+             flv_copy%flst(i) = flv2
+             flv_copy%flst(j) = tmp
+             perm_list_tmp (i_perm, 1) = j
+             perm_list_tmp (i_perm, 2) = i
+             j_min = j_min + 1
+             exit
+          end if
+       end do
+    end do
+    allocate (perm%perms (i_perm, 2))
+    perm%perms = perm_list_tmp (1 : i_perm, :)
+    deallocate (perm_list_tmp)
+    call flv_copy%final ()
+  end subroutine flavor_permutation_init
+
+@ %def flavor_permutation_init
+@
+<<fks regions: flavor permutation: TBP>>=
+  procedure :: write => flavor_permutation_write
+<<fks regions: procedures>>=
+  subroutine flavor_permutation_write (perm, unit)
+    class(flavor_permutation_t), intent(in) :: perm
+    integer, intent(in), optional :: unit
+    integer :: i, n, u
+    u = given_output_unit (unit); if (u < 0) return
+    write (u, "(A)") "Flavor permutation list: "
+    n = size (perm%perms, dim = 1)
+    if (n > 0) then
+       do i = 1, n
+          write (u, "(A1,I1,1X,I1,A1)", advance = "no") "[", perm%perms(i,1), perm%perms(i,2), "]"
+          if (i < n) write (u, "(A4)", advance = "no") " // "
+       end do
+       write (u, "(A)") ""
+    else
+       write (u, "(A)") "[Empty]"
+    end if
+  end subroutine flavor_permutation_write
+
+@ %def flavor_permutation_write
+@
+<<fks regions: flavor permutation: TBP>>=
+  procedure :: reset => flavor_permutation_final
+  procedure :: final => flavor_permutation_final
+<<fks regions: procedures>>=
+  subroutine flavor_permutation_final (perm)
+    class(flavor_permutation_t), intent(inout) :: perm
+    if (allocated (perm%perms)) deallocate (perm%perms)
+  end subroutine flavor_permutation_final
+
+@ %def flavor_permutation_final
+@
+<<fks regions: flavor permutation: TBP>>=
+  generic :: apply => apply_permutation, &
+         apply_flavor, apply_integer, apply_ftuple
+  procedure :: apply_permutation => flavor_permutation_apply_permutation
+  procedure :: apply_flavor => flavor_permutation_apply_flavor
+  procedure :: apply_integer => flavor_permutation_apply_integer
+  procedure :: apply_ftuple => flavor_permutation_apply_ftuple
+<<fks regions: procedures>>=
+  elemental function flavor_permutation_apply_permutation (perm_1, perm_2) &
+         result (perm_out)
+    type(flavor_permutation_t) :: perm_out
+    class(flavor_permutation_t), intent(in) :: perm_1
+    type(flavor_permutation_t), intent(in) :: perm_2
+    integer :: n1, n2
+    n1 = size (perm_1%perms, dim = 1)
+    n2 = size (perm_2%perms, dim = 1)
+    allocate (perm_out%perms (n1 + n2, 2))
+    perm_out%perms (1 : n1, :) = perm_1%perms
+    perm_out%perms (n1 + 1: n1 + n2, :) = perm_2%perms
+  end function flavor_permutation_apply_permutation
+
+@ %def flavor_permutation_apply_permutation
+@
+<<fks regions: procedures>>=
+  elemental function flavor_permutation_apply_flavor (perm, flv_in) &
+         result (flv_out)
+    type(flv_structure_t) :: flv_out
+    class(flavor_permutation_t), intent(in) :: perm
+    type(flv_structure_t), intent(in) :: flv_in
+    integer :: i, i1, i2
+    integer :: flv_tmp
+    logical :: flag_tmp
+    flv_out = flv_in
+    do i = 1, size (perm%perms(:,1))
+       i1 = perm%perms(i,1)
+       i2 = perm%perms(i,2)
+       flv_tmp = flv_out%flst(i1)
+       flv_out%flst(i1) = flv_out%flst(i2)
+       flv_out%flst(i2) = flv_tmp
+    end do
+  end function flavor_permutation_apply_flavor
+
+@ %def flavor_permutation_apply_flavor
+@
+<<fks regions: procedures>>=
+  elemental function flavor_permutation_apply_integer (perm, i_in) result (i_out)
+    integer :: i_out
+    class(flavor_permutation_t), intent(in) :: perm
+    integer, intent(in) :: i_in
+    integer :: i, i1, i2
+    i_out = i_in
+    do i = 1, size (perm%perms(:,1))
+       i1 = perm%perms(i,1)
+       i2 = perm%perms(i,2)
+       if (i_out == i1) i_out = i2
+    end do
+  end function flavor_permutation_apply_integer
+
+@ %def flavor_permutation_apply_integer
+@
+<<fks regions: procedures>>=
+  elemental function flavor_permutation_apply_ftuple (perm, f_in) result (f_out)
+    type(ftuple_t) :: f_out
+    class(flavor_permutation_t), intent(in) :: perm
+    type(ftuple_t), intent(in) :: f_in
+    integer :: i, i1, i2
+    f_out = f_in
+    do i = 1, size (perm%perms, dim = 1)
+       i1 = perm%perms(i,1)
+       i2 = perm%perms(i,2)
+       if (f_out%ireg(1) == i1) then
+          f_out%ireg(1) = i2
+       else if (f_out%ireg(1) == i2) then
+          f_out%ireg(1) = i1
+       end if
+       if (f_out%ireg(2) == i1) then
+          f_out%ireg(2) = i2
+       else if (f_out%ireg(2) == i2) then
+          f_out%ireg(2) = i1
+       end if
+    end do
+    if (f_out%ireg(1) > f_out%ireg(2)) f_out%ireg = f_out%ireg([2,1])
+  end function flavor_permutation_apply_ftuple
+
+@ %def flavor_permutation_apply_ftuple
+@
+<<fks regions: procedures>>=
+  subroutine apply_permutations_on_ftuple_array (perm, ftuples, equivalences)
+    type(flavor_permutation_t), intent(in) :: perm
+    type(ftuple_t), intent(inout), dimension(:) :: ftuples
+    logical, intent(inout), dimension(:,:) :: equivalences
+    type(ftuple_t), dimension(:), allocatable :: ftuples_save
+    integer :: i, j, n
+    integer, dimension(:), allocatable :: old_to_new
+    logical, dimension(:,:), allocatable :: eq_tmp
+    n = size (ftuples)
+    allocate (ftuples_save (n))
+    ftuples_save = ftuples
+    allocate (old_to_new (n))
+    old_to_new = [(i, i = 1, n)]
+    ftuples = perm%apply (ftuples)
+    do i = 1, n
+       do j = 1, n
+          if (ftuples_save(i) == ftuples(j)) old_to_new(i) = j
+       end do
+    end do
+    allocate (eq_tmp (n, n))
+    do i = 1, n
+       eq_tmp(i,:) = equivalences(old_to_new(i),:)
+    end do
+    equivalences = eq_tmp
+    deallocate (ftuples_save)
+    deallocate (old_to_new)
+    deallocate (eq_tmp)
+  end subroutine apply_permutations_on_ftuple_array
+
+@ %def apply_permutations_on_ftuple_array
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with
 an $\alpha_r$- and resonance-index, with a real flavor structure and
@@ -979,18 +1387,17 @@ also be supplied by a symmetry factor, explained below.
   procedure :: init => singular_region_init
 <<fks regions: procedures>>=
   subroutine singular_region_init (sregion, alr, mult, i_res, &
-         flst_real, flst_uborn, flv_born, emitter, ftuples, index)
+         flst_real, flst_uborn, flv_born, emitter, ftuples, equivalences)
     class(singular_region_t), intent(out) :: sregion
     integer, intent(in) :: alr, mult, i_res
     type(flv_structure_t), intent(in) :: flst_real
     type(flv_structure_t), intent(in) :: flst_uborn
     type(flv_structure_t), dimension(:), intent(in) :: flv_born
     integer, intent(in) :: emitter
-    type(ftuple_list_t), intent(in), dimension(:), target :: ftuples
-    integer, dimension(:), intent(in) :: index
-    type(ftuple_list_t), pointer :: current_region
-    integer :: i, i1, i2, nlegs
-    call msg_debug (D_SUBTRACTION, "singular_region_init")
+    type(ftuple_t), intent(inout), dimension(:) :: ftuples
+    logical, intent(inout), dimension(:,:) :: equivalences
+    integer :: i, i1, i2
+    integer :: n_regions, n_legs
     call debug_input_values ()
     sregion%alr = alr
     sregion%mult = mult
@@ -998,16 +1405,17 @@ also be supplied by a symmetry factor, explained below.
     sregion%flst_real = flst_real
     sregion%flst_uborn = flst_uborn
     sregion%emitter = emitter
-    sregion%nregions = ftuples (index(alr))%get_n_tuples ()
-    nlegs = size (flst_real%flst)
+    n_regions = size (ftuples)
+    sregion%nregions = size (ftuples)
+    n_legs = size (flst_real%flst)
     allocate (sregion%ftuples (sregion%nregions))
+
     do i = 1, sregion%nregions
-       current_region => ftuples (index(alr))%get_entry (i)
-       if (.not. associated (current_region%equiv)) then
-          call current_region%ftuple%get (i1, i2)
-          if (i2 /= nlegs) call current_region%ftuple%set (i1, nlegs)
+       sregion%ftuples = ftuples
+       if (.not. any (equivalences(i,:))) then
+          call ftuples(i)%get (i1, i2)
+          if (i2 /= n_legs) call ftuples(i)%set (i1, n_legs)
        end if
-       sregion%ftuples (i) = current_region%ftuple
     end do
     do i = 1, size(flv_born)
        if (flv_born (i) == sregion%flst_uborn) then
@@ -1017,20 +1425,20 @@ also be supplied by a symmetry factor, explained below.
     end do
   contains
     subroutine debug_input_values()
+      integer :: i
+      call msg_debug2 (D_SUBTRACTION, "singular_region_init")
       if (debug2_active (D_SUBTRACTION)) then
          print *, 'alr =    ', alr
          print *, 'mult =    ', mult
          print *, 'i_res =    ', i_res
          call flst_real%write ()
          call flst_uborn%write ()
-         do i = 1, size (flv_born)
-            call flv_born(i)%write ()
-         end do
          print *, 'emitter =    ', emitter
+         print *, 'ftuples: '
          do i = 1, size (ftuples)
-            call ftuples(i)%write ()
+            call ftuples(i)%write (newline = .false.)
          end do
-         print *, 'index =    ', index
+         print *, ''
       end if
     end subroutine debug_input_values
   end subroutine singular_region_init
@@ -1063,6 +1471,8 @@ also be supplied by a symmetry factor, explained below.
     end do
     write (u, flst_format, advance = 'no') sregion%flst_real%flst(nreal), ']'
     call write_vline (u)
+    write (u, '(I6)', advance = 'no') sregion%real_index
+    call write_vline (u)
     write (u, '(I3)', advance = 'no') sregion%emitter
     call write_vline (u)
     write (u, '(I3)', advance = 'no') sregion%mult
@@ -1091,42 +1501,7 @@ also be supplied by a symmetry factor, explained below.
           write(u, ireg_space_format, advance='no') ' '
        end do
     end if
-    write (u,'(A1)', advance = 'no') '{'
-    if (nreg > 1) then
-       do i = 1, nreg - 1
-          call sregion%ftuples(i)%get (i1, i2)
-          if (sregion%ftuples(i)%pseudo_isr) then
-             closing_bracket = ')*'
-          else
-             closing_bracket = ')'
-          end if
-          i_res = sregion%ftuples(i)%i_res
-          if (i_res > 0) then
-             write (u, ireg_format_resonant, advance = 'no') &
-                '(', i1, ',', i2, ';', i_res, closing_bracket
-          else
-             write(u, ireg_format, advance = 'no') '(', i1, ',', i2, closing_bracket
-          end if
-       end do
-    end if
-    call sregion%ftuples(nreg)%get (i1, i2)
-    i_res = sregion%ftuples(nreg)%i_res
-    if (sregion%ftuples(nreg)%pseudo_isr) then
-       closing_bracket = ')*}'
-    else
-       closing_bracket = ')}'
-    end if
-    if (i_res > 0) then
-       write (u, ireg_format_resonant, advance = 'no') &
-          '(', i1, ',', i2, '; ', i_res, closing_bracket
-    else
-       write (u, ireg_format, advance = 'no') '(', i1, ',', i2, closing_bracket
-    end if
-    if (nright > 0) then
-       do i = 1, nright
-          write(u, ireg_space_format, advance='no') ' '
-       end do
-    end if
+    write (u, '(A)', advance = 'no') char (ftuple_string (sregion%ftuples, .false.))
     call write_vline (u)
     write (u,'(A1)',advance = 'no') '['
     do i = 1, nborn - 1
@@ -1139,6 +1514,24 @@ also be supplied by a symmetry factor, explained below.
   end subroutine singular_region_write
 
 @ %def singular_region_write
+@
+<<fks regions: singular region: TBP>>=
+  procedure :: write_latex => singular_region_write_latex
+<<fks regions: procedures>>=
+  subroutine singular_region_write_latex (region, unit)
+    class(singular_region_t), intent(in) :: region
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit); if (u < 0) return
+    write (u, "(I1,A3,A,A3,I2,A3,I1,A3,I1,A3,A,A3,I2,A3,A,A3)") &
+           region%alr, " & ", char (region%flst_real%to_string ()), &
+           " & ", region%real_index, " & ", region%emitter, " & ", &
+           region%mult, " & ", char (ftuple_string (region%ftuples, .true.)), &
+           " & ", region%uborn_index, " & ",  char (region%flst_uborn%to_string ()), &
+           " \\"
+  end subroutine singular_region_write_latex
+
+@ %def singular_region_write_latex
 @ In case of a $g \rightarrow gg$ or $g \rightarrow qq$ splitting, the factor
 \begin{equation*}
  \frac{2E_{\rm{em}}}{E_{\rm{em}} + E_{\rm{rad}}}
@@ -1161,16 +1554,15 @@ there is only a soft singularity if the radiated parton becomes soft.
              cycle
           else
              region%soft_divergence = &
-                ftuple(reg)%splitting_type /= G_TO_QQ
+                  ftuple(reg)%splitting_type /= G_TO_QQ
 
              if (i1 == 0) then
                region%coll_divergence = .true.
              else
-               region%coll_divergence = &
-                    .not. region%flst_real%massive(i1)
+               region%coll_divergence = .not. region%flst_real%massive(i1)
              end if
 
-             if (ftuple(reg)%splitting_type > 1) then
+             if (ftuple(reg)%splitting_type == G_TO_GG) then
                 region%double_fsr = .true.
                 exit
              else if (ftuple(reg)%splitting_type == UNDEFINED_SPLITTING) then
@@ -1192,11 +1584,11 @@ there is only a soft singularity if the radiated parton becomes soft.
     real(default) :: val
     real(default) :: E_rad, E_em
     if (region%double_fsr) then
-      E_em = energy (p(region%emitter))
-      E_rad = energy (p(region%flst_real%get_nlegs()))
-      val = two * E_em / (E_em + E_rad)
+       E_em = energy (p(region%emitter))
+       E_rad = energy (p(region%flst_real%get_nlegs()))
+       val = two * E_em / (E_em + E_rad)
     else
-      val = one
+       val = one
     end if
   end function singular_region_double_fsr_factor
 
@@ -1224,6 +1616,21 @@ there is only a soft singularity if the radiated parton becomes soft.
   end function singular_region_has_collinear_divergence
 
 @ %def singular_region_has_collinear_divergence
+@
+<<fks regions: singular region: TBP>>=
+  procedure :: has_identical_ftuples => singular_region_has_identical_ftuples
+<<fks regions: procedures>>=
+  elemental function singular_region_has_identical_ftuples (sregion) result (value)
+    logical :: value
+    class(singular_region_t), intent(in) :: sregion
+    integer :: alr
+    value = .false.
+    do alr = 1, sregion%nregions
+       value = value .or. (count (sregion%ftuples(alr) == sregion%ftuples) > 1)
+    end do
+  end function singular_region_has_identical_ftuples
+
+@ %def singular_region_has_identical_ftuples
 @
 <<fks regions: interfaces>>=
   interface assignment(=)
@@ -1418,7 +1825,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     integer, intent(in) :: alr
     type(vector4_t), intent(in), dimension(:) :: p
     real(default) :: sumpfr
-    integer :: i_res, i_alr
+    integer :: i_res
     sumpfr = zero
     do i_res = 1, size (res_map%res_histories)
        sumpfr = sumpfr + res_map%get_resonance_value (i_res, p)
@@ -1543,7 +1950,6 @@ $\sum_\alpha S_\alpha = 1$.
     integer :: n_legs_real = 0
     integer :: n_phs = 0
     integer, dimension(:), allocatable :: underlying_borns
-    type(flavor_t) :: flv_extra
     class(fks_mapping_t), allocatable :: fks_mapping
     integer, dimension(:), allocatable :: resonances
     type(resonance_contributors_t), dimension(:), allocatable :: alr_contributors
@@ -1578,7 +1984,7 @@ $\sum_\alpha S_\alpha = 1$.
   procedure :: init => region_data_init
 <<fks regions: procedures>>=
   subroutine region_data_init (reg_data, n_in, model, flavor_born, &
-    flavor_real)
+      flavor_real)
     class(region_data_t), intent(inout) :: reg_data
     integer, intent(in) :: n_in
     type(model_t), intent(in) :: model
@@ -1587,27 +1993,27 @@ $\sum_\alpha S_\alpha = 1$.
     integer, dimension(:), allocatable :: emitter
     type(flv_structure_t), dimension(:), allocatable :: flst_alr
     integer :: i
+    integer :: n_flv_real_before_check
     reg_data%n_in = n_in
     reg_data%n_flv_born = size (flavor_born, dim = 2)
-    reg_data%n_flv_real = size (flavor_real, dim = 2)
     reg_data%n_legs_born = size (flavor_born, dim = 1)
     reg_data%n_legs_real = reg_data%n_legs_born + 1
+    n_flv_real_before_check = size (flavor_real, dim = 2)
     allocate (reg_data%flv_born (reg_data%n_flv_born))
-    allocate (reg_data%flv_real (reg_data%n_flv_real))
+    allocate (reg_data%flv_real (n_flv_real_before_check))
     do i = 1, reg_data%n_flv_born
        call reg_data%flv_born(i)%init (flavor_born (:, i), n_in)
     end do
-    do i = 1, reg_data%n_flv_real
+    do i = 1, n_flv_real_before_check
        call reg_data%flv_real(i)%init (flavor_real (:, i), n_in)
     end do
 
-    call reg_data%flv_extra%init &
-       (reg_data%flv_real(1)%flst(reg_data%n_legs_real), model)
     call reg_data%find_regions (model, ftuples, emitter, flst_alr)
     call reg_data%init_singular_regions (ftuples, emitter, flst_alr)
+    reg_data%n_flv_real = maxval (reg_data%regions%real_index)
     call reg_data%find_emitters ()
     call reg_data%set_underlying_borns ()
-    call reg_data%evaluate_flavors (model)
+    call reg_data%set_mass_and_color (model)
     call reg_data%set_splitting_info ()
   end subroutine region_data_init
 
@@ -1784,9 +2190,9 @@ computation, but should be generalized further in the future.
 @ %def region_data_split_up_interference_regions_for_threshold
 @
 <<fks regions: reg data: TBP>>=
-  procedure :: evaluate_flavors => region_data_evaluate_flavors
+  procedure :: set_mass_and_color => region_data_set_mass_and_color
 <<fks regions: procedures>>=
-  subroutine region_data_evaluate_flavors (reg_data, model)
+  subroutine region_data_set_mass_and_color (reg_data, model)
     class(region_data_t), intent(inout) :: reg_data
     type(model_t), intent(in) :: model
     integer :: i
@@ -1799,12 +2205,12 @@ computation, but should be generalized further in the future.
     do i = 1, reg_data%n_flv_born
        call reg_data%flv_born(i)%init_mass_and_color (model)
     end do
-    do i = 1, reg_data%n_flv_real
+    do i = 1, size (reg_data%flv_real)
        call reg_data%flv_real(i)%init_mass_and_color (model)
     end do
-  end subroutine region_data_evaluate_flavors
+  end subroutine region_data_set_mass_and_color
 
-@ %def region_data_evaluate_flavors
+@ %def region_data_set_mass_and_color
 @
 <<fks regions: reg data: TBP>>=
   procedure :: uses_resonances => region_data_uses_resonances
@@ -1959,9 +2365,9 @@ computation, but should be generalized further in the future.
 @ %def region_data_get_emitter
 @
 <<fks regions: reg data: TBP>>=
-  procedure :: get_underlying_born_index => region_data_get_underlying_born_index
+  procedure :: map_real_to_born_index => region_data_map_real_to_born_index
 <<fks regions: procedures>>=
-  function region_data_get_underlying_born_index (reg_data, real_index) result (uborn_index)
+  function region_data_map_real_to_born_index (reg_data, real_index) result (uborn_index)
     integer :: uborn_index
     class(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: real_index
@@ -1973,9 +2379,9 @@ computation, but should be generalized further in the future.
           exit
        end if
     end do
-  end function region_data_get_underlying_born_index
+  end function region_data_map_real_to_born_index
 
-@ %def region_data_get_underlying_born_index
+@ %def region_data_map_real_to_born_index
 @ Creates a list of $\alpha_r$ which share the same underlying Born index.
 We factor out the computation of the size of the underlying Born group so that we
 do not need to call the whole routine twice when we work around the ifort
@@ -2004,43 +2410,22 @@ auto-allocation bug.
     integer, dimension(:), allocatable :: uborn_group
     class(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: uborn_index
-    integer :: alr, n_uborn, i_uborn
+    integer :: alr, n_uborn, i_born
     n_uborn = reg_data%get_uborn_group_size (uborn_index)
     if (n_uborn > 0) then
        allocate (uborn_group (n_uborn))
-       i_uborn = 1
+       i_born = 1
        do alr = 1, reg_data%n_regions
           if (reg_data%regions(alr)%i_res > 1) cycle
           if (reg_data%regions(alr)%uborn_index == uborn_index) then
-             uborn_group (i_uborn) = alr
-             i_uborn = i_uborn + 1
+             uborn_group (i_born) = alr
+             i_born = i_born + 1
           end if
        end do
     end if
   end function region_data_get_uborn_group
 
 @ %def region_data_get_uborn_group
-@
-<<fks regions: reg data: TBP>>=
-  generic :: get_real_index => get_real_index_single, get_real_index_array
-  procedure :: get_real_index_single => region_data_get_real_index_single
-  procedure :: get_real_index_array => region_data_get_real_index_array
-<<fks regions: procedures>>=
-  function region_data_get_real_index_array (reg_data) result (i_flv)
-    integer, dimension(:), allocatable :: i_flv
-    class(region_data_t), intent(in) :: reg_data
-    allocate (i_flv (reg_data%n_regions))
-    i_flv = reg_data%regions%real_index
-  end function region_data_get_real_index_array
-
-  function region_data_get_real_index_single (reg_data, alr) result (i_flv)
-    integer :: i_flv
-    class(region_data_t), intent(in) :: reg_data
-    integer, intent(in) :: alr
-    i_flv = reg_data%regions(alr)%real_index
-  end function region_data_get_real_index_single
-
-@ %def region_data_get_real_index
 @ Same as above, for emitters with the same underlying Born index.
 <<fks regions: reg data: TBP>>=
   procedure :: get_emitter_group_size => region_data_get_emitter_group_size
@@ -2098,51 +2483,127 @@ auto-allocation bug.
     end do
   end function region_data_get_flv_states_born_array
 
-  function region_data_get_flv_states_born_single (reg_data, i) result (flv_states)
+  function region_data_get_flv_states_born_single (reg_data, i_flv) result (flv_states)
     integer, dimension(:), allocatable :: flv_states
     class(region_data_t), intent(in) :: reg_data
-    integer, intent(in) :: i
+    integer, intent(in) :: i_flv
     allocate (flv_states (reg_data%n_legs_born))
-    flv_states = reg_data%flv_born(i)%flst
+    flv_states = reg_data%flv_born(i_flv)%flst
   end function region_data_get_flv_states_born_single
 
 @ %def region_data_get_flv_states_born
+@
 <<fks regions: reg data: TBP>>=
   generic :: get_flv_states_real => get_flv_states_real_single, get_flv_states_real_array
   procedure :: get_flv_states_real_single => region_data_get_flv_states_real_single
   procedure :: get_flv_states_real_array => region_data_get_flv_states_real_array
 <<fks regions: procedures>>=
+  function region_data_get_flv_states_real_single (reg_data, i_flv) result (flv_states)
+    integer, dimension(:), allocatable :: flv_states
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: i_flv
+    integer :: i_reg
+    allocate (flv_states (reg_data%n_legs_real))
+    do i_reg = 1, reg_data%n_regions
+       if (i_flv == reg_data%regions(i_reg)%real_index) then
+          flv_states = reg_data%regions(i_reg)%flst_real%flst
+          exit
+       end if
+    end do
+  end function region_data_get_flv_states_real_single
+
   function region_data_get_flv_states_real_array (reg_data) result (flv_states)
     integer, dimension(:,:), allocatable :: flv_states
     class(region_data_t), intent(in) :: reg_data
     integer :: i_flv
     allocate (flv_states (reg_data%n_legs_real, reg_data%n_flv_real))
     do i_flv = 1, reg_data%n_flv_real
-       flv_states (:, i_flv) = reg_data%flv_real(i_flv)%flst
+       flv_states (:, i_flv) = reg_data%get_flv_states_real (i_flv)
     end do
   end function region_data_get_flv_states_real_array
 
-  function region_data_get_flv_states_real_single (reg_data, i) result (flv_states)
-    integer, dimension(:), allocatable :: flv_states
-    class(region_data_t), intent(in) :: reg_data
-    integer, intent(in) :: i
-    allocate (flv_states (reg_data%n_legs_real))
-    flv_states = reg_data%flv_real(i)%flst
-  end function region_data_get_flv_states_real_single
-
 @ %def region_data_get_flv_states_real
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_all_flv_states => region_data_get_all_flv_states
+<<fks regions: procedures>>=
+  subroutine region_data_get_all_flv_states (reg_data, flv_born, flv_real)
+     class(region_data_t), intent(in) :: reg_data
+     integer, dimension(:,:), allocatable, intent(out) :: flv_born, flv_real
+     allocate (flv_born (reg_data%n_legs_born, reg_data%n_flv_born))
+     flv_born = reg_data%get_flv_states_born ()
+     allocate (flv_real (reg_data%n_legs_real, reg_data%n_flv_real))
+     flv_real = reg_data%get_flv_states_real ()
+  end subroutine region_data_get_all_flv_states
+
+@ %def region_data_get_all_flv_states
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_n_in => region_data_get_n_in
+<<fks regions: procedures>>=
+  function region_data_get_n_in (reg_data) result (n_in)
+    integer :: n_in
+    class(region_data_t), intent(in) :: reg_data
+    n_in = reg_data%n_in
+  end function region_data_get_n_in
+
+@ %def region_data_get_n_in
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_n_legs_real => region_data_get_n_legs_real
+<<fks regions: procedures>>=
+  function region_data_get_n_legs_real (reg_data) result (n_legs)
+    integer :: n_legs
+    class(region_data_t), intent(in) :: reg_data
+    n_legs = reg_data%n_legs_real
+  end function region_data_get_n_legs_real
+
+@ %def region_data_get_n_legs_real
+<<fks regions: reg data: TBP>>=
+  procedure :: get_n_legs_born => region_data_get_n_legs_born
+<<fks regions: procedures>>=
+  function region_data_get_n_legs_born (reg_data) result (n_legs)
+    integer :: n_legs
+    class(region_data_t), intent(in) :: reg_data
+    n_legs = reg_data%n_legs_born
+  end function region_data_get_n_legs_born
+
+@ %def region_data_get_n_legs_born
+<<fks regions: reg data: TBP>>=
+  procedure :: get_n_flv_real => region_data_get_n_flv_real
+<<fks regions: procedures>>=
+  function region_data_get_n_flv_real (reg_data) result (n_flv)
+    integer :: n_flv
+    class(region_data_t), intent(in) :: reg_data
+    n_flv = reg_data%n_flv_real
+  end function region_data_get_n_flv_real
+
+@ %def region_data_get_n_flv_real
+<<fks regions: reg data: TBP>>=
+  procedure :: get_n_flv_born => region_data_get_n_flv_born
+<<fks regions: procedures>>=
+  function region_data_get_n_flv_born (reg_data) result (n_flv)
+    integer :: n_flv
+    class(region_data_t), intent(in) :: reg_data
+    n_flv = reg_data%n_flv_born
+  end function region_data_get_n_flv_born
+
+@ %def region_data_get_n_flv_born
+
 @ Returns $S_i = \frac{1}{\mathcal{D}d_i}$ or $S_{ij} =
 \frac{1}{\mathcal{D}d_{ij}}$ for one particular singular region.  At
 this point, the flavor array should be rearranged in such a way that
 the emitted particle is at the last position of
 the flavor structure list.
 <<fks regions: reg data: TBP>>=
-  procedure :: get_svalue => region_data_get_svalue
+  generic :: get_svalue => get_svalue_last_pos, get_svalue_ij
+  procedure :: get_svalue_last_pos => region_data_get_svalue_last_pos
+  procedure :: get_svalue_ij => region_data_get_svalue_ij
 <<fks regions: procedures>>=
-  function region_data_get_svalue (reg_data, p, alr, emitter, i_res) result (sval)
+  function region_data_get_svalue_ij (reg_data, p, alr, i, j, i_res) result (sval)
     class(region_data_t), intent(inout) :: reg_data
     type(vector4_t), intent(in), dimension(:) :: p
-    integer, intent(in) :: alr, emitter
+    integer, intent(in) :: alr, i, j
     integer, intent(in) :: i_res
     real(default) :: sval
     associate (map => reg_data%fks_mapping)
@@ -2152,9 +2613,18 @@ the flavor structure list.
           map%i_con = reg_data%alr_to_i_contributor (alr)
        end select
        map%pseudo_isr = reg_data%regions(alr)%pseudo_isr
-       sval = map%svalue (p, emitter, reg_data%n_legs_real, i_res) * map%normalization_factor
+       sval = map%svalue (p, i, j, i_res) * map%normalization_factor
     end associate
-  end function region_data_get_svalue
+  end function region_data_get_svalue_ij
+
+  function region_data_get_svalue_last_pos (reg_data, p, alr, emitter, i_res) result (sval)
+    class(region_data_t), intent(inout) :: reg_data
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in) :: alr, emitter
+    integer, intent(in) :: i_res
+    real(default) :: sval
+    sval = reg_data%get_svalue (p, alr, emitter, reg_data%n_legs_real, i_res)
+  end function region_data_get_svalue_last_pos
 
 @ %def region_data_get_svalue
 @ The same as above, but for the soft limit.
@@ -2200,113 +2670,180 @@ are therefore equivalent.
   procedure :: find_regions => region_data_find_regions
 <<fks regions: procedures>>=
   subroutine region_data_find_regions &
-       (reg_data, model, ftuples, emitter, flst_alr)
+       (reg_data, model, ftuples, emitters, flst_alr)
     class(region_data_t), intent(in) :: reg_data
     type(model_t), intent(in) :: model
     type(ftuple_list_t), intent(out), dimension(:), allocatable :: ftuples
-    integer, intent(out), dimension(:), allocatable :: emitter
+    integer, intent(out), dimension(:), allocatable :: emitters
     type(flv_structure_t), intent(out), dimension(:), allocatable :: flst_alr
     type(ftuple_t) :: current_ftuple
     integer, dimension(:), allocatable :: emitter_tmp
     type(flv_structure_t), dimension(:), allocatable :: flst_alr_tmp
-    integer :: nreg, nborn, nreal
-    integer :: nlegreal
-    integer, parameter :: maxnregions = 200
-    integer :: i_real
+    type(ftuple_list_t), dimension(:,:), allocatable :: ftuples_tmp
+    integer, dimension(:,:), allocatable :: ftuple_index
+    integer :: n_born, n_real
+    integer :: n_legreal
+    integer, parameter :: n_regions_start = 20
+    integer, parameter :: increment_list = 50
+    integer :: i_born, i_real, i_reg, i_ftuple
+    integer :: last_registered_i_born, last_registered_i_real
 
-    nborn = size (reg_data%flv_born)
-    nreal = size (reg_data%flv_real)
-    nlegreal = size (reg_data%flv_real(1)%flst)
-    allocate (ftuples (nreal))
-    allocate (emitter_tmp (maxnregions))
-    allocate (flst_alr_tmp (maxnregions))
-    nreg = 0
+    n_born = size (reg_data%flv_born)
+    n_real = size (reg_data%flv_real)
+    n_legreal = size (reg_data%flv_real(1)%flst)
+    allocate (ftuples_tmp (n_born,n_real))
+    allocate (ftuple_index (n_born,n_real))
+    allocate (emitter_tmp (n_regions_start))
+    allocate (flst_alr_tmp (n_regions_start))
+    i_reg = 0
+    ftuple_index = 0
+    i_ftuple = 0
+    last_registered_i_born = 0; last_registered_i_real = 0
 
-    do i_real = 1, nreal
-       call check_final_state_emissions (i_real, nreg)
-       call check_initial_state_emissions (i_real, nreg)
+    do i_real = 1, n_real
+       do i_born = 1, n_born
+          call check_final_state_emissions (i_real, i_born, i_reg)
+          call check_initial_state_emissions (i_real, i_born, i_reg)
+       end do
     end do
 
-    allocate (flst_alr (nreg))
-    allocate (emitter (nreg))
-    flst_alr(1 : nreg) = flst_alr_tmp(1 : nreg)
-    emitter(1 : nreg) = emitter_tmp(1 : nreg)
+    if (debug2_active (D_SUBTRACTION)) call print_all_regions ()
+
+    allocate (flst_alr (i_reg))
+    flst_alr = flst_alr_tmp(1 : i_reg)
+    allocate (emitters (i_reg))
+    emitters = emitter_tmp(1 : i_reg)
+    allocate (ftuples (count (ftuples_tmp%get_n_tuples () > 0)))
+    do i_born = 1, n_born
+       do i_real = 1, n_real
+          if (ftuples_tmp(i_born,i_real)%get_n_tuples () > 0) &
+               ftuples(ftuple_index(i_born,i_real)) = ftuples_tmp(i_born,i_real)
+       end do
+    end do
+    deallocate (flst_alr_tmp)
+    deallocate (emitter_tmp)
+    deallocate (ftuples_tmp)
+    deallocate (ftuple_index)
 
   contains
-    subroutine check_final_state_emissions (i_real, i_reg)
-      integer, intent(in) :: i_real
-      integer, intent(inout) :: i_reg
-      integer :: leg1, leg2, i_born
-      type(flv_structure_t) :: born_flavor
-      logical :: valid1, valid2
-      do leg1 = reg_data%n_in + 1, nlegreal
-         do leg2 = leg1 + 1, nlegreal
-            do i_born = 1, nborn
-               born_flavor = reg_data%flv_born(i_born)
-               associate (flv_real => reg_data%flv_real(i_real))
-                  valid1 = flv_real%valid_pair(leg1, leg2, born_flavor, model)
-                  valid2 = flv_real%valid_pair(leg2, leg1, born_flavor, model)
-                  if ( valid1 .or. valid2) then
-                     i_reg = i_reg + 1
-                     if(valid1) then
-                        flst_alr_tmp(i_reg) = &
-                             create_alr (flv_real, reg_data%n_in, leg1, leg2)
-                     else
-                        flst_alr_tmp(i_reg) = &
-                             create_alr (flv_real, reg_data%n_in, leg2, leg1)
-                     end if
-                     call current_ftuple%set (leg1, leg2)
-                     call current_ftuple%determine_splitting_type_fsr &
-                          (flv_real, leg1, leg2)
-                     call ftuples(i_real)%append (current_ftuple)
-                     emitter_tmp(i_reg) = nlegreal - 1
-                     exit
-                  end if
-               end associate
-            end do
-         end do
-      end do
-    end subroutine check_final_state_emissions
+    subroutine extend_flv_array (flv)
+      type(flv_structure_t), intent(inout), dimension(:), allocatable :: flv
+      type(flv_structure_t), dimension(:), allocatable :: flv_store
+      integer :: n
+      n = size (flv)
+      allocate (flv_store (n))
+      flv_store = flv
+      deallocate (flv)
+      allocate (flv (n + increment_list))
+      flv(1:n) = flv_store
+      deallocate (flv_store)
+    end subroutine extend_flv_array
 
-    subroutine check_initial_state_emissions (i_real, i_reg)
-      integer, intent(in) :: i_real
+    function incr_i_ftuple_if_required (i_born, i_real, i_ftuple_in) result (i_ftuple)
+      integer :: i_ftuple
+      integer, intent(in) :: i_born, i_real, i_ftuple_in
+      if (last_registered_i_born /= i_born .or. last_registered_i_real /= i_real) then
+         last_registered_i_born = i_born
+         last_registered_i_real = i_real
+         i_ftuple = i_ftuple_in + 1
+      else
+         i_ftuple = i_ftuple_in
+      end if
+    end function incr_i_ftuple_if_required
+
+    subroutine check_final_state_emissions (i_real, i_born, i_reg)
+      integer, intent(in) :: i_real, i_born
       integer, intent(inout) :: i_reg
-      integer :: leg, i_born, emitter
+      integer :: leg1, leg2
       type(flv_structure_t) :: born_flavor
       logical :: valid1, valid2
-      do leg = reg_data%n_in + 1, nlegreal
-         do i_born = 1, nborn
-            born_flavor = reg_data%flv_born (i_born)
+      born_flavor = reg_data%flv_born(i_born)
+      do leg1 = reg_data%n_in + 1, n_legreal
+         do leg2 = leg1 + 1, n_legreal
             associate (flv_real => reg_data%flv_real(i_real))
-               valid1 = flv_real%valid_pair(1, leg, born_flavor, model)
-               if (reg_data%n_in > 1) then
-                  valid2 = flv_real%valid_pair(2, leg, born_flavor, model)
-               else
-                  valid2 = .false.
-               end if
-               if (valid1 .and. valid2) then
-                  emitter = 0
-               else if (valid1 .and. .not. valid2) then
-                  emitter = 1
-               else if (.not. valid1 .and. valid2) then
-                  emitter = 2
-               else
-                  emitter = -1
-               end if
+               valid1 = flv_real%valid_pair(leg1, leg2, born_flavor, model)
+               valid2 = flv_real%valid_pair(leg2, leg1, born_flavor, model)
                if (valid1 .or. valid2) then
                   i_reg = i_reg + 1
-                  call current_ftuple%set(emitter, leg)
-                  call current_ftuple%determine_splitting_type_isr &
-                     (flv_real, emitter, leg)
-                  call ftuples(i_real)%append (current_ftuple)
-                  emitter_tmp(i_reg) = emitter
-                  flst_alr_tmp(i_reg) = &
-                     create_alr (flv_real, reg_data%n_in, emitter, leg)
+                  if (i_reg > size (flst_alr_tmp)) call extend_flv_array (flst_alr_tmp)
+                  if(valid1) then
+                     flst_alr_tmp(i_reg) = create_alr (flv_real, &
+                          reg_data%n_in, leg1, leg2)
+                  else
+                     flst_alr_tmp(i_reg) = create_alr (flv_real, &
+                          reg_data%n_in, leg2, leg1)
+                  end if
+                  call current_ftuple%set (leg1, leg2)
+                  call current_ftuple%determine_splitting_type_fsr &
+                       (flv_real, leg1, leg2)
+                  i_ftuple = incr_i_ftuple_if_required (i_born, i_real, i_ftuple)
+                  call ftuples_tmp(i_born,i_real)%append (current_ftuple)
+                  ftuple_index(i_born,i_real) = i_ftuple
+                  if (i_reg > size (emitter_tmp)) &
+                       call extend_integer_array (emitter_tmp, increment_list)
+                  emitter_tmp(i_reg) = n_legreal - 1
                end if
             end associate
          end do
       end do
+    end subroutine check_final_state_emissions
+
+    subroutine check_initial_state_emissions (i_real, i_born, i_reg)
+      integer, intent(in) :: i_real, i_born
+      integer, intent(inout) :: i_reg
+      integer :: leg, emitter
+      type(flv_structure_t) :: born_flavor
+      logical :: valid1, valid2
+      born_flavor = reg_data%flv_born (i_born)
+      do leg = reg_data%n_in + 1, n_legreal
+         associate (flv_real => reg_data%flv_real(i_real))
+            valid1 = flv_real%valid_pair(1, leg, born_flavor, model)
+            if (reg_data%n_in > 1) then
+               valid2 = flv_real%valid_pair(2, leg, born_flavor, model)
+            else
+               valid2 = .false.
+            end if
+            if (valid1 .and. valid2) then
+               emitter = 0
+            else if (valid1 .and. .not. valid2) then
+               emitter = 1
+            else if (.not. valid1 .and. valid2) then
+               emitter = 2
+            else
+               emitter = -1
+            end if
+            if (valid1 .or. valid2) then
+               i_reg = i_reg + 1
+               call current_ftuple%set(emitter, leg)
+               call current_ftuple%determine_splitting_type_isr &
+                    (flv_real, emitter, leg)
+               i_ftuple = incr_i_ftuple_if_required (i_born, i_real, i_ftuple)
+               call ftuples_tmp(i_born,i_real)%append (current_ftuple)
+               ftuple_index(i_born,i_real) = i_real
+               if (i_reg > size (emitter_tmp)) &
+                    call extend_integer_array (emitter_tmp, increment_list)
+               emitter_tmp(i_reg) = emitter
+               if (i_reg > size (flst_alr_tmp)) call extend_flv_array (flst_alr_tmp)
+               flst_alr_tmp(i_reg) = &
+                    create_alr (flv_real, reg_data%n_in, emitter, leg)
+            end if
+         end associate
+      end do
     end subroutine check_initial_state_emissions
+
+    subroutine print_all_regions
+       print *, 'Intermediate ftuples: '
+       do i_real = 1, n_real
+          print *, 'i_real: ', i_real, ' // ', reg_data%flv_real(i_real)%flst
+          do i_born = 1, n_born
+             print *, 'i_born: ', i_born, ' // ', reg_data%flv_born(i_born)%flst
+             print *, 'ftuples: '
+             call ftuples_tmp(i_born,i_real)%write ()
+             print *, '**************************'
+          end do
+      end do
+    end subroutine print_all_regions
+
   end subroutine region_data_find_regions
 
 @ %def region_data_find_regions
@@ -2322,146 +2859,206 @@ of the present one is increased.
          (reg_data, ftuples, emitter, flv_alr)
     class(region_data_t), intent(inout) :: reg_data
     type(ftuple_list_t), intent(inout), dimension(:), allocatable :: ftuples
-    integer :: n_valid_ftuples
+    integer :: n_independent_flv
     integer, intent(in), dimension(:) :: emitter
     type(flv_structure_t), intent(in), dimension(:) :: flv_alr
-    type(flv_structure_t), dimension(:), allocatable :: flv_uborn, flv_alr2
+    type(flv_structure_t), dimension(:), allocatable :: flv_uborn, flv_alr_registered
     integer, dimension(:), allocatable :: mult
     integer, dimension(:), allocatable :: flst_emitter
-    integer :: nregions, maxregions
-    integer, dimension(:,:), allocatable :: perm_list
+    integer :: n_regions, maxregions
     integer, dimension(:), allocatable :: index
-    integer :: i, j, k, l
-    integer :: nlegs
-    logical :: equiv
-    integer :: i_first, j_first
-    integer, dimension(:), allocatable :: &
-         region_to_ftuple, ftuple_limits, k_index
-    type(flv_structure_t) :: flv_save
+    integer :: i, i_flv, n_legs
+    logical :: equiv, valid_fs_splitting
+    integer :: i_first, i_reg, i_reg_prev
+    integer, dimension(:), allocatable :: region_to_ftuple, alr_limits
+    integer, dimension(:), allocatable :: equiv_index
 
     maxregions = size (emitter)
-    nlegs = flv_alr(1)%nlegs
+    n_legs = flv_alr(1)%nlegs
 
     allocate (flv_uborn (maxregions))
-    allocate (flv_alr2 (maxregions))
+    allocate (flv_alr_registered (maxregions))
     allocate (mult (maxregions))
+    mult = 0
     allocate (flst_emitter (maxregions))
     allocate (index (maxregions))
     allocate (region_to_ftuple (maxregions))
-    allocate (k_index (maxregions))
+    allocate (equiv_index (maxregions))
 
-    mult = 0
-    n_valid_ftuples = 0
-    do i = 1, size (ftuples)
-       if (ftuples(i)%get_n_tuples() > 0) &
-          n_valid_ftuples = n_valid_ftuples + 1
-    end do
-    allocate (ftuple_limits (n_valid_ftuples))
-
-    j = 1
-    do i = 1, size (ftuples)
-       if (ftuples(i)%get_n_tuples() > 0) then
-          ftuple_limits(j) = ftuples(i)%get_n_tuples ()
-          j = j + 1
-       end if
-    end do
-    if (.not. (sum (ftuple_limits) == maxregions)) &
-       call msg_fatal ("Too many regions!")
-    k = 1
-    do j = 1, n_valid_ftuples
-       do i = 1, ftuple_limits(j)
-          region_to_ftuple(k) = i
-          k = k + 1
-       end do
-    end do
+    call setup_region_mappings (n_independent_flv, alr_limits, region_to_ftuple)
     i_first = 1
-    j_first = 1
-    j = 1
-    SCAN_REGIONS: do l = 1, n_valid_ftuples
-       SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) - 1
+    i_reg = 1
+    SCAN_FLAVORS: do i_flv = 1, n_independent_flv
+       SCAN_FTUPLES: do i = i_first, i_first + alr_limits (i_flv) - 1
           equiv = .false.
           if (i == i_first) then
-             flv_alr2(j) = flv_alr(i)
-             mult(j) = mult(j) + 1
-             flv_uborn(j) = flv_alr(i)%create_uborn (emitter(i))
-             flst_emitter(j) = emitter(i)
-             index (j) = region_to_index(ftuples, i)
-             k_index (j) = region_to_ftuple(i)
-             j = j + 1
+             flv_alr_registered(i_reg) = flv_alr(i)
+             mult(i_reg) = mult(i_reg) + 1
+             flv_uborn(i_reg) = flv_alr(i)%create_uborn (emitter(i))
+             flst_emitter(i_reg) = emitter(i)
+             index (i_reg) = region_to_index(ftuples, i)
+             equiv_index (i_reg) = region_to_ftuple(i)
+             i_reg  = i_reg + 1
           else
              !!! Check for equivalent flavor structures
-             do k = j_first, j - 1
-                if (emitter(i) == emitter(k) .and. emitter(i) > reg_data%n_in) then
-                   if (flv_alr(i) == flv_alr2(k) .and. &
-                      flv_alr(i)%flst(nlegs - 1) == flv_alr2(k)%flst(nlegs - 1) &
-                      .and. flv_alr(i)%flst(nlegs) == flv_alr2(k)%flst(nlegs)) then
-                      mult(k) = mult(k) + 1
+             do i_reg_prev = 1, i_reg - 1
+                if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) > reg_data%n_in) then
+                   valid_fs_splitting = check_fs_splitting (flv_alr(i)%get_last_two(n_legs), &
+                          flv_alr_registered(i_reg_prev)%get_last_two(n_legs))
+                   if (flv_alr(i) == flv_alr_registered(i_reg_prev) .and. valid_fs_splitting) then
+                      mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
-                         (k_index(k), region_to_ftuple(i))
+                           (equiv_index(i_reg_prev), region_to_ftuple(i))
                       exit
                    end if
-                else if (emitter(i) == emitter(k) .and. emitter(i) <= reg_data%n_in) then
-                   if (flv_alr(i) == flv_alr2(k)) then
-                      mult(k) = mult(k) + 1
+                else if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) <= reg_data%n_in) then
+                   if (flv_alr(i) == flv_alr_registered(i_reg_prev)) then
+                      mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
-                      call ftuples (region_to_index(ftuples,i))%set_equiv &
-                         (k_index(k), region_to_ftuple(i))
+                      call ftuples (region_to_index(ftuples, i))%set_equiv &
+                           (equiv_index(i_reg_prev), region_to_ftuple(i))
                       exit
                    end if
                 end if
              end do
              if (.not. equiv) then
-                flv_alr2(j) = flv_alr(i)
-                mult(j) = mult(j) + 1
-                flv_uborn(j) = flv_alr(i)%create_uborn (emitter(i))
-                flst_emitter(j) = emitter(i)
-                index (j) = region_to_index (ftuples, i)
-                k_index (j) = region_to_ftuple(i)
-                j = j + 1
+                flv_alr_registered(i_reg) = flv_alr(i)
+                mult(i_reg) = mult(i_reg) + 1
+                flv_uborn(i_reg) = flv_alr(i)%create_uborn (emitter(i))
+                flst_emitter(i_reg) = emitter(i)
+                index (i_reg) = region_to_index (ftuples, i)
+                equiv_index (i_reg) = region_to_ftuple(i)
+                i_reg = i_reg + 1
              end if
           end if
        end do SCAN_FTUPLES
-       i_first = i_first + ftuple_limits(l)
-       j_first = j_first + j - 1
-    end do SCAN_REGIONS
-    nregions = j - 1
-    allocate (reg_data%regions (nregions))
-    reg_data%n_regions = nregions
-    do j = 1, nregions
-       do i = 1, reg_data%n_flv_born
-          if (reg_data%flv_born (i) == flv_uborn (j)) then
-             if (allocated (perm_list)) deallocate (perm_list)
-             call fks_permute_born &
-                (reg_data%flv_born (i), reg_data%n_in, flv_uborn (j), perm_list)
-             call fks_apply_perm (flv_alr2(j), flst_emitter(j), perm_list)
-          end if
-       end do
-    end do
-    do i = 1, nregions
-       call reg_data%regions(i)%init (i, mult(i), 0, flv_alr2(i), &
-          flv_uborn(i), reg_data%flv_born, flst_emitter(i), ftuples, &
-          index)
-    end do
-    ! TODO: (bcn 2015-12-15) can this be put in singular_region_init?
-    k = 1
-    associate (regions => reg_data%regions)
-       do i = 1, nregions
-          if (i == 1) then
-             regions(i)%real_index = 1
-             flv_save = flv_alr2(1)
-             cycle
-          end if
-          if (flv_alr2(i) == flv_save) then
-             regions(i)%real_index = k
-          else
-             k = k + 1
-             regions(i)%real_index = k
-             flv_save = flv_alr2(i)
-          end if
-       end do
-    end associate
+       i_first = i_first + alr_limits(i_flv)
+    end do SCAN_FLAVORS
+    n_regions = i_reg - 1
 
+    allocate (reg_data%regions (n_regions))
+    reg_data%n_regions = n_regions
+    call init_regions_with_permuted_flavors ()
+    call assign_real_indices ()
+
+    deallocate (flv_uborn)
+    deallocate (flv_alr_registered)
+    deallocate (mult)
+    deallocate (flst_emitter)
+    deallocate (index)
+    deallocate (region_to_ftuple)
+    deallocate (equiv_index)
+
+  contains
+
+    subroutine setup_region_mappings (n_independent_flv, &
+           alr_limits, region_to_ftuple)
+       integer, intent(inout) :: n_independent_flv
+       integer, intent(inout), dimension(:), allocatable :: alr_limits
+       integer, intent(inout), dimension(:), allocatable :: region_to_ftuple
+       integer :: i, j, i_flv
+       n_independent_flv = 0
+       do i = 1, size (ftuples)
+          if (ftuples(i)%get_n_tuples() > 0) &
+             n_independent_flv = n_independent_flv + 1
+       end do
+       allocate (alr_limits (n_independent_flv))
+
+       j = 1
+       do i = 1, size (ftuples)
+          if (ftuples(i)%get_n_tuples() > 0) then
+             alr_limits(j) = ftuples(i)%get_n_tuples ()
+             j = j + 1
+          end if
+       end do
+
+       if (.not. (sum (alr_limits) == maxregions)) &
+            call msg_fatal ("Too many regions!")
+
+       j = 1
+       do i_flv = 1, n_independent_flv
+          do i = 1, alr_limits(i_flv)
+             region_to_ftuple(j) = i
+             j = j + 1
+          end do
+       end do
+    end subroutine setup_region_mappings
+
+    subroutine init_regions_with_permuted_flavors ()
+       type(flavor_permutation_t) :: perm_list
+       type(ftuple_t), dimension(:), allocatable :: ftuple_array
+       logical, dimension(:,:), allocatable :: equivalences
+       integer :: i, j
+       do j = 1, n_regions
+          do i = 1, reg_data%n_flv_born
+             if (reg_data%flv_born (i) == flv_uborn (j)) then
+                call perm_list%reset ()
+                call perm_list%init (reg_data%flv_born(i), flv_uborn(j), &
+                     reg_data%n_in, reg_data%n_legs_born)
+                flv_uborn(j) = perm_list%apply (flv_uborn(j))
+                flv_alr_registered(j) = perm_list%apply (flv_alr_registered(j))
+                flst_emitter(j) = perm_list%apply (flst_emitter(j))
+             end if
+          end do
+          call ftuples(index(j))%to_array (ftuple_array, equivalences, .true.)
+          do i = 1, size (reg_data%flv_real)
+             if (reg_data%flv_real(i) == flv_alr_registered(j)) then
+                call perm_list%reset ()
+                call perm_list%init (flv_alr_registered(j), reg_data%flv_real(i), &
+                     reg_data%n_in, reg_data%n_legs_real)
+                call apply_permutations_on_ftuple_array (perm_list, ftuple_array, equivalences)
+             end if
+          end do
+          call reg_data%regions(j)%init (j, mult(j), 0, flv_alr_registered(j), &
+               flv_uborn(j), reg_data%flv_born, flst_emitter(j), ftuple_array, &
+               equivalences)
+          if (allocated (ftuple_array)) deallocate (ftuple_array)
+          if (allocated (equivalences)) deallocate (equivalences)
+       end do
+    end subroutine init_regions_with_permuted_flavors
+
+    subroutine assign_real_indices ()
+      type(flv_structure_t) :: current_flv_real
+      integer :: i_real, current_uborn_index
+      i_real = 1
+      associate (regions => reg_data%regions)
+         do i = 1, reg_data%n_regions
+            if (i == 1) then
+               regions(i)%real_index = 1
+               current_flv_real = flv_alr_registered(1)
+               current_uborn_index = regions(i)%uborn_index
+            else if (flv_alr_registered(i) == current_flv_real &
+                   .and. regions(i)%uborn_index == current_uborn_index) then
+               regions(i)%real_index = i_real
+            else
+               i_real = i_real + 1
+               regions(i)%real_index = i_real
+               current_flv_real = flv_alr_registered(i)
+               current_uborn_index = regions(i)%uborn_index
+            end if
+         end do
+      end associate
+   end subroutine assign_real_indices
+
+    subroutine write_perm_list (perm_list)
+      integer, intent(in), dimension(:,:) :: perm_list
+      integer :: i
+      do i = 1, size (perm_list(:,1))
+         write (*,'(I1,1x,I1,A)', advance = "no" ) perm_list(i,1), perm_list(i,2), '/'
+      end do
+      print *, ''
+    end subroutine write_perm_list
+
+    function check_fs_splitting (flv1, flv2) result (valid)
+      logical :: valid
+      integer, intent(in), dimension(2) :: flv1, flv2
+      if (flv1(1) + flv1(2) == 0) then
+         valid = abs(flv1(1)) == abs(flv2(1)) .and. abs(flv1(2)) == abs(flv2(2))
+      else
+         valid = flv1(1) == flv2(1) .and. flv1(2) == flv2(2)
+      end if
+    end function check_fs_splitting
   end subroutine region_data_init_singular_regions
 
 @ %def region_data_init_singular_regions
@@ -2796,27 +3393,6 @@ resonances are possible for all ftuples
 @ %def region_data_set_underlying_borns
 @
 <<fks regions: reg data: TBP>>=
-  generic :: get_born_index => get_born_index_single, get_born_index_array
-  procedure :: get_born_index_single => region_data_get_born_index_single
-  procedure :: get_born_index_array => region_data_get_born_index_array
-<<fks regions: procedures>>=
-  function region_data_get_born_index_array (reg_data) result (i_flv)
-    integer, dimension(:), allocatable :: i_flv
-    class(region_data_t), intent(in) :: reg_data
-    allocate (i_flv (reg_data%n_regions))
-    i_flv = reg_data%regions%uborn_index
-  end function region_data_get_born_index_array
-
-  function region_data_get_born_index_single (reg_data, alr) result (i_flv)
-    integer :: i_flv
-    class(region_data_t), intent(in) :: reg_data
-    integer, intent(in) :: alr
-    i_flv = reg_data%regions(alr)%uborn_index
-  end function region_data_get_born_index_single
-
-@ %def region_data_get_born_index
-@
-<<fks regions: reg data: TBP>>=
   procedure :: get_flavor_indices => region_data_get_flavor_indices
 <<fks regions: procedures>>=
   function region_data_get_flavor_indices (reg_data, born) result (i_flv)
@@ -2825,13 +3401,25 @@ resonances are possible for all ftuples
     logical, intent(in) :: born
     allocate (i_flv (reg_data%n_regions))
     if (born) then
-       i_flv = reg_data%get_born_index ()
+       i_flv = reg_data%regions%uborn_index
     else
-       i_flv = reg_data%get_real_index ()
+       i_flv = reg_data%regions%real_index
     end if
   end function region_data_get_flavor_indices
 
 @ %def region_data_get_flavor_indices
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_matrix_element_index => region_data_get_matrix_element_index
+<<fks regions: procedures>>=
+  function region_data_get_matrix_element_index (reg_data, i_reg) result (i_me)
+    integer :: i_me
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: i_reg
+    i_me = reg_data%regions(i_reg)%real_index
+  end function region_data_get_matrix_element_index
+
+@ %def region_data_get_matrix_element_index
 @
 <<fks regions: reg data: TBP>>=
   procedure :: compute_number_of_phase_spaces &
@@ -2934,20 +3522,51 @@ resonances are possible for all ftuples
 <<fks regions: reg data: TBP>>=
   procedure :: write_to_file => region_data_write_to_file
 <<fks regions: procedures>>=
-  subroutine region_data_write_to_file (reg_data, proc_id)
+  subroutine region_data_write_to_file (reg_data, proc_id, latex)
      class(region_data_t), intent(inout) :: reg_data
      type(string_t), intent(in) :: proc_id
+     logical, intent(in) :: latex
      type(string_t) :: filename
      integer :: u
 
      filename = proc_id // "_fks_regions.log"
      u = free_unit ()
      open (u, file=char(filename), action = "write", status="replace")
-     call reg_data%write (u)
+     if (latex) then
+        call reg_data%write_latex (u)
+     else
+        call reg_data%write (u)
+     end if
      close (u)
   end subroutine region_data_write_to_file
 
 @ %def region_data_write_to_file
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: write_latex => region_data_write_latex
+<<fks regions: procedures>>=
+  subroutine region_data_write_latex (reg_data, unit)
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in), optional :: unit
+    integer :: i, u
+    u = given_output_unit (unit); if (u < 0) return
+    write (u, "(A)") "%FKS region data, automatically created by WHIZARD"
+    write (u, "(A)") "\begin{table}"
+    write (u, "(A)") "\begin{center}"
+    write (u, "(A)") "\begin{tabular} {|c|c|c|c|c|c|c|c|}"
+    write (u, "(A)") "\hline"
+    write (u, "(A)") "$\alpha_r$ & $f_r$ & $i_r$ & $em$ & $mult$ & $\mathcal{P}_{\rm{FKS}}$ & $i_b$ & $f_b$ \\"
+    write (u, "(A)") "\hline"
+    do i = 1, reg_data%n_regions
+       call reg_data%regions(i)%write_latex (u)
+    end do
+    write (u, "(A)") "\hline"
+    write (u, "(A)") "\end{tabular}"
+    write (u, "(A)") "\end{center}"
+    write (u, "(A)") "\end{table}"
+  end subroutine region_data_write_latex
+
+@ %def region_data_write_latex
 @ Creates a table with information about all singular regions and
 writes it to a file.
 @ Returns the index of the real flavor structure an ftuple belongs to.
@@ -2969,10 +3588,12 @@ writes it to a file.
      end do
      flst_title = '(A' // flst_title_format(reg_data%n_legs_real) // ')'
      ftuple_title = '(A' // ftuple_title_format() // ')'
-     write (u,'(A,1X,I2)') 'Total number of regions: ', size(reg_data%regions)
+     write (u,'(A,1X,I3)') 'Total number of regions: ', size(reg_data%regions)
      write (u, '(A3)', advance = 'no') 'alr'
      call write_vline (u)
      write (u, char (flst_title), advance = 'no') 'flst_real'
+     call write_vline (u)
+     write (u, '(A6)', advance = 'no') 'i_real'
      call write_vline (u)
      write (u, '(A3)', advance = 'no') 'em'
      call write_vline (u)
@@ -2992,7 +3613,7 @@ writes it to a file.
      flst_title = '(A' // flst_title_format(reg_data%n_legs_born) // ')'
      write (u, char (flst_title), advance = 'no') 'flst_born'
      call write_vline (u)
-     write (u, '(A7)') 'i_uborn'
+     write (u, '(A7)') 'i_born'
      do j = 1, reg_data%n_regions
         write (u, '(I3)', advance = 'no') j
         call reg_data%regions(j)%write (u, maxnregions)
@@ -3025,8 +3646,8 @@ writes it to a file.
 
     function ftuple_title_format () result (frmt)
        type(string_t) :: frmt
-       character(len=2) :: frmt_char
-       write (frmt_char, '(I2)') 10 * maxnregions + 1
+       character(len=3) :: frmt_char
+       write (frmt_char, '(I3)') 5 * maxnregions + 1
        frmt = var_str (frmt_char)
     end function ftuple_title_format
 
@@ -3100,7 +3721,6 @@ writes it to a file.
     else
        call msg_warning ("Copying region data without allocated underlying born flavor indices!")
     end if
-    reg_data_out%flv_extra = reg_data_in%flv_extra
     if (allocated (reg_data_in%fks_mapping)) then
        select type (fks_mapping_in => reg_data_in%fks_mapping)
        type is (fks_mapping_default_t)
@@ -3220,67 +3840,6 @@ position.
   end function create_alr
 
 @ %def create_alr
-@ Explain
-<<fks regions: procedures>>=
-  subroutine fks_permute_born (flv_in, n_in, flv_out, perm_list)
-    type(flv_structure_t), intent(in) :: flv_in
-    integer, intent(in) :: n_in
-    type(flv_structure_t), intent(inout) :: flv_out
-    integer, intent(out), dimension(:,:), allocatable :: perm_list
-    integer, dimension(:,:), allocatable :: perm_list_tmp
-    integer :: n_perms, n_perms_max
-    integer :: nlegs
-    integer :: flv1, flv2, tmp
-    integer :: i, j, j_min
-    n_perms_max = 100
-    !!! actually (n-1)!, but there seems to be no intrinsic function
-    !!! of this type in fortran
-    if (allocated (perm_list_tmp)) deallocate (perm_list_tmp)
-    allocate (perm_list_tmp (n_perms_max,2))
-    n_perms = 0
-    j_min = n_in + 1
-    nlegs = size (flv_in%flst)
-    do i = n_in + 1, nlegs
-       flv1 = flv_in%flst(i)
-       do j = j_min, nlegs
-          flv2 = flv_out%flst(j)
-          if (flv1 == flv2 .and. i /= j) then
-             n_perms = n_perms + 1
-             tmp = flv_out%flst(i)
-             flv_out%flst(i) = flv2
-             flv_out%flst(j) = tmp
-             perm_list_tmp (n_perms, 1) = j
-             perm_list_tmp (n_perms, 2) = i
-             j_min = j_min + 1
-             exit
-          end if
-       end do
-    end do
-    allocate (perm_list (n_perms, 2))
-    perm_list (1:n_perms, :) = perm_list_tmp (1:n_perms, :)
-  end subroutine fks_permute_born
-
-@ %def fks_permute_born
-@ Explain
-<<fks regions: procedures>>=
-  subroutine fks_apply_perm (flv, emitter, perm_list)
-    type(flv_structure_t), intent(inout) :: flv
-    integer, intent(inout) :: emitter
-    integer, intent(in), dimension(:,:), allocatable :: perm_list
-    integer :: i
-    integer :: i1, i2
-    integer :: tmp
-    do i = 1, size (perm_list (:,1))
-       i1 = perm_list (i,1)
-       i2 = perm_list (i,2)
-       tmp = flv%flst (i1)
-       flv%flst (i1) = flv%flst (i2)
-       flv%flst (i2) = tmp
-       if (i1 == emitter) emitter = i2
-    end do
-  end subroutine fks_apply_perm
-
-@ %def fks_apply_perm
 @
 <<fks regions: reg data: TBP>>=
   procedure :: has_pseudo_isr => region_data_has_pseudo_isr
@@ -3289,10 +3848,34 @@ position.
     logical :: val
     class(region_data_t), intent(in) :: reg_data
     val = any (reg_data%regions%pseudo_isr)
-    !val = .true.
   end function region_data_has_pseudo_isr
 
 @ %def region_data_has_pseudo_isr
+@ Performs consistency checks on [[region_data]]. Up to now only
+checks that now [[futple]] appears more than once.
+<<fks regions: reg data: TBP>>=
+  procedure :: check_consistency => region_data_check_consistency
+<<fks regions: procedures>>=
+  subroutine region_data_check_consistency (reg_data)
+    class(region_data_t), intent(in) :: reg_data
+    integer :: i_reg
+    logical :: first_invalid_region
+    first_invalid_region = .true.
+    do i_reg = 1, reg_data%n_regions
+       if (reg_data%regions(i_reg)%has_identical_ftuples ()) then
+          if (first_invalid_region) then
+             call msg_error ("Region data invalid: Identical ftuples "&
+                  &"encountered in the following regions:")
+             first_invalid_region = .false.
+          end if
+          print *, 'i_reg: ', i_reg
+       end if
+    end do
+    if (.not. first_invalid_region) &
+         call msg_fatal ("Stop due to inconsistent region data!")
+  end subroutine region_data_check_consistency
+
+@ %def region_data_check_consistency
 @
 <<fks regions: reg data: TBP>>=
   procedure :: final => region_data_final
@@ -4011,13 +4594,15 @@ end module fks_regions_uti
     integer, intent(in) :: u
     type(test_results_t), intent(inout) :: results
     call test(fks_regions_1, "fks_regions_1", &
-       "Test flavor structure utilities", u, results)
+         "Test flavor structure utilities", u, results)
     call test(fks_regions_2, "fks_regions_2", &
-       "Test the creation of singular regions for final-state radiation", &
-       u, results)
+         "Test the creation of singular regions for final-state radiation", &
+         u, results)
     call test(fks_regions_3, "fks_regions_3", &
-       "Test the creation of singular regions for initial-state radiation", &
-       u, results)
+         "Test the creation of singular regions for initial-state radiation", &
+         u, results)
+    call test(fks_regions_4, "fks_regions_4", &
+         "Check Latex output", u, results)
   end subroutine fks_regions_test
 
 @ %def fks_regions_test
@@ -4184,7 +4769,10 @@ end module fks_regions_uti
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     type(region_data_t) :: reg_data
     write (u, "(A)") "* Test output: fks_regions_2"
-    write (u, "(A)") "* Create table of singular regions for ee -> qq"
+    write (u, "(A)") "* Create singular regions for multi-jet events with n_jet <= 5"
+    write (u, "(A)") "* with jet = u:U:d:D:s:S:c:C:b:B:gl"
+    write (u, "(A)")
+    write (u, "(A)") "* ee -> qq"
     write (u, "(A)")
 
     n_flv_born = 1; n_flv_real = 1
@@ -4203,7 +4791,7 @@ end module fks_regions_uti
     deallocate (flv_born, flv_real)
     call reg_data%final ()
 
-    write (u, "(A)") "* Create table of singular regions for ee -> qqg"
+    write (u, "(A)") "* ee -> qqg"
     write (u, "(A)")
     n_flv_born = 1; n_flv_real = 2
     n_legs_born = 5; n_legs_real = 6
@@ -4218,6 +4806,215 @@ end module fks_regions_uti
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
     call reg_data%write (u)
 
+    deallocate (flv_born, flv_real)
+    call reg_data%final ()
+
+    write (u, "(A)") "* ee -> jet jet jet"
+    write (u, "(A)")
+    n_flv_born = 5; n_flv_real = 22
+    n_legs_born = 5; n_legs_real = 6
+    n_in = 2
+    allocate (flv_born (n_legs_born, n_flv_born))
+    allocate (flv_real (n_legs_real, n_flv_real))
+
+    flv_born (:, 1)  = [11, -11, -4, 4, 21]
+    flv_born (:, 2)  = [11, -11, -2, 2, 21]
+    flv_born (:, 3)  = [11, -11, -5, 5, 21]
+    flv_born (:, 4)  = [11, -11, -3, 3, 21]
+    flv_born (:, 5)  = [11, -11, -1, 1, 21]
+    flv_real (:, 1)  = [11, -11, -4, -4, 4, 4]
+    flv_real (:, 2)  = [11, -11, -4, -2, 2, 4]
+    flv_real (:, 3)  = [11, -11, -4, 4, 21, 21]
+    flv_real (:, 4)  = [11, -11, -4, -5, 4, 5]
+    flv_real (:, 5)  = [11, -11, -4, -3, 4, 3]
+    flv_real (:, 6)  = [11, -11, -4, -1, 2, 3]
+    flv_real (:, 7)  = [11, -11, -4, -1, 4, 1]
+    flv_real (:, 8)  = [11, -11, -2, -2, 2, 2]
+    flv_real (:, 9)  = [11, -11, -2, 2, 21, 21]
+    flv_real (:, 10) = [11, -11, -2, -5, 2, 5]
+    flv_real (:, 11) = [11, -11, -2, -3, 2, 3]
+    flv_real (:, 12) = [11, -11, -2, -3, 4, 1]
+    flv_real (:, 13) = [11, -11, -2, -1, 2, 1]
+    flv_real (:, 14) = [11, -11, -5, -5, 5, 5]
+    flv_real (:, 15) = [11, -11, -5, -3, 3, 5]
+    flv_real (:, 16) = [11, -11, -5, -1, 1, 5]
+    flv_real (:, 17) = [11, -11, -5, 5, 21, 21]
+    flv_real (:, 18) = [11, -11, -3, -3, 3, 3]
+    flv_real (:, 19) = [11, -11, -3, -1, 1, 3]
+    flv_real (:, 20) = [11, -11, -3, 3, 21, 21]
+    flv_real (:, 21) = [11, -11, -1, -1, 1, 1]
+    flv_real (:, 22) = [11, -11, -1, 1, 21, 21]
+
+    call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%write (u)
+
+    deallocate (flv_born, flv_real)
+    call reg_data%final ()
+
+    write (u, "(A)") "* ee -> 4 jet"
+    write (u, "(A)")
+    n_flv_born = 22; n_flv_real = 22
+    n_legs_born = 6; n_legs_real = 7
+    n_in = 2
+    allocate (flv_born (n_legs_born, n_flv_born))
+    allocate (flv_real (n_legs_real, n_flv_real))
+
+    flv_born (:, 1)   = [11, -11, -4, -4, 4, 4]
+    flv_born (:, 2)   = [11, -11, -4, -2, 2, 4]
+    flv_born (:, 3)   = [11, -11, -4, 4, 21, 21]
+    flv_born (:, 4)   = [11, -11, -4, -5, 4, 5]
+    flv_born (:, 5)   = [11, -11, -4, -3, 4, 3]
+    flv_born (:, 6)   = [11, -11, -4, -1, 2, 3]
+    flv_born (:, 7)   = [11, -11, -4, -1, 4, 1]
+    flv_born (:, 8)   = [11, -11, -2, -2, 2, 2]
+    flv_born (:, 9)   = [11, -11, -2, 2, 21, 21]
+    flv_born (:, 10)  = [11, -11, -2, -5, 2, 5]
+    flv_born (:, 11)  = [11, -11, -2, -3, 2, 3]
+    flv_born (:, 12)  = [11, -11, -2, -3, 4, 1]
+    flv_born (:, 13)  = [11, -11, -2, -1, 2, 1]
+    flv_born (:, 14)  = [11, -11, -5, -5, 5, 5]
+    flv_born (:, 15)  = [11, -11, -5, -3, 3, 5]
+    flv_born (:, 16)  = [11, -11, -5, -1, 1, 5]
+    flv_born (:, 17)  = [11, -11, -5, 5, 21, 21]
+    flv_born (:, 18)  = [11, -11, -3, -3, 3, 3]
+    flv_born (:, 19)  = [11, -11, -3, -1, 1, 3]
+    flv_born (:, 20)  = [11, -11, -3, -3, 21, 21]
+    flv_born (:, 21)  = [11, -11, -1, -1, 1, 1]
+    flv_born (:, 22)  = [11, -11, -1, 1, 21, 21]
+    flv_real (:, 1)   = [11, -11, -4, -4, 4, 4, 21]
+    flv_real (:, 2)   = [11, -11, -4, -2, 2, 4, 21]
+    flv_real (:, 3)   = [11, -11, -4, 4, 21, 21, 21]
+    flv_real (:, 4)   = [11, -11, -4, -5, 4, 5, 21]
+    flv_real (:, 5)   = [11, -11, -4, -3, 4, 3, 21]
+    flv_real (:, 6)   = [11, -11, -4, -1, 2, 3, 21]
+    flv_real (:, 7)   = [11, -11, -4, -1, 4, 1, 21]
+    flv_real (:, 8)   = [11, -11, -2, -2, 2, 2, 21]
+    flv_real (:, 9)   = [11, -11, -2, 2, 21, 21, 21]
+    flv_real (:, 10)  = [11, -11, -2, -5, 2, 5, 21]
+    flv_real (:, 11)  = [11, -11, -2, -3, 2, 3, 21]
+    flv_real (:, 12)  = [11, -11, -2, -3, 4, 1, 21]
+    flv_real (:, 13)  = [11, -11, -2, -1, 2, 1, 21]
+    flv_real (:, 14)  = [11, -11, -5, -5, 5, 5, 21]
+    flv_real (:, 15)  = [11, -11, -5, -3, 3, 5, 21]
+    flv_real (:, 16)  = [11, -11, -5, -1, 1, 5, 21]
+    flv_real (:, 17)  = [11, -11, -5, 5, 21, 21, 21]
+    flv_real (:, 18)  = [11, -11, -3, -3, 3, 3, 21]
+    flv_real (:, 19)  = [11, -11, -3, -1, 1, 3, 21]
+    flv_real (:, 20)  = [11, -11, -3, 3, 21, 21, 21]
+    flv_real (:, 21)  = [11, -11, -1, -1, 1, 1, 21]
+    flv_real (:, 22)  = [11, -11, -1, 1, 21, 21, 21]
+
+    call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%write (u)
+
+    deallocate (flv_born, flv_real)
+    call reg_data%final ()
+
+    write (u, "(A)") "* ee -> 5 jet"
+    write (u, "(A)")
+    n_flv_born = 22; n_flv_real = 67
+    n_legs_born = 7; n_legs_real = 8
+    n_in = 2
+    allocate (flv_born (n_legs_born, n_flv_born))
+    allocate (flv_real (n_legs_real, n_flv_real))
+
+
+    flv_born (:,1)  = [11,-11,-4,-4,4,4,21]
+    flv_born (:,2)  = [11,-11,-4,-2,2,4,21]
+    flv_born (:,3)  = [11,-11,-4,4,21,21,21]
+    flv_born (:,4)  = [11,-11,-4,-5,4,5,21]
+    flv_born (:,5)  = [11,-11,-4,-3,4,3,21]
+    flv_born (:,6)  = [11,-11,-4,-1,2,3,21]
+    flv_born (:,7)  = [11,-11,-4,-1,4,1,21]
+    flv_born (:,8)  = [11,-11,-2,-2,2,2,21]
+    flv_born (:,9)  = [11,-11,-2,2,21,21,21]
+    flv_born (:,10) = [11,-11,-2,-5,2,5,21]
+    flv_born (:,11) = [11,-11,-2,-3,2,3,21]
+    flv_born (:,12) = [11,-11,-2,-3,4,1,21]
+    flv_born (:,13) = [11,-11,-2,-1,2,1,21]
+    flv_born (:,14) = [11,-11,-5,-5,5,5,21]
+    flv_born (:,15) = [11,-11,-5,-3,3,5,21]
+    flv_born (:,16) = [11,-11,-5,-1,1,5,21]
+    flv_born (:,17) = [11,-11,-5,5,21,21,21]
+    flv_born (:,18) = [11,-11,-3,-3,3,3,21]
+    flv_born (:,19) = [11,-11,-3,-1,1,3,21]
+    flv_born (:,20) = [11,-11,-3,3,21,21,21]
+    flv_born (:,21) = [11,-11,-1,-1,1,1,21]
+    flv_born (:,22) = [11,-11,-1,1,21,21,21]
+
+    flv_real (:,1)  = [11,-11,-4,-4,-4,4,4,4]
+    flv_real (:,2)  = [11,-11,-4,-4,-2,2,4,4]
+    flv_real (:,3)  = [11,-11,-4,-4,4,4,21,21]
+    flv_real (:,4)  = [11,-11,-4,-4,-5,4,4,5]
+    flv_real (:,5)  = [11,-11,-4,-4,-3,4,4,3]
+    flv_real (:,6)  = [11,-11,-4,-4,-1,2,4,3]
+    flv_real (:,7)  = [11,-11,-4,-4,-1,4,4,1]
+    flv_real (:,8)  = [11,-11,-4,-2,-2,2,2,4]
+    flv_real (:,9)  = [11,-11,-4,-2,2,4,21,21]
+    flv_real (:,10) = [11,-11,-4,-2,-5,2,4,5]
+    flv_real (:,11) = [11,-11,-4,-2,-3,2,4,3]
+    flv_real (:,12) = [11,-11,-4,-2,-3,4,4,1]
+    flv_real (:,13) = [11,-11,-4,-2,-1,2,2,3]
+    flv_real (:,14) = [11,-11,-4,-2,-1,2,4,1]
+    flv_real (:,15) = [11,-11,-4,4,21,21,21,21]
+    flv_real (:,16) = [11,-11,-4,-5,4,5,21,21]
+    flv_real (:,17) = [11,-11,-4,-5,-5,4,5,5]
+    flv_real (:,18) = [11,-11,-4,-5,-3,4,3,5]
+    flv_real (:,19) = [11,-11,-4,-5,-1,2,3,5]
+    flv_real (:,20) = [11,-11,-4,-5,-1,4,1,5]
+    flv_real (:,21) = [11,-11,-4,-3,4,3,21,21]
+    flv_real (:,22) = [11,-11,-4,-3,-3,4,3,3]
+    flv_real (:,23) = [11,-11,-4,-3,-1,2,3,3]
+    flv_real (:,24) = [11,-11,-4,-3,-1,4,1,3]
+    flv_real (:,25) = [11,-11,-4,-1,2,3,21,21]
+    flv_real (:,26) = [11,-11,-4,-1,4,1,21,21]
+    flv_real (:,27) = [11,-11,-4,-1,-1,2,1,3]
+    flv_real (:,28) = [11,-11,-4,-1,-1,4,1,1]
+    flv_real (:,29) = [11,-11,-2,-2,-2,2,2,2]
+    flv_real (:,30) = [11,-11,-2,-2,2,2,21,21]
+    flv_real (:,31) = [11,-11,-2,-2,-5,2,2,5]
+    flv_real (:,32) = [11,-11,-2,-2,-3,2,2,3]
+    flv_real (:,33) = [11,-11,-2,-2,-3,2,4,1]
+    flv_real (:,34) = [11,-11,-2,-2,-1,2,2,1]
+    flv_real (:,35) = [11,-11,-2,2,21,21,21,21]
+    flv_real (:,36) = [11,-11,-2,-5,2,5,21,21]
+    flv_real (:,37) = [11,-11,-2,-5,-5,2,5,5]
+    flv_real (:,38) = [11,-11,-2,-5,-3,2,3,5]
+    flv_real (:,39) = [11,-11,-2,-5,-3,4,1,5]
+    flv_real (:,40) = [11,-11,-2,-5,-1,2,1,5]
+    flv_real (:,41) = [11,-11,-2,-3,2,3,21,21]
+    flv_real (:,42) = [11,-11,-2,-3,4,1,21,21]
+    flv_real (:,43) = [11,-11,-2,-3,-3,2,3,3]
+    flv_real (:,44) = [11,-11,-2,-3,-3,4,1,3]
+    flv_real (:,45) = [11,-11,-2,-3,-1,2,1,3]
+    flv_real (:,46) = [11,-11,-2,-3,-1,4,1,1]
+    flv_real (:,47) = [11,-11,-2,-1,2,1,21,21]
+    flv_real (:,48) = [11,-11,-2,-1,-1,2,1,1]
+    flv_real (:,49) = [11,-11,-5,-5,-5,5,5,5]
+    flv_real (:,50) = [11,-11,-5,-5,-3,3,5,5]
+    flv_real (:,51) = [11,-11,-5,-5,-1,1,5,5]
+    flv_real (:,52) = [11,-11,-5,-5,5,5,21,21]
+    flv_real (:,53) = [11,-11,-5,-3,-3,3,3,5]
+    flv_real (:,54) = [11,-11,-5,-3,-1,1,3,5]
+    flv_real (:,55) = [11,-11,-5,-3,3,5,21,21]
+    flv_real (:,56) = [11,-11,-5,-1,-1,1,1,5]
+    flv_real (:,57) = [11,-11,-5,-1,1,5,21,21]
+    flv_real (:,58) = [11,-11,-5,5,21,21,21,21]
+    flv_real (:,59) = [11,-11,-3,-3,-3,3,3,3]
+    flv_real (:,60) = [11,-11,-3,-3,-1,1,3,3]
+    flv_real (:,61) = [11,-11,-3,-3,3,3,21,21]
+    flv_real (:,62) = [11,-11,-3,-1,-1,1,1,3]
+    flv_real (:,63) = [11,-11,-3,-1,1,3,21,21]
+    flv_real (:,64) = [11,-11,-3,3,21,21,21,21]
+    flv_real (:,65) = [11,-11,-1,-1,-1,1,1,1]
+    flv_real (:,66) = [11,-11,-1,-1,1,1,21,21]
+    flv_real (:,67) = [11,-11,-1,1,21,21,21,21]
+
+    call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%write (u)
+
+    deallocate (flv_born, flv_real)
+    call reg_data%final ()
 
   end subroutine fks_regions_2
 
@@ -4300,6 +5097,36 @@ end module fks_regions_uti
 
 @ %def fks_regions_3
 @
+<<fks regions: test declarations>>=
+  public :: fks_regions_4
+<<fks regions: tests>>=
+  subroutine fks_regions_4 (u)
+    integer, intent(in) :: u
+    integer :: n_flv_born, n_flv_real
+    integer :: n_legs_born, n_legs_real
+    integer :: n_in
+    integer, dimension(:,:), allocatable :: flv_born, flv_real
+    type(region_data_t) :: reg_data
+    write (u, "(A)") "* Test output: fks_regions_4"
+    write (u, "(A)") "* Create table of singular regions for ee -> qq"
+    write (u, "(A)")
+
+    n_flv_born = 1; n_flv_real = 1
+    n_legs_born = 4; n_legs_real = 5
+    n_in = 2
+
+    allocate (flv_born (n_legs_born, n_flv_born))
+    allocate (flv_real (n_legs_real, n_flv_real))
+    flv_born (:, 1) = [11, -11, 2, -2]
+    flv_real (:, 1) = [11, -11, 2, -2, 21]
+    call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%write_latex (u)
+
+  end subroutine fks_regions_4
+
+@ %def fks_regions_4
+@
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Virtual contribution to the cross section}
 <<[[virtual.f90]]>>=
@@ -4542,9 +5369,6 @@ particles involved in the radiation process are massive or massless.
     QB = zero; BI = zero
     if (virt%bad_point) return
     if (debug2_active (D_VIRTUAL)) then
-       print *, 'Compute virtual component using phase space point: '
-       call vector4_write_set (p_born, show_mass = .true., &
-            check_conservation = .true.)
        print *, 'Compute virtual component using alpha_s = ', alpha_s
        print *, 'Virtual selection: ', char (virt%selection)
     end if
@@ -4630,8 +5454,8 @@ particles involved in the radiation process are massive or massless.
           do j = 1, virtual%n_legs
              if (i /= j) then
                 if (flst_born%colored(i) .and. flst_born%colored(j)) then
-                   I_ij = compute_eikonal_factor &
-                        (p_born, flst_born%massive, i, j, s_o_Q2)
+                   I_ij = compute_eikonal_factor (p_born, flst_born%massive, &
+                        i, j, s_o_Q2)
                    BI_tmp = BI_tmp + virtual%sqme_cc (i, j, i_flv) * I_ij
                    if (debug2_active (D_VIRTUAL)) &
                       print *, 'b_ij: ', virtual%sqme_cc (i, j, i_flv), 'I_ij: ', I_ij
@@ -4825,7 +5649,7 @@ Equation \ref{eqn:virt_Q_fsr} leads to \ref{eqn:virt_Q_fsr_old} with the substit
     type(lorentz_transformation_t) :: L_to_resonance
     evaluated = .false.
     do alr = 1, reg_data%n_regions
-       if (i_flv /= reg_data%get_born_index(alr)) cycle
+       if (i_flv /= reg_data%regions(alr)%uborn_index) cycle
        em = reg_data%regions(alr)%emitter
        if (em == 0) cycle
        if (evaluated(i_flv, em)) cycle
@@ -5436,8 +6260,9 @@ distinguished by the flag [[xi2_expanded]].
        print *, 'Compute soft subtraction using alpha_s = ', alpha_s
     end if
 
-    s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
-         (p_born, sub_soft%p_soft, alr, emitter, i_res)
+    s_alpha_soft = sub_soft%reg_data%get_svalue_soft (p_born, &
+         sub_soft%p_soft, alr, emitter, i_res)
+    if (s_alpha_soft > one + tiny_07) call msg_fatal ("s_alpha_soft > 1!")
     if (debug_active (D_SUBTRACTION)) &
          call msg_print_color ('s_alpha_soft', s_alpha_soft, COL_YELLOW)
     select case (sub_soft%factorization_mode)
@@ -5648,7 +6473,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
     real(default) :: sqme_mismatch
     class(soft_mismatch_t), intent(inout) :: soft_mismatch
     real(default), intent(in) :: alpha_s
-    integer :: alr, i_uborn, emitter, i_res, i_phs, i_con
+    integer :: alr, i_born, emitter, i_res, i_phs, i_con
     real(default) :: xi, y, q2, s
     real(default) :: E_gluon
     type(vector4_t) :: p_em
@@ -5665,7 +6490,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
           print *, 'Evaluating soft mismatch: '
           print *, 'Phase space: '
           call vector4_write_set (real_kinematics%p_born_cms%get_momenta(1), &
-             show_mass = .true.)
+               show_mass = .true.)
           print *, 'xi: ', xi, 'y: ', y, 's: ', s, 'E_gluon: ', E_gluon
        end if
           
@@ -5685,7 +6510,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
            emitter = soft_mismatch%reg_data%regions(alr)%emitter
            p_em = p_born (emitter)
            i_res = soft_mismatch%reg_data%regions(alr)%i_res
-           i_uborn = soft_mismatch%reg_data%regions(alr)%uborn_index
+           i_born = soft_mismatch%reg_data%regions(alr)%uborn_index
 
            call print_debug_alr ()
 
@@ -5701,12 +6526,12 @@ These inputs are then used to get the numerical value of the soft mismatch.
            end select
 
            sqme_soft = soft_mismatch%sub_soft%compute &
-                (p_born, soft_mismatch%sqme_born_cc(:,:,i_uborn), y, &
+                (p_born, soft_mismatch%sqme_born_cc(:,:,i_born), y, &
                 q2, alpha_s, alr, emitter, i_res)
 
            sqme_alr = soft_mismatch%compute (alr, xi, y, p_em, &
                 real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
-                soft_mismatch%sqme_born(i_uborn), sqme_soft, &
+                soft_mismatch%sqme_born(i_born), sqme_soft, &
                 alpha_s, s)
 
            call msg_debug (D_MISMATCH, 'sqme_alr: ', sqme_alr)
@@ -5719,7 +6544,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
       if (debug_active (D_MISMATCH)) then
          print *, 'alr: ', alr
          print *, 'i_phs: ', i_phs, 'i_con: ', i_con, 'i_res: ', i_res
-         print *, 'emitter: ', emitter, 'i_uborn: ', i_uborn
+         print *, 'emitter: ', emitter, 'i_born: ', i_born
          print *, 'emitter momentum: ', p_em%p
          print *, 'resonance momentum: ', &
             soft_mismatch%real_kinematics%xi_ref_momenta(i_con)%p
@@ -5869,19 +6694,20 @@ necessary to expand with $z$ once.
   procedure :: compute_fsr => coll_subtraction_compute_fsr
 <<real subtraction: procedures>>=
   function coll_subtraction_compute_fsr &
-     (coll_sub, sregion, p_res, p_born, sqme_born, sqme_born_sc, &
-     xi, alpha_s, alr) result (sqme)
+     (coll_sub, sregion, p_res, p_born, sqme_born, mom_times_sqme_born_sc, &
+     xi, alpha_s, alr, double_fsr) result (sqme)
     real(default) :: sqme
     class(coll_subtraction_t), intent(in) :: coll_sub
     type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in) :: p_res
     type(vector4_t), intent(in), dimension(:) :: p_born
-    real(default), intent(in) :: sqme_born, sqme_born_sc
+    real(default), intent(in) :: sqme_born, mom_times_sqme_born_sc
     real(default), intent(in) :: xi, alpha_s
     integer, intent(in) :: alr
+    logical, intent(in) :: double_fsr
     real(default) :: q0, z, p0
     real(default) :: z_o_xi, onemz
-    real(default) :: pggz, pqgz
+    real(default) :: pggz
     integer :: nlegs, emitter
     integer :: flv_em, flv_rad
 
@@ -5903,17 +6729,10 @@ necessary to expand with $z$ once.
     z_o_xi = q0 / (two * p0)
     z = xi * z_o_xi; onemz = one - z
     if (is_gluon(flv_em) .and. is_gluon(flv_rad)) then
-       !!! Implementation of equation (\ref{coll1}). Note that an
-       !!! additional factor $z$, so that in the last step, the whole
-       !!! expression is divided by $z/\xi$.
-       pggz = two * CA * (z**2 * onemz + z**2 / onemz + onemz)
-       sqme = pggz * sqme_born - four * CA * z**2 * onemz * sqme_born_sc
-       sqme = sqme / z_o_xi
+       pggz = two * CA * (xi * z / onemz + onemz / z_o_xi)
+       sqme = pggz * sqme_born + four * CA * z * onemz * xi * mom_times_sqme_born_sc
     else if (is_quark(abs(flv_em)) .and. is_quark (abs(flv_rad))) then
-       !!! Equation \ref{coll2}
-       pqgz = TR * z * (one - two * z * onemz)
-       sqme = pqgz * sqme_born + four * TR * z**2 * onemz * sqme_born_sc
-       sqme = sqme / z_o_xi
+       sqme = TR * xi * (sqme_born - four * z * onemz * mom_times_sqme_born_sc)
     else if (is_quark (abs(flv_em)) .and. is_gluon (flv_rad)) then
        sqme = sqme_born * CF * (one + onemz**2) / z_o_xi
     else
@@ -5921,31 +6740,11 @@ necessary to expand with $z$ once.
     end if
     sqme = sqme / (p0**2 * onemz * z_o_xi)
     sqme = sqme * four * pi * alpha_s
+    if (double_fsr) sqme = sqme * onemz
 
   end function coll_subtraction_compute_fsr
 
 @ %def coll_subtraction_compute_fsr
-@ Here, $\xi = 0$ is already required.
-<<real subtraction: coll sub: TBP>>=
-  procedure :: compute_soft_limit_fsr => coll_subtraction_compute_soft_limit_fsr
-<<real subtraction: procedures>>=
-  function coll_subtraction_compute_soft_limit_fsr &
-       (coll_sub, sregion, p_res, p_born, sqme_born, &
-        sqme_born_sc, xi, alpha_s, alr) result (sqme)
-    real(default) :: sqme
-    class(coll_subtraction_t), intent(inout) :: coll_sub
-    type(singular_region_t), intent(in) :: sregion
-    type(vector4_t), intent(in) :: p_res
-    type(vector4_t), intent(in), dimension(:) :: p_born
-    real(default), intent(in) :: sqme_born
-    real(default), intent(in) :: sqme_born_sc
-    real(default), intent(in) :: xi, alpha_s
-    integer, intent(in) :: alr
-    sqme = coll_sub%compute_fsr (sregion, p_res, p_born, sqme_born, &
-         sqme_born_sc, xi, alpha_s, alr)
-  end function coll_subtraction_compute_soft_limit_fsr
-
-@ %def coll_subtraction_compute_soft_limit_fsr
 @
 <<real subtraction: coll sub: TBP>>=
   procedure :: compute_isr => coll_subtraction_compute_isr
@@ -5995,29 +6794,11 @@ necessary to expand with $z$ once.
 @ %def coll_subtraction_compute_isr
 @
 <<real subtraction: coll sub: TBP>>=
-  procedure :: compute_soft_limit_isr => coll_subtraction_compute_soft_limit_isr
-<<real subtraction: procedures>>=
-  function coll_subtraction_compute_soft_limit_isr &
-     (coll_sub, sregion, p_born, sqme_born, sqme_born_sc, &
-      xi, alpha_s, alr, isr_mode) result (sqme)
-    real(default) :: sqme
-    class(coll_subtraction_t), intent(inout) :: coll_sub
-    type(singular_region_t), intent(in) :: sregion
-    type(vector4_t), intent(in), dimension(:) :: p_born
-    real(default), intent(in) :: sqme_born, sqme_born_sc
-    real(default), intent(in) :: xi, alpha_s
-    integer, intent(in) :: alr, isr_mode
-    sqme = coll_sub%compute_isr (sregion, p_born, sqme_born, sqme_born_sc, &
-       zero, alpha_s, alr, isr_mode)
-  end function coll_subtraction_compute_soft_limit_isr
-
-@ %def coll_subtraction_compute_soft_limit_isr
-@
-<<real subtraction: coll sub: TBP>>=
   procedure :: final => coll_subtraction_final
 <<real subtraction: procedures>>=
   subroutine coll_subtraction_final (sub_coll)
     class(coll_subtraction_t), intent(inout) :: sub_coll
+    sub_coll%use_resonance_mappings = .false.
   end subroutine coll_subtraction_final
 
 @ %def coll_subtraction_final
@@ -6035,7 +6816,7 @@ necessary to expand with $z$ once.
     real(default), dimension(:,:), allocatable :: sqme_real_non_sub
     real(default), dimension(:), allocatable :: sqme_born
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
-    complex(default), dimension(:), pointer :: sqme_born_sc => null ()
+    complex(default), dimension(:,:,:,:), allocatable :: sqme_born_sc
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
     logical, dimension(:), allocatable :: sc_required
@@ -6056,7 +6837,7 @@ necessary to expand with $z$ once.
   subroutine real_subtraction_init (rsub, reg_data)
     class(real_subtraction_t), intent(inout), target :: rsub
     type(region_data_t), intent(in), target :: reg_data
-    integer :: alr, i_uborn
+    integer :: alr, i_born
     call msg_debug (D_SUBTRACTION, "real_subtraction_init")
     call msg_debug (D_SUBTRACTION, "n_in", reg_data%n_in)
     call msg_debug (D_SUBTRACTION, "nlegs_born", reg_data%n_legs_born)
@@ -6072,10 +6853,12 @@ necessary to expand with $z$ once.
     allocate (rsub%sqme_real_non_sub (reg_data%n_flv_real, reg_data%n_phs))
     allocate (rsub%sc_required (reg_data%n_regions))
     do alr = 1, reg_data%n_regions
-       i_uborn = reg_data%regions(alr)%uborn_index
-       rsub%sc_required(alr) = &
-          reg_data%flv_born(i_uborn)%count_particle (GLUON) > 0
+       rsub%sc_required(alr) = any (reg_data%regions(alr)%flst_uborn%flst == GLUON)
     end do
+    if (rsub%requires_spin_correlations ()) then
+       allocate (rsub%sqme_born_sc (0:3, 0:3, reg_data%n_legs_born, reg_data%n_flv_born))
+       rsub%sqme_born_sc = zero
+    end if
 
     call rsub%sub_soft%init (reg_data)
     call rsub%sub_coll%init (reg_data%n_regions, reg_data%n_in)
@@ -6230,14 +7013,16 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
   contains
     subroutine check_s_alpha_consistency ()
       real(default) :: sum_s_alpha, sum_s_alpha_soft
-      sum_s_alpha = zero; sum_s_alpha_soft = zero
-      do alr = 1, rsub%reg_data%n_regions
-         call rsub%evaluate_emitter_region_debug (alr, emitter, i_phs, &
-              sum_s_alpha, sum_s_alpha_soft)
-      end do
+      integer :: i_reg, i1, i2
       call msg_debug2 (D_SUBTRACTION, "Check consistency of s_alpha: ")
-      print *, 'sum_s_alpha: ', sum_s_alpha
-      print *, 'sum_s_alpha_soft: ', sum_s_alpha_soft
+      do i_reg = 1, rsub%reg_data%n_regions
+         sum_s_alpha = zero; sum_s_alpha_soft = zero
+         do alr = 1, rsub%reg_data%regions(i_reg)%nregions
+            call rsub%reg_data%regions(i_reg)%ftuples(alr)%get (i1, i2)
+            call rsub%evaluate_emitter_region_debug (i_reg, alr, i1, i2, i_phs, &
+                 sum_s_alpha, sum_s_alpha_soft)
+         end do
+      end do
     end subroutine check_s_alpha_consistency
   end subroutine real_subtraction_compute
 
@@ -6259,7 +7044,7 @@ region, and also if resonances are used.
        select type (fks_mapping => rsub%reg_data%fks_mapping)
        type is (fks_mapping_resonances_t)
           call fks_mapping%set_resonance_momenta &
-             (rsub%real_kinematics%xi_ref_momenta)
+               (rsub%real_kinematics%xi_ref_momenta)
        end select
        sqme = rsub%evaluate_region_fsr (alr, emitter, i_phs, i_res, alpha_s)
     end if
@@ -6271,10 +7056,10 @@ region, and also if resonances are used.
   procedure :: evaluate_emitter_region_debug &
        => real_subtraction_evaluate_emitter_region_debug
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_evaluate_emitter_region_debug (rsub, alr, emitter, &
+  subroutine real_subtraction_evaluate_emitter_region_debug (rsub, i_reg, alr, i1, i2, &
        i_phs, sum_s_alpha, sum_s_alpha_soft)
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: alr, emitter, i_phs
+    integer, intent(in) :: i_reg, alr, i1, i2, i_phs
     real(default), intent(inout) :: sum_s_alpha, sum_s_alpha_soft
     type(vector4_t), dimension(:), allocatable :: p_real, p_born
     integer :: this_emitter, i_res
@@ -6287,15 +7072,14 @@ region, and also if resonances are used.
        p_real = rsub%real_kinematics%p_real_cms%get_momenta (i_phs)
        p_born = rsub%real_kinematics%p_born_cms%get_momenta (1)
     end if
-    i_res = rsub%get_i_res (alr)
-    this_emitter = rsub%reg_data%regions(alr)%emitter
-    sum_s_alpha = sum_s_alpha + rsub%reg_data%get_svalue (p_real, alr, this_emitter, i_res)
+    i_res = rsub%get_i_res (i_reg)
+    sum_s_alpha = sum_s_alpha + rsub%reg_data%get_svalue (p_real, i_reg, i1, i2, i_res)
     associate (r => rsub%real_kinematics)
        call rsub%sub_soft%create_softvec_fsr (p_born, r%y_soft(i_phs), r%phi, &
-            emitter, r%xi_ref_momenta(rsub%sub_soft%i_xi_ref (alr, i_phs)))
+            i1, r%xi_ref_momenta(rsub%sub_soft%i_xi_ref (i_reg, i_phs)))
     end associate
     sum_s_alpha_soft = sum_s_alpha_soft + rsub%reg_data%get_svalue_soft &
-         (p_born, rsub%sub_soft%p_soft, alr, this_emitter, i_res)
+         (p_born, rsub%sub_soft%p_soft, i_reg, i1, i_res)
   end subroutine real_subtraction_evaluate_emitter_region_debug
 
 @ %def real_subtraction_evaluate_emitter_region_debug
@@ -6321,7 +7105,7 @@ the corresponding jacobians.
     sqme_cs = zero; sqme_remn = zero
     associate (region => rsub%reg_data%regions(alr))
       if (rsub%radiation_active) then
-         sqme_rad = rsub%sqme_real_non_sub (rsub%reg_data%get_real_index (alr), i_phs)
+         sqme_rad = rsub%sqme_real_non_sub (rsub%reg_data%get_matrix_element_index (alr), i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
               alr, i_phs, emitter, i_res)
          call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, &
@@ -6399,11 +7183,11 @@ the corresponding jacobians.
     subroutine write_computation_status (passed, total, region_type)
        integer, intent(in), optional :: passed, total
        character(*), intent(in), optional :: region_type
-       integer :: i_uborn
+       integer :: i_born
        integer :: u
        real(default) :: xi
        u = given_output_unit (); if (u < 0) return
-       i_uborn = rsub%reg_data%regions(alr)%uborn_index
+       i_born = rsub%reg_data%regions(alr)%uborn_index
        xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
        write (u,'(A,I2)') 'rsub%purpose: ', rsub%purpose
        write (u,'(A,I3)') 'alr: ', alr
@@ -6411,7 +7195,7 @@ the corresponding jacobians.
        write (u,'(A,I3)') 'i_phs: ', i_phs
        write (u,'(A,F6.4)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
        write (u,'(A,F6.4,2X,A,F6.4)') 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
-       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
+       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_born)
        write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
        write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
        write (u,'(A,ES16.9)')  'sqme_coll: ', sqme_coll
@@ -6537,11 +7321,11 @@ the corresponding jacobians.
 
     subroutine write_computation_status (unit)
        integer, intent(in), optional :: unit
-       integer :: i_uborn
+       integer :: i_born
        integer :: u
        real(default) :: xi
        u = given_output_unit (unit); if (u < 0) return
-       i_uborn = rsub%reg_data%regions(alr)%uborn_index
+       i_born = rsub%reg_data%regions(alr)%uborn_index
        xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
        write (u,'(A,I2)') 'alr: ', alr
        write (u,'(A,I2)') 'emitter: ', emitter
@@ -6549,7 +7333,7 @@ the corresponding jacobians.
        print *, 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
        print *, 'xb1: ', rsub%isr_kinematics%x(1), 'xb2: ', rsub%isr_kinematics%x(2)
        print *, 'random jacobian: ', rsub%real_kinematics%jac_rand (i_phs)
-       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
+       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_born)
        write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
        write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
        write (u,'(A,ES16.9)')  'sqme_coll_plus: ', sqme_coll_plus
@@ -6582,8 +7366,8 @@ the corresponding jacobians.
 @ %def real_subtraction_evaluate_subtraction_terms_fsr
 @
 <<real subtraction: procedures>>=
-  subroutine evaluate_fks_factors &
-     (sqme, reg_data, real_kinematics, alr, i_phs, emitter, i_res)
+  subroutine evaluate_fks_factors (sqme, reg_data, real_kinematics, &
+      alr, i_phs, emitter, i_res)
     real(default), intent(inout) :: sqme
     type(region_data_t), intent(inout) :: reg_data
     type(real_kinematics_t), intent(in), target :: real_kinematics
@@ -6597,11 +7381,12 @@ the corresponding jacobians.
     end if
     s_alpha = reg_data%get_svalue (p_real%get_momenta(i_phs), alr, emitter, i_res)
     if (debug_active (D_SUBTRACTION)) call msg_print_color('s_alpha', s_alpha, COL_YELLOW)
+    if (s_alpha > one + tiny_07) call msg_fatal ("s_alpha > 1!")
     sqme = sqme * s_alpha
     associate (region => reg_data%regions(alr))
        sqme = sqme * region%mult
        if (emitter > reg_data%n_in) &
-          sqme = sqme * region%double_fsr_factor (p_real%get_momenta(i_phs))
+            sqme = sqme * region%double_fsr_factor (p_real%get_momenta(i_phs))
     end associate
   end subroutine evaluate_fks_factors
 
@@ -6798,7 +7583,7 @@ to be more consistent with the evaluation of the Born phase space.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
-    integer :: i_xi_ref, i_uborn
+    integer :: i_xi_ref, i_born
     real(default) :: q2
     type(vector4_t), dimension(:), allocatable :: p_born
     associate (real_kinematics => rsub%real_kinematics)
@@ -6820,9 +7605,9 @@ to be more consistent with the evaluation of the Born phase space.
              call rsub%sub_soft%create_softvec_isr &
                 (real_kinematics%y_soft(i_phs), real_kinematics%phi)
           end if
-          i_uborn = rsub%reg_data%regions(alr)%uborn_index
+          i_born = rsub%reg_data%regions(alr)%uborn_index
           sqme_soft = rsub%sub_soft%compute &
-               (p_born, rsub%sqme_born_cc(:,:,i_uborn), &
+               (p_born, rsub%sqme_born_cc(:,:,i_born), &
                real_kinematics%y(i_phs), &
                q2, alpha_s, alr, emitter, i_res)
        else
@@ -6850,25 +7635,85 @@ to be more consistent with the evaluation of the Born phase space.
 @ %def real_subtraction_compute_sub_soft
 @
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: get_sc_matrix_element => real_subtraction_get_sc_matrix_element
+  procedure :: get_spin_correlation_term => real_subtraction_get_spin_correlation_term
 <<real subtraction: procedures>>=
-  function real_subtraction_get_sc_matrix_element (rsub, alr, em, uborn_index) result (sqme_sc)
+  function real_subtraction_get_spin_correlation_term (rsub, alr, i_born, emitter) &
+        result (mom_times_sqme)
+    real(default) :: mom_times_sqme
     class(real_subtraction_t), intent(in) :: rsub
-    integer, intent(in) :: alr, em, uborn_index
-    real(default) :: sqme_sc
-    complex(default) :: prod1, prod2
+    integer, intent(in) :: alr, i_born, emitter
+    real(default), dimension(0:3) :: k_perp
+    integer :: i, mu, nu
 
     if (rsub%sc_required(alr)) then
-       associate (p => rsub%real_kinematics%p_real_cms%phs_point(1)%p)
-          call spinor_product (p(em), p(rsub%reg_data%n_legs_real), prod1, prod2)
+       if (debug2_active(D_SUBTRACTION)) call check_me_consistency ()
+       associate (real_kin => rsub%real_kinematics)
+          if (emitter > rsub%reg_data%n_in) then
+             k_perp = k_perp_fsr (real_kin%p_born_cms%get_momentum(1, emitter), &
+                  rsub%real_kinematics%phi)
+          else
+             k_perp = k_perp_isr (real_kin%p_born_cms%get_momentum(1, emitter), &
+                  rsub%real_kinematics%phi)
+          end if
        end associate
-       sqme_sc = real (prod1 / prod2 * rsub%sqme_born_sc(uborn_index))
+       mom_times_sqme = zero
+       do mu = 0, 3
+          do nu = 0, 3
+             mom_times_sqme = mom_times_sqme + &
+                  k_perp(mu) * k_perp(nu) * rsub%sqme_born_sc (mu, nu, emitter, i_born)
+          end do
+       end do
     else
-       sqme_sc = zero
+       mom_times_sqme = zero
     end if
-  end function real_subtraction_get_sc_matrix_element
+  contains
+    subroutine check_me_consistency ()
+      real(default) ::  sqme_sum
+      call msg_debug2 (D_SUBTRACTION, "Spin-correlation: Consistency check")
+      sqme_sum = rsub%sqme_born_sc(0,0,emitter,i_born) &
+               - rsub%sqme_born_sc(1,1,emitter,i_born) &
+               - rsub%sqme_born_sc(2,2,emitter,i_born) &
+               - rsub%sqme_born_sc(3,3,emitter,i_born)
+      if (.not. nearly_equal (sqme_sum, -rsub%sqme_born(i_born), 0.0001_default)) then
+         print *, 'Spin-correlated matrix elements are not consistent: '
+         print *, 'emitter: ', emitter
+         print *, 'g^{mu,nu} B_{mu,nu}: ', -sqme_sum
+         print *, 'all Born matrix elements: ', rsub%sqme_born
+         call msg_fatal ("FAIL")
+      else
+         call msg_print_color ("Success", COL_GREEN)
+      end if
+    end subroutine check_me_consistency
 
-@ %def real_subtraction_get_sc_matrix_element
+    function k_perp_fsr (p, phi)
+      real(default), dimension(0:3) :: k_perp_fsr
+      type(vector4_t), intent(in) :: p
+      real(default), intent(in) :: phi
+      type(vector4_t) :: k
+      type(vector3_t) :: vec
+      type(lorentz_transformation_t) :: rot
+      vec = p%p(1:3) / p%p(0)
+      k%p(0) = zero
+      k%p(1) = p%p(1); k%p(2) = p%p(2)
+      k%p(3) = - (p%p(1)**2 + p%p(2)**2) / p%p(3)
+      rot = rotation (cos(phi), sin(phi), vec)
+      k = rot * k
+      k%p(1:3) = k%p(1:3) / space_part_norm (k)
+      k_perp_fsr = k%p
+    end function k_perp_fsr
+
+    function k_perp_isr (p, phi)
+      real(default), dimension(0:3) :: k_perp_isr
+      type(vector4_t), intent(in) :: p
+      real(default), intent(in) :: phi
+      k_perp_isr(0) = zero
+      k_perp_isr(1) = cos(phi)
+      k_perp_isr(2) = sin(phi)
+      k_perp_isr(3) = zero
+    end function k_perp_isr
+  end function real_subtraction_get_spin_correlation_term
+
+@ %def real_subtraction_get_spin_correlation_term
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute_sub_coll => real_subtraction_compute_sub_coll
@@ -6879,7 +7724,7 @@ to be more consistent with the evaluation of the Born phase space.
     integer, intent(in) :: alr, em, i_phs
     real(default), intent(in) :: alpha_s
     real(default) :: xi, xi_max_pm
-    real(default) :: sqme_sc
+    real(default) :: mom_times_sqme_sc
     integer :: i_con
     real(default) :: pfr
     associate (sregion => rsub%reg_data%regions(alr))
@@ -6890,18 +7735,20 @@ to be more consistent with the evaluation of the Born phase space.
           else
              i_con = 1
           end if
-          sqme_sc = rsub%get_sc_matrix_element (alr, em, sregion%uborn_index)
+          mom_times_sqme_sc = rsub%get_spin_correlation_term (alr, sregion%uborn_index, em)
           if (em <= rsub%sub_coll%n_in) then
              xi_max_pm = one - rsub%isr_kinematics%x(em)
              xi = rsub%real_kinematics%xi_tilde * xi_max_pm
              sqme_coll = rsub%sub_coll%compute_isr (sregion, &
                   rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
-                  rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
+                  rsub%sqme_born(sregion%uborn_index), mom_times_sqme_sc, &
+                  xi, alpha_s, alr, em)
           else
              sqme_coll = rsub%sub_coll%compute_fsr (sregion, &
                     rsub%real_kinematics%xi_ref_momenta (i_con), &
                     rsub%real_kinematics%p_born_cms%get_momenta(1), &
-                    rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
+                    rsub%sqme_born(sregion%uborn_index), mom_times_sqme_sc, &
+                    xi, alpha_s, alr, sregion%double_fsr)
              if (rsub%sub_coll%use_resonance_mappings) then
                 select type (fks_mapping => rsub%reg_data%fks_mapping)
                 type is (fks_mapping_resonances_t)
@@ -6927,10 +7774,8 @@ to be more consistent with the evaluation of the Born phase space.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: alr, em
     real(default), intent(in) :: alpha_s
-    real(default) :: sqme_sc
-    real(default) :: xi
+    real(default) :: mom_times_sqme_sc
     integer :: i_con
-    xi = zero
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_collinear_divergence ()) then
           if (rsub%sub_coll%use_resonance_mappings) then
@@ -6938,16 +7783,18 @@ to be more consistent with the evaluation of the Born phase space.
           else
              i_con = 1
           end if
-          sqme_sc = rsub%get_sc_matrix_element (alr, em, sregion%uborn_index)
+          mom_times_sqme_sc = rsub%get_spin_correlation_term (alr, sregion%uborn_index, em)
           if (em <= rsub%sub_coll%n_in) then
-             sqme_cs = rsub%sub_coll%compute_soft_limit_isr (sregion, &
-                rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
-                rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
+             sqme_cs = rsub%sub_coll%compute_isr (sregion, &
+                  rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
+                  rsub%sqme_born(sregion%uborn_index), mom_times_sqme_sc, &
+                  zero, alpha_s, alr, em)
           else
-             sqme_cs = rsub%sub_coll%compute_soft_limit_fsr &
-                (sregion, rsub%real_kinematics%xi_ref_momenta(i_con), &
-                rsub%real_kinematics%p_born_cms%phs_point(1)%p, &
-                rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
+             sqme_cs = rsub%sub_coll%compute_fsr (sregion, &
+                  rsub%real_kinematics%xi_ref_momenta(i_con), &
+                  rsub%real_kinematics%p_born_cms%phs_point(1)%p, &
+                  rsub%sqme_born(sregion%uborn_index), mom_times_sqme_sc, &
+                  zero, alpha_s, alr, sregion%double_fsr)
           end if
        else
           sqme_cs = zero
@@ -7030,6 +7877,18 @@ when dividing out the Born contribution.
   end subroutine real_subtraction_scale_pdfs_collinear
 
 @ %def real_subtraction_scale_pdfs_collinear
+@
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: requires_spin_correlations => &
+       real_subtraction_requires_spin_correlations
+<<real subtraction: procedures>>=
+  function real_subtraction_requires_spin_correlations (rsub) result (val)
+    logical :: val
+    class(real_subtraction_t), intent(in) :: rsub
+    val = any (rsub%sc_required)
+  end function real_subtraction_requires_spin_correlations
+
+@ %def real_subtraction_requires_spin_correlations
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: final => real_subtraction_final
@@ -7687,7 +8546,7 @@ and virtual counterterms.
     class(nlo_color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(in) :: reg_data
     integer, intent(in), dimension(:) :: flavor_indices, color_indices
-    integer :: i, i_uborn, n_flv
+    integer :: i, i_born, n_flv
     integer, dimension(N_MAX_FLV) :: checked_uborns
     integer, dimension(:), allocatable :: i_flv, i_limit
     type(color_index_list_t), dimension(:), allocatable :: i_col
@@ -7695,13 +8554,13 @@ and virtual counterterms.
     call evaluate_colors (n_flv, i_flv, i_limit, i_col)
     checked_uborns = 0
     do i = 1, size (i_flv)
-       i_uborn = reg_data%get_underlying_born_index (i_flv(i))
-       if (.not. any (checked_uborns == i_uborn)) then
+       i_born = reg_data%map_real_to_born_index (i_flv(i))
+       if (.not. any (checked_uborns == i_born)) then
           if (.not. allocated (color_data%included_color_structures)) then
              allocate (color_data%included_color_structures (size (i_col(i)%col)))
              color_data%included_color_structures = i_col(i)%col
           end if
-          checked_uborns(i) = i_uborn
+          checked_uborns(i) = i_born
        end if
     end do
   contains

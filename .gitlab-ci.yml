@@ -3,6 +3,7 @@ stages:
   - deploy
   - weekly
   - weekly-applications
+  - weekly-report
 
 variables:
   NAGFOR_OPTIONS: "-O1 -w=all -gline -C=all -nan -f2008"
@@ -14,7 +15,7 @@ variables:
   before_script:
     - ./build_master.sh
     - autoreconf
-    - mkdir -p build
+    - mkdir build || true
     - cd build
   except:
     - production
@@ -42,11 +43,12 @@ variables:
 
 # SMALL TEST SUITE (BRANCHES)
 
-gfortran-4.8.5:
+gfortran-5.4.0-fully:
   <<: *default_definition
-  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-4.8.5
+  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-tools
   script:
-    - ../configure FC=gfortran FCFLAGS="-O0 $GFORTRAN_OPTIONS" --disable-static --prefix="`pwd`/install" > configure.log
+    - export LD_LIBRARY_PATH=/home/whizard/OpenLoops/lib:$LD_LIBRARY_PATH
+    - ../configure FC=gfortran FCFLAGS="-O0 $GFORTRAN_OPTIONS" --disable-static --prefix="`pwd`/install" --enable-hoppet --enable-fastjet --enable-openloops > configure.log
     - make $JOBS -s V=0 > make.log
     - make $JOBS -s V=0 install > make-install.log
     - make $JOBS -s V=0 check
@@ -130,9 +132,9 @@ gfortran-4.9.4:
     - make $JOBS -s V=0 check
   <<: *docker_definition
 
-gfortran-5.4.0:
+gfortran-4.8.5:
   <<: *extra_definition
-  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-5.4.0
+  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-4.8.5
   script:
     - ../configure FC=gfortran FCFLAGS="-O0 $GFORTRAN_OPTIONS" --disable-static --prefix="`pwd`/install" > configure.log
     - make $JOBS -s V=0 > make.log
@@ -172,11 +174,12 @@ disabled.static.nagfor-6:
     - nagfor
     - latex
 
-extended.gfortran-4.9.4:
+extended.gfortran-5.4.0-fully:
   <<: *extra_definition
-  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-4.9.4
+  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-tools
   script:
-    - ../configure --with-precision=extended FC=gfortran FCFLAGS="-O0 $GFORTRAN_OPTIONS" --disable-static --prefix="`pwd`/install" > configure.log
+    - export LD_LIBRARY_PATH=/home/whizard/OpenLoops/lib:$LD_LIBRARY_PATH
+    - ../configure --with-precision=extended FC=gfortran FCFLAGS="-O0 $GFORTRAN_OPTIONS" --disable-static --prefix="`pwd`/install" --enable-hoppet --enable-fastjet --enable-openloops > configure.log
     - make $JOBS -s V=0 > make.log
     - make $JOBS -s V=0 install > make-install.log
     - make $JOBS -s V=0 check
@@ -192,10 +195,11 @@ openmp.gfortran-4.9.4:
     - make $JOBS -s V=0 check
   <<: *docker_definition
 
-quadruple.ifort:
+quadruple.ifort-16:
   <<: *extra_definition
   script:
-    - ../configure --with-precision=quadruple FC=ifort FCFLAGS="-O1" --disable-static --prefix="`pwd`/install" > configure.log
+    - source /opt/intel/2016/bin/compilervars.sh intel64
+    - ../configure --with-precision=quadruple FC=ifort FCFLAGS="-O1" --disable-static --prefix="`pwd`/install" --enable-hoppet --enable-fastjet --enable-openloops > configure.log
     - make $JOBS -s V=0 > make.log
     - make $JOBS -s V=0 install > make-install.log
     - make $JOBS -s V=0 check
@@ -304,7 +308,7 @@ build gcc-trunk image:
     - git clone https://${GITLAB_USER}:${GITLAB_PASSWORD}@gitlab.tp.nt.uni-siegen.de/whizard/docker.git
     - cd docker/whizard-gcc-trunk
     - wget http://mirrors.ctan.org/install/fonts/doublestroke.tds.zip
-    - docker build -t gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-trunk .
+    - docker build --no-cache=true -t gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-trunk .
     - docker login -u ${GITLAB_USER} -p ${GITLAB_PASSWORD} gitlab.tp.nt.uni-siegen.de:4567
     - docker push gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-trunk
   tags:
@@ -378,7 +382,7 @@ run matching examples:
 run NLO examples:
   <<: *examples_definition
   script:
-    - for s in *NLO*.sin ; do whizard $s; done
+    - for s in *NLO*OpenLoops.sin ; do whizard $s; done
 
 run collider examples:
   <<: *examples_definition
@@ -389,3 +393,31 @@ run other examples:
   <<: *examples_definition
   script:
     - for s in Zprime.sin casc_dec.sin circe1.sin eeww_polarized.sin fourjetsLO.sin ; do whizard $s; done
+
+build whizard with gcc-trunk:
+  <<: *default_definition
+  <<: *docker_definition
+  stage: weekly-applications
+  image: gitlab.tp.nt.uni-siegen.de:4567/whizard/development:whizard-gcc-trunk
+  only:
+    - triggers
+  except:
+  dependencies:
+  script:
+    - ../configure --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+
+notify slack weekly:
+  stage: weekly-report
+  tags:
+    - deployment
+  only:
+    - triggers
+  before_script:
+    - eval `ssh-agent -s`
+    - ssh-add /scratch/bcho/id_rsa
+  when: on_failure
+  script:
+    - echo "Weekly build on \`$CI_BUILD_REF_NAME\` failed! Commit \`$(git log -1 --oneline)\` See https://gitlab.tp.nt.uni-siegen.de/whizard/development/commit/$CI_BUILD_REF/builds" | slacktee.sh -a "warning" -p
