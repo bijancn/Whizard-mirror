@@ -2985,6 +2985,22 @@ of the present one is increased.
        end do
     end subroutine setup_region_mappings
 
+    subroutine check_permutation (perm, flv_perm, flv_orig, i_reg)
+      type(flavor_permutation_t), intent(in) :: perm
+      type(flv_structure_t), intent(in) :: flv_perm, flv_orig
+      integer, intent(in) :: i_reg
+      type(flv_structure_t) :: flv_test
+      flv_test = perm%apply (flv_orig)
+      if (.not. (flv_test == flv_perm)) then
+         print *, 'Fail at: ', i_reg
+         print *, 'Original flavor structure: ', flv_orig%flst
+         call perm%write ()
+         print *, 'Permuted flavor: ', flv_perm%flst
+         print *, 'Should be: ', flv_test%flst
+         call msg_fatal ("Permutation does not reproduce original flavor!")
+      end if
+    end subroutine check_permutation
+
     subroutine init_regions_with_permuted_flavors ()
        type(flavor_permutation_t) :: perm_list
        type(ftuple_t), dimension(:), allocatable :: ftuple_array
@@ -3856,40 +3872,85 @@ checks that now [[futple]] appears more than once.
 <<fks regions: reg data: TBP>>=
   procedure :: check_consistency => region_data_check_consistency
 <<fks regions: procedures>>=
-  subroutine region_data_check_consistency (reg_data)
+  subroutine region_data_check_consistency (reg_data, fail_fatal, unit)
     class(region_data_t), intent(in) :: reg_data
-    integer :: i_reg
-    logical :: first_invalid_1, first_invalid_2
+    logical, intent(in) :: fail_fatal
+    integer, intent(in), optional :: unit
+    integer :: u
+    integer :: i_reg, alr
+    integer :: f1, f2
+    logical :: valid_splitting
+    logical :: first_invalid_1, first_invalid_2, first_invalid_3
+    u = given_output_unit(unit); if (u < 0) return
     first_invalid_1 = .true.
     first_invalid_2 = .true.
-    call msg_message ("Check that there are no duplicate ftuples in a region")
+    first_invalid_3 = .true.
+    call msg_message ("Check that there are no duplicate ftuples in a region", unit = u)
     do i_reg = 1, reg_data%n_regions
        if (reg_data%regions(i_reg)%has_identical_ftuples ()) then
           if (first_invalid_1) then
              call msg_error ("FAIL: Identical ftuples "&
-                  &"encountered in the following regions:")
+                  &"encountered in the following regions:", unit = u)
              first_invalid_1 = .false.
           end if
-          print *, 'i_reg: ', i_reg
+          write (u, '(A,1x,I3)') 'i_reg: ', i_reg
        end if
     end do
-    if (first_invalid_1) call msg_print_color ("Success!", COL_GREEN)
-    call msg_message ("Check that at least one ftuple contains the emitter")
+    if (first_invalid_1) call msg_message ("Success!", unit = u)
+    call msg_message ("Check that ftuples add up to a valid splitting", unit = u)
+    do i_reg = 1, reg_data%n_regions
+       do alr = 1, reg_data%regions(i_reg)%nregions
+          associate (region => reg_data%regions(i_reg))
+             f1 = region%flst_real%flst(region%ftuples(alr)%ireg(1))
+             f2 = region%flst_real%flst(region%ftuples(alr)%ireg(2))
+             valid_splitting = f1 + f2 == 0 &
+                  .or. (f1 == 21 .and. f2 == 21) &
+                  .or. is_quark_gluon_splitting (f1, f2)
+             if (.not. valid_splitting) then
+                if (first_invalid_2) then
+                   call msg_error ("FAIL: Some ftuples do not match "&
+                        &"valid splittings: ", unit = u)
+                   first_invalid_2 = .false.
+                end if
+                write (u, '(A,1x,I3)') 'i_reg: ', i_reg
+                exit
+             end if
+          end associate
+       end do
+    end do
+    if (first_invalid_2) call msg_message ("Success!", unit = u)
+    call msg_message ("Check that at least one ftuple contains the emitter", unit = u)
     do i_reg = 1, reg_data%n_regions
        associate (region => reg_data%regions(i_reg))
           if (.not. any (region%emitter == region%ftuples%ireg(1))) then
-             if (first_invalid_2) then
-                call msg_error ("FAIL: No ftuple contains the emitter! ")
-                first_invalid_2 = .false.
+             if (first_invalid_3) then
+                call msg_error ("FAIL: No ftuple contains the emitter! ", unit = u)
+                first_invalid_3 = .false.
              end if
-             print *, 'i_reg: ', i_reg
+             write (u, '(A,1x,I3)') 'i_reg: ', i_reg
           end if
        end associate
     end do
-    if (first_invalid_2) call msg_print_color ("Success!", COL_GREEN)
-    if (.not. (first_invalid_1 .and. first_invalid_2)) &
-         call msg_fatal ("Stop due to inconsistent region data!")
+    if (first_invalid_3) call msg_message ("Success!", unit = u)
+    if (.not. (first_invalid_1 .and. first_invalid_2 .and. first_invalid_3)) &
+         call abort_with_message ("Stop due to inconsistent region data!")
 
+  contains
+    subroutine abort_with_message (msg)
+      character(len=*), intent(in) :: msg
+      if (fail_fatal) then
+         call msg_fatal (msg)
+      else
+         call msg_error (msg, unit = u)
+      end if
+    end subroutine abort_with_message
+
+    function is_quark_gluon_splitting (pdg_1, pdg_2) result (value)
+      logical :: value
+      integer, intent(in) :: pdg_1, pdg_2
+      value = (is_quark(pdg_1) .and. is_gluon (pdg_2)) .or. &
+           (is_quark(pdg_2) .and. is_gluon (pdg_1))
+    end function
   end subroutine region_data_check_consistency
 
 @ %def region_data_check_consistency
@@ -4821,6 +4882,7 @@ end module fks_regions_uti
     flv_real (:, 2) = [11, -11, 2, -2, 1, -1]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     deallocate (flv_born, flv_real)
@@ -4863,6 +4925,7 @@ end module fks_regions_uti
     flv_real (:, 22) = [11, -11, -1, 1, 21, 21]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     deallocate (flv_born, flv_real)
@@ -4922,6 +4985,7 @@ end module fks_regions_uti
     flv_real (:, 22)  = [11, -11, -1, 1, 21, 21, 21]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     deallocate (flv_born, flv_real)
@@ -5028,6 +5092,7 @@ end module fks_regions_uti
     flv_real (:,67) = [11,-11,-1,1,21,21,21,21]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     deallocate (flv_born, flv_real)
