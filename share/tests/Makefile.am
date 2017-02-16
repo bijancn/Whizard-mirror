@@ -126,6 +126,8 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/auto_components_3.ref \
     unit_tests/ref-output/radiation_generator_1.ref \
     unit_tests/ref-output/radiation_generator_2.ref \
+    unit_tests/ref-output/radiation_generator_3.ref \
+    unit_tests/ref-output/radiation_generator_4.ref \
     unit_tests/ref-output/particles_1.ref \
     unit_tests/ref-output/particles_2.ref \
     unit_tests/ref-output/particles_3.ref \
