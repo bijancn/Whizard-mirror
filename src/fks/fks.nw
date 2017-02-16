@@ -441,6 +441,24 @@ the [[ftuple]]-object.
   end subroutine ftuple_determine_splitting_type_isr
 
 @ %def ftuple_determine_splitting_type_isr
+@ Two debug functions to check the consistency of [[ftuples]]
+<<fks regions: ftuple: TBP>>=
+  procedure :: has_negative_elements => ftuple_has_negative_elements
+  procedure :: has_identical_elements => ftuple_has_identical_elements
+<<fks regions: procedures>>=
+  elemental function ftuple_has_negative_elements (ftuple) result (value)
+    logical :: value
+    class(ftuple_t), intent(in) :: ftuple
+    value = any (ftuple%ireg < 0)
+  end function ftuple_has_negative_elements
+
+  elemental function ftuple_has_identical_elements (ftuple) result (value)
+    logical :: value
+    class(ftuple_t), intent(in) :: ftuple
+    value = ftuple%ireg(1) == ftuple%ireg(2)
+  end function ftuple_has_identical_elements
+
+@ %def ftuple_has_negative_elements, ftuple_has_identical_elements
 @ Each singular region can have a different number of
 emitter-radiation pairs. This is coped with using the linked list
 [[ftuple_list]].
@@ -712,19 +730,23 @@ emitter-radiation pairs. This is coped with using the linked list
        end do
        deallocate (eq_tmp)
     end if
-  contains
-    subroutine print_equivalences ()
-      integer :: i, i1, i2
-      print *, 'Equivalence matrix: '
-      do i = 1, size (ftuple_array)
-         call ftuple_array(i)%get(i1,i2)
-         print *, 'i: ', i, '(', i1, i2, '): ', equivalences(i,:)
-      end do
-    end subroutine print_equivalences
-
   end subroutine ftuple_list_to_array
 
 @ %def ftuple_list_to_array
+@
+<<fks regions: procedures>>=
+  subroutine print_equivalence_matrix (ftuple_array, equivalences)
+    type(ftuple_t), intent(in), dimension(:) :: ftuple_array
+    logical, intent(in), dimension(:,:) :: equivalences
+    integer :: i, i1, i2
+    print *, 'Equivalence matrix: '
+    do i = 1, size (ftuple_array)
+       call ftuple_array(i)%get(i1,i2)
+       print *, 'i: ', i, '(', i1, i2, '): ', equivalences(i,:)
+    end do
+  end subroutine print_equivalence_matrix
+
+@ %def print_equivalence_matrix
 @ Class for working with the flavor specification arrays.
 <<fks regions: public>>=
   public :: flv_structure_t
@@ -1142,6 +1164,8 @@ structure if the particle at position \texttt{emitter} is removed
 
 @ %def flv_structure_final
 @
+<<fks regions: public>>=
+  public :: flavor_permutation_t
 <<fks regions: types>>=
   type :: flavor_permutation_t
     integer, dimension(:,:), allocatable :: perms
@@ -1162,12 +1186,12 @@ structure if the particle at position \texttt{emitter} is removed
     integer :: i, j, j_min, i_perm
     integer, dimension(:,:), allocatable :: perm_list_tmp
     type(flv_structure_t) :: flv_copy
-    flv_copy = flv_ref
+    flv_copy = flv_in
     allocate (perm_list_tmp (factorial (n_last - n_first - 1), 2))
     j_min = n_first + 1
     i_perm = 0
     do i = n_first + 1, n_last
-       flv1 = flv_in%flst(i)
+       flv1 = flv_ref%flst(i)
        do j = j_min, n_last
           flv2 = flv_copy%flst(j)
           if (flv1 == flv2 .and. i /= j) then
@@ -1177,10 +1201,10 @@ structure if the particle at position \texttt{emitter} is removed
              flv_copy%flst(j) = tmp
              perm_list_tmp (i_perm, 1) = j
              perm_list_tmp (i_perm, 2) = i
-             j_min = j_min + 1
              exit
           end if
        end do
+       j_min = j_min + 1
     end do
     allocate (perm%perms (i_perm, 2))
     perm%perms = perm_list_tmp (1 : i_perm, :)
@@ -1248,16 +1272,28 @@ structure if the particle at position \texttt{emitter} is removed
 @ %def flavor_permutation_apply_permutation
 @
 <<fks regions: procedures>>=
-  elemental function flavor_permutation_apply_flavor (perm, flv_in) &
+  elemental function flavor_permutation_apply_flavor (perm, flv_in, invert) &
          result (flv_out)
     type(flv_structure_t) :: flv_out
     class(flavor_permutation_t), intent(in) :: perm
     type(flv_structure_t), intent(in) :: flv_in
+    logical, intent(in), optional :: invert
     integer :: i, i1, i2
+    integer :: p1, p2, incr
     integer :: flv_tmp
-    logical :: flag_tmp
+    logical :: inv
+    inv = .false.; if (present(invert)) inv = invert
     flv_out = flv_in
-    do i = 1, size (perm%perms(:,1))
+    if (inv) then
+       p1 = 1
+       p2 = size (perm%perms, dim = 1)
+       incr = 1
+    else
+       p1 = size (perm%perms, dim = 1)
+       p2 = 1
+       incr = -1
+    end if
+    do i = p1, p2, incr
        i1 = perm%perms(i,1)
        i2 = perm%perms(i,2)
        flv_tmp = flv_out%flst(i1)
@@ -1275,10 +1311,14 @@ structure if the particle at position \texttt{emitter} is removed
     integer, intent(in) :: i_in
     integer :: i, i1, i2
     i_out = i_in
-    do i = 1, size (perm%perms(:,1))
+    do i = size (perm%perms(:,1)), 1, -1
        i1 = perm%perms(i,1)
        i2 = perm%perms(i,2)
-       if (i_out == i1) i_out = i2
+       if (i_out == i1) then
+          i_out = i2
+       else if (i_out == i2) then
+          i_out = i1
+       end if
     end do
   end function flavor_permutation_apply_integer
 
@@ -1291,7 +1331,7 @@ structure if the particle at position \texttt{emitter} is removed
     type(ftuple_t), intent(in) :: f_in
     integer :: i, i1, i2
     f_out = f_in
-    do i = 1, size (perm%perms, dim = 1)
+    do i = size (perm%perms, dim = 1), 1, -1
        i1 = perm%perms(i,1)
        i2 = perm%perms(i,2)
        if (f_out%ireg(1) == i1) then
@@ -1309,38 +1349,6 @@ structure if the particle at position \texttt{emitter} is removed
   end function flavor_permutation_apply_ftuple
 
 @ %def flavor_permutation_apply_ftuple
-@
-<<fks regions: procedures>>=
-  subroutine apply_permutations_on_ftuple_array (perm, ftuples, equivalences)
-    type(flavor_permutation_t), intent(in) :: perm
-    type(ftuple_t), intent(inout), dimension(:) :: ftuples
-    logical, intent(inout), dimension(:,:) :: equivalences
-    type(ftuple_t), dimension(:), allocatable :: ftuples_save
-    integer :: i, j, n
-    integer, dimension(:), allocatable :: old_to_new
-    logical, dimension(:,:), allocatable :: eq_tmp
-    n = size (ftuples)
-    allocate (ftuples_save (n))
-    ftuples_save = ftuples
-    allocate (old_to_new (n))
-    old_to_new = [(i, i = 1, n)]
-    ftuples = perm%apply (ftuples)
-    do i = 1, n
-       do j = 1, n
-          if (ftuples_save(i) == ftuples(j)) old_to_new(i) = j
-       end do
-    end do
-    allocate (eq_tmp (n, n))
-    do i = 1, n
-       eq_tmp(i,:) = equivalences(old_to_new(i),:)
-    end do
-    equivalences = eq_tmp
-    deallocate (ftuples_save)
-    deallocate (old_to_new)
-    deallocate (eq_tmp)
-  end subroutine apply_permutations_on_ftuple_array
-
-@ %def apply_permutations_on_ftuple_array
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with
 an $\alpha_r$- and resonance-index, with a real flavor structure and
@@ -1409,14 +1417,7 @@ also be supplied by a symmetry factor, explained below.
     sregion%nregions = size (ftuples)
     n_legs = size (flst_real%flst)
     allocate (sregion%ftuples (sregion%nregions))
-
-    do i = 1, sregion%nregions
-       sregion%ftuples = ftuples
-       if (.not. any (equivalences(i,:))) then
-          call ftuples(i)%get (i1, i2)
-          if (i2 /= n_legs) call ftuples(i)%set (i1, n_legs)
-       end if
-    end do
+    sregion%ftuples = ftuples
     do i = 1, size(flv_born)
        if (flv_born (i) == sregion%flst_uborn) then
           sregion%uborn_index = i
@@ -1434,11 +1435,7 @@ also be supplied by a symmetry factor, explained below.
          call flst_real%write ()
          call flst_uborn%write ()
          print *, 'emitter =    ', emitter
-         print *, 'ftuples: '
-         do i = 1, size (ftuples)
-            call ftuples(i)%write (newline = .false.)
-         end do
-         print *, ''
+         call print_equivalence_matrix (ftuples, equivalences)
       end if
     end subroutine debug_input_values
   end subroutine singular_region_init
@@ -2707,8 +2704,6 @@ are therefore equivalent.
        end do
     end do
 
-    if (debug2_active (D_SUBTRACTION)) call print_all_regions ()
-
     allocate (flst_alr (i_reg))
     flst_alr = flst_alr_tmp(1 : i_reg)
     allocate (emitters (i_reg))
@@ -2830,19 +2825,6 @@ are therefore equivalent.
          end associate
       end do
     end subroutine check_initial_state_emissions
-
-    subroutine print_all_regions
-       print *, 'Intermediate ftuples: '
-       do i_real = 1, n_real
-          print *, 'i_real: ', i_real, ' // ', reg_data%flv_real(i_real)%flst
-          do i_born = 1, n_born
-             print *, 'i_born: ', i_born, ' // ', reg_data%flv_born(i_born)%flst
-             print *, 'ftuples: '
-             call ftuples_tmp(i_born,i_real)%write ()
-             print *, '**************************'
-          end do
-      end do
-    end subroutine print_all_regions
 
   end subroutine region_data_find_regions
 
@@ -2985,6 +2967,22 @@ of the present one is increased.
        end do
     end subroutine setup_region_mappings
 
+    subroutine check_permutation (perm, flv_perm, flv_orig, i_reg)
+      type(flavor_permutation_t), intent(in) :: perm
+      type(flv_structure_t), intent(in) :: flv_perm, flv_orig
+      integer, intent(in) :: i_reg
+      type(flv_structure_t) :: flv_test
+      flv_test = perm%apply (flv_orig, invert = .true.)
+      if (.not. (all (flv_test%flst == flv_perm%flst))) then
+         print *, 'Fail at: ', i_reg
+         print *, 'Original flavor structure: ', flv_orig%flst
+         call perm%write ()
+         print *, 'Permuted flavor: ', flv_perm%flst
+         print *, 'Should be: ', flv_test%flst
+         call msg_fatal ("Permutation does not reproduce original flavor!")
+      end if
+    end subroutine check_permutation
+
     subroutine init_regions_with_permuted_flavors ()
        type(flavor_permutation_t) :: perm_list
        type(ftuple_t), dimension(:), allocatable :: ftuple_array
@@ -3007,7 +3005,9 @@ of the present one is increased.
                 call perm_list%reset ()
                 call perm_list%init (flv_alr_registered(j), reg_data%flv_real(i), &
                      reg_data%n_in, reg_data%n_legs_real)
-                call apply_permutations_on_ftuple_array (perm_list, ftuple_array, equivalences)
+                if (debug_active (D_SUBTRACTION)) call check_permutation &
+                     (perm_list, reg_data%flv_real(i), flv_alr_registered(j), j)
+                ftuple_array = perm_list%apply (ftuple_array)
              end if
           end do
           call reg_data%regions(j)%init (j, mult(j), 0, flv_alr_registered(j), &
@@ -3856,23 +3856,111 @@ checks that now [[futple]] appears more than once.
 <<fks regions: reg data: TBP>>=
   procedure :: check_consistency => region_data_check_consistency
 <<fks regions: procedures>>=
-  subroutine region_data_check_consistency (reg_data)
+  subroutine region_data_check_consistency (reg_data, fail_fatal, unit)
     class(region_data_t), intent(in) :: reg_data
-    integer :: i_reg
-    logical :: first_invalid_region
-    first_invalid_region = .true.
+    logical, intent(in) :: fail_fatal
+    integer, intent(in), optional :: unit
+    integer :: u
+    integer :: i_reg, alr
+    integer :: i1, f1, f2
+    logical :: undefined_ftuples, same_ftuple_indices, valid_splitting
+    logical, dimension(4) :: no_fail
+    u = given_output_unit(unit); if (u < 0) return
+    no_fail = .true.
+    call msg_message ("Check that no negative ftuple indices occur", unit = u)
     do i_reg = 1, reg_data%n_regions
-       if (reg_data%regions(i_reg)%has_identical_ftuples ()) then
-          if (first_invalid_region) then
-             call msg_error ("Region data invalid: Identical ftuples "&
-                  &"encountered in the following regions:")
-             first_invalid_region = .false.
-          end if
-          print *, 'i_reg: ', i_reg
+       if (any (reg_data%regions(i_reg)%ftuples%has_negative_elements ())) then
+          !!! This error is so severe that we stop immediately
+          call msg_fatal ("Negative ftuple indices!")
        end if
     end do
-    if (.not. first_invalid_region) &
-         call msg_fatal ("Stop due to inconsistent region data!")
+    call msg_message ("Success!", unit = u)
+    call msg_message ("Check that there is no ftuple with identical elements", unit = u)
+    do i_reg = 1, reg_data%n_regions
+       if (any (reg_data%regions(i_reg)%ftuples%has_identical_elements ())) then
+          !!! This error is so severe that we stop immediately
+          call msg_fatal ("Identical ftuple indices!")
+       end if
+    end do
+    call msg_message ("Success!", unit = u)
+    call msg_message ("Check that there are no duplicate ftuples in a region", unit = u)
+    do i_reg = 1, reg_data%n_regions
+       if (reg_data%regions(i_reg)%has_identical_ftuples ()) then
+          if (no_fail(1)) then
+             call msg_error ("FAIL: ", unit = u)
+             no_fail(1) = .false.
+          end if
+          write (u, '(A,1x,I3)') 'i_reg:', i_reg
+       end if
+    end do
+    if (no_fail(1)) call msg_message ("Success!", unit = u)
+    call msg_message ("Check that ftuples add up to a valid splitting", unit = u)
+    do i_reg = 1, reg_data%n_regions
+       do alr = 1, reg_data%regions(i_reg)%nregions
+          associate (region => reg_data%regions(i_reg))
+             i1 = region%ftuples(alr)%ireg(1)
+             if (i1 == 0) i1 = 1 !!! Gluon emission from both initial-state quarks
+             f1 = region%flst_real%flst(i1)
+             f2 = region%flst_real%flst(region%ftuples(alr)%ireg(2))
+             valid_splitting = f1 + f2 == 0 &
+                  .or. (f1 == 21 .and. f2 == 21) &
+                  .or. is_quark_gluon_splitting (f1, f2)
+             if (.not. valid_splitting) then
+                if (no_fail(2)) then
+                   call msg_error ("FAIL: ", unit = u)
+                   no_fail(2) = .false.
+                end if
+                write (u, '(A,1x,I3)') 'i_reg:', i_reg
+                exit
+             end if
+          end associate
+       end do
+    end do
+    if (no_fail(2)) call msg_message ("Success!", unit = u)
+    call msg_message ("Check that at least one ftuple contains the emitter", unit = u)
+    do i_reg = 1, reg_data%n_regions
+       associate (region => reg_data%regions(i_reg))
+          if (.not. any (region%emitter == region%ftuples%ireg(1))) then
+             if (no_fail(3)) then
+                call msg_error ("FAIL: ", unit = u)
+                no_fail(3) = .false.
+             end if
+             write (u, '(A,1x,I3)') 'i_reg:', i_reg
+          end if
+       end associate
+    end do
+    if (no_fail(3)) call msg_message ("Success!", unit = u)
+    call msg_message ("Check that each region has at least one ftuple &
+         &with index n + 1", unit = u)
+    do i_reg = 1, reg_data%n_regions
+       if (.not. any (reg_data%regions(i_reg)%ftuples%ireg(2) == reg_data%n_legs_real)) then
+          if (no_fail(4)) then
+             call msg_error ("FAIL: ", unit = u)
+             no_fail(4) = .false.
+          end if
+          write (u, '(A,1x,I3)') 'i_reg:', i_reg
+       end if
+    end do
+    if (no_fail(4)) call msg_message ("Success!", unit = u)
+    if (.not. all (no_fail)) &
+         call abort_with_message ("Stop due to inconsistent region data!")
+
+  contains
+    subroutine abort_with_message (msg)
+      character(len=*), intent(in) :: msg
+      if (fail_fatal) then
+         call msg_fatal (msg)
+      else
+         call msg_error (msg, unit = u)
+      end if
+    end subroutine abort_with_message
+
+    function is_quark_gluon_splitting (pdg_1, pdg_2) result (value)
+      logical :: value
+      integer, intent(in) :: pdg_1, pdg_2
+      value = (is_quark(pdg_1) .and. is_gluon (pdg_2)) .or. &
+           (is_quark(pdg_2) .and. is_gluon (pdg_1))
+    end function
   end subroutine region_data_check_consistency
 
 @ %def region_data_check_consistency
@@ -4023,16 +4111,12 @@ tuning the efficiency of the mapping and are set to $1$ per default.
     integer, intent(in) :: i, j
     integer, intent(in), optional :: i_con
     d = zero
-    if (i /= j) then
-        if (map%pseudo_isr) then
-           d = dij_threshold_gluon_from_top (i, j, p, map%exp_1)
-        else if (i > map%n_in .and. j > map%n_in) then
-           d = dij_fsr (p(i), p(j), map%exp_1)
-        else
-           d = dij_isr (map%n_in, i, j, p, map%exp_2)
-        end if
+    if (map%pseudo_isr) then
+       d = dij_threshold_gluon_from_top (i, j, p, map%exp_1)
+    else if (i > map%n_in .and. j > map%n_in) then
+       d = dij_fsr (p(i), p(j), map%exp_1)
     else
-      call msg_fatal ("Invalid FKS region: Emitter equals FKS parton!")
+       d = dij_isr (map%n_in, i, j, p, map%exp_2)
     end if
   contains
 
@@ -4603,6 +4687,8 @@ end module fks_regions_uti
          u, results)
     call test(fks_regions_4, "fks_regions_4", &
          "Check Latex output", u, results)
+    call test(fks_regions_5, "fks_regions_5", &
+         "Check permutations", u, results)
   end subroutine fks_regions_test
 
 @ %def fks_regions_test
@@ -4804,6 +4890,7 @@ end module fks_regions_uti
     flv_real (:, 2) = [11, -11, 2, -2, 1, -1]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     deallocate (flv_born, flv_real)
@@ -4846,6 +4933,7 @@ end module fks_regions_uti
     flv_real (:, 22) = [11, -11, -1, 1, 21, 21]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     deallocate (flv_born, flv_real)
@@ -4905,6 +4993,7 @@ end module fks_regions_uti
     flv_real (:, 22)  = [11, -11, -1, 1, 21, 21, 21]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     deallocate (flv_born, flv_real)
@@ -5011,6 +5100,7 @@ end module fks_regions_uti
     flv_real (:,67) = [11,-11,-1,1,21,21,21,21]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     deallocate (flv_born, flv_real)
@@ -5072,6 +5162,7 @@ end module fks_regions_uti
     end do
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
     call write_separator (u)
@@ -5091,6 +5182,7 @@ end module fks_regions_uti
     flv_real (:, 1) = [6, -5, 2, -1, 21]
 
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
   end subroutine fks_regions_3
@@ -5125,6 +5217,37 @@ end module fks_regions_uti
   end subroutine fks_regions_4
 
 @ %def fks_regions_4
+@
+<<fks regions: test declarations>>=
+  public :: fks_regions_5
+<<fks regions: tests>>=
+  subroutine fks_regions_5 (u)
+    integer, intent(in) :: u
+    type(flv_structure_t) :: flv_original, flv_work
+    type(flavor_permutation_t) :: perm_list
+    type(ftuple_t) :: ftuple_orig, ftuple_work
+    integer :: n_in, n_legs
+    write (u, "(A)") "* Test output: fks_regions_5"
+    write (u, "(A)") "* Check permutations"
+    write (u, "(A)")
+
+    n_in = 2
+    n_legs = 8
+
+    call flv_original%init ([11,-11,-4,-4,-4,4,4,4], n_in)
+    call flv_work%init ([11,-11,-4,-4,4,4,-4,4], n_in)
+
+    call perm_list%init (flv_work, flv_original, n_in, n_legs)
+    ftuple_orig%ireg = [3,6]
+    write (u, '(A,1x,2I1)') "* Original ftuple: ", ftuple_orig%ireg
+    write (u, '(A)') "* Created permutation list"
+    call perm_list%write (u)
+    ftuple_work = perm_list%apply (ftuple_orig)
+    write (u, '(A,1x,2I1)') "* Permuted ftuple: ", ftuple_work%ireg
+
+  end subroutine fks_regions_5
+
+@ %def fks_regions_5
 @
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

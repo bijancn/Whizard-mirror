@@ -238,6 +238,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/fks_regions_2.ref \
     unit_tests/ref-output/fks_regions_3.ref \
     unit_tests/ref-output/fks_regions_4.ref \
+    unit_tests/ref-output/fks_regions_5.ref \
     unit_tests/ref-output/nlo_color_data_1.ref \
     unit_tests/ref-output/nlo_color_data_2.ref \
     unit_tests/ref-output/nlo_color_data_3.ref \
