@@ -10884,20 +10884,20 @@ end module ttv_formfactors
        case (MATCHED, RESUMMED, RESUMMED_SWITCHOFF)
           FF = resummed_formfactor (ps, vec_type) - one
        case (MATCHED_EXPANDED)
-          f = f_switch_off (v_matching (ps%sqrts, GAM))
+          f = f_switch_off (v_matching (ps%sqrts, GAM_M1S))
           FF = - expanded_formfactor (f * AS_HARD, f * AS_HARD, ps, vec_type) &
                + resummed_formfactor (ps, vec_type)
        case (EXPANDED_HARD)
           FF = expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type) - one
        case (EXPANDED_SOFT_HARD)
-          f = f_switch_off (v_matching (ps%sqrts, GAM))
+          f = f_switch_off (v_matching (ps%sqrts, GAM_M1S))
           FF = expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
                (1-f) * AS_HARD, ps, vec_type) - one
        case (EXPANDED_SOFT)
           FF = expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, &
                vec_type) - one
        case (EXPANDED_SOFT_SWITCHOFF)
-          f = f_switch_off (v_matching (ps%sqrts, GAM))
+          f = f_switch_off (v_matching (ps%sqrts, GAM_M1S))
           FF = expanded_formfactor (f * AS_HARD, &
                f * alphas_soft (ps%sqrts), ps, vec_type) - one
        case (RESUMMED_ANALYTIC_LL)
@@ -10923,6 +10923,56 @@ end module ttv_formfactors
   end function formfactor_compute
 
 @ %def formfactor_compute
+@
+<<ttv formfactors: public>>=
+  public :: width_t
+<<ttv formfactors: types>>=
+  type :: width_t
+    real(default) :: aem
+    real(default) :: sw
+    real(default) :: mw
+    real(default) :: mb
+    real(default) :: vtb
+    real(default) :: gam_inv
+  contains
+   <<ttv formfactors: width: TBP>>
+  end type width_t
+
+@ %def width_t
+@
+<<ttv formfactors: width: TBP>>=
+  procedure :: init => width_init
+<<ttv formfactors: procedures>>=
+  pure subroutine width_init (width, aemi, sw, mw, mb, vtb, gam_inv)
+    class(width_t), intent(inout) :: width
+    real(default), intent(in) :: aemi, sw, mw, mb, vtb, gam_inv
+    width%aem = one / aemi
+    width%sw = sw
+    width%mw = mw
+    width%mb = mb
+    width%vtb = vtb
+    width%gam_inv = gam_inv
+  end subroutine width_init
+
+@ %def width_init
+@
+<<ttv formfactors: width: TBP>>=
+  procedure :: compute => width_compute
+<<ttv formfactors: procedures>>=
+  pure function width_compute (width, top_mass) result (gamma)
+    real(default) :: gamma
+    class(width_t), intent(in) :: width
+    real(default), intent(in) :: top_mass
+    if (threshold%settings%nlo) then
+       gamma = top_width_sm_qcd_nlo_jk (width%aem, width%sw, top_mass, &
+            width%mw, width%mb, AS_HARD) + width%gam_inv
+    else
+       gamma = top_width_sm_lo (width%aem, width%sw, width%vtb, top_mass, &
+            width%mw, width%mb) + width%gam_inv
+    end if
+  end function width_compute
+
+@ %def width_compute
 @ Use singleton pattern instead of global variables. At least shows
 where the variables are from.
 <<ttv formfactors: public>>=
@@ -10935,6 +10985,7 @@ where the variables are from.
   type :: threshold_t
      type(settings_t) :: settings
      type(formfactor_t) :: formfactor
+     type(width_t) :: width
   contains
    <<ttv formfactors: threshold: TBP>>
   end type threshold_t
@@ -10965,7 +11016,7 @@ where the variables are from.
 
 @ [[gam_m1s]] is only used for the scale nustar
 <<ttv formfactors: public>>=
-  public :: GAM
+  public :: GAM, GAM_M1S
 <<ttv formfactors: global variables>>=
   real(default) :: M1S, GAM, GAM_M1S
   integer :: NRQCD_ORDER
@@ -11145,6 +11196,20 @@ where the variables are from.
   end type p0_q_integrand_t
 
 @
+<<ttv formfactors: procedures>>=
+  function set_nrqcd_order (nrqcd_order_in) result (nrqcdorder)
+    integer :: nrqcdorder
+    real(default), intent(in) :: nrqcd_order_in
+    nrqcdorder = 1
+    if ( int(nrqcd_order_in) > nrqcdorder ) then
+      call msg_warning ("reset to highest available NRQCD_ORDER = " // char(nrqcdorder))
+    else
+      nrqcdorder = int(nrqcd_order_in)
+    end if
+  end function set_nrqcd_order
+
+@ %def set_nrqcd_order
+@
 <<ttv formfactors: public>>=
   public :: init_parameters
 <<ttv formfactors: procedures>>=
@@ -11180,71 +11245,31 @@ where the variables are from.
     M1S = m1s_in
     threshold%settings%mpole_dynamic = .not. mpole_fixed
     threshold%settings%offshell_strategy = int (offshell_strategy_in)
-    NRQCD_ORDER = 1
-    if ( int(nrqcd_order_in) > NRQCD_ORDER ) then
-      call msg_warning ("reset to highest available NRQCD_ORDER = " // char(NRQCD_ORDER))
-    else
-      NRQCD_ORDER = int(nrqcd_order_in)
-    end if
-    threshold%settings%ext_vinput = threshold%settings%ext_vinput .and. NRQCD_ORDER > 0
+    call threshold%settings%setup_flags (int(ff_in), &
+         threshold%settings%offshell_strategy, &
+         int (top_helicity_selection))
+    NRQCD_ORDER = set_nrqcd_order (nrqcd_order_in)
     v1 = v1_in
     v2 = v2_in
     sqrts_min = scan_sqrts_min
     sqrts_max = scan_sqrts_max
     sqrts_it = scan_sqrts_stepsize
-
-    !!! global hard parameters incl. hard alphas used in *all* form factors
-    RESCALE_H    = h_in
-    MU_HARD      = M1S * RESCALE_H
-    AS_HARD      = running_as (MU_HARD, az, mz, 2, NF)
-    call msg_debug (D_THRESHOLD, "AS_HARD", AS_HARD)
-    call threshold%settings%setup_flags (int(ff_in), threshold%settings%offshell_strategy, &
-         int (top_helicity_selection))
-    if (threshold%settings%nlo) then
-       GAM_M1S = top_width_sm_qcd_nlo_jk (one / aemi, sw, m1s, mw, mb, AS_HARD) + gam_inv
-    else
-       GAM_M1S = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
-    end if
-    !!! auxiliary numbers needed later
-    !!! current coefficients Ai(S,L,J), cf. arXiv:hep-ph/0609151, Eqs. (63)-(64)
-    !!! 3S1 coefficients (s-wave, vector current)
-    B0 = coeff_b0(NF) * (4.*pi)
-    B1 = coeff_b1(NF) * (4.*pi)**2
-    aa2(1) = (CF*(CA*CF*(9.*CA - 100.*CF) - &
-              B0*(26.*CA**2 + 19.*CA*CF - 32.*CF**2)))/(26.*B0**2 *CA)
-    aa3(1) = CF**2/( B0**2 *(6.*B0 - 13.*CA)*(B0 - 2.*CA)) * &
-              (CA**2 *(9.*CA - 100.*CF) + B0*CA*(74.*CF - CA*16.) - &
-              6.*B0**2 *(2.*CF - CA))
-    aa4(1) = (24.*CF**2 * (11.*CA - 3.*B0)*(5.*CA + 8.*CF)) / &
-              (13.*CA*(6.*B0 - 13.*CA)**2)
-    aa5(1) =  (CF**2 * (CA*(15.-28) + B0*5.))/(6.*(B0-2.*CA)**2)
-    aa8(1) = zero
-    aa0(1) = -((8.*CF*(CA + CF)*(CA + 2.*CF))/(3.*B0**2))
-    !!! 3P1 coefficients (p-wave, axial vector current)
-    aa2(2) = -1./3. * (CF*(CA+2.*CF)/B0 - CF**2/(4.*B0) )
-    aa3(2) =  zero
-    aa4(2) =  zero
-    aa5(2) =  1./3. * CF**2/(4.*(B0-2.*CA))
-    aa8(2) = -1./3. * CF**2/(B0-CA)
-    aa0(2) = -1./3. * 8.*CA*CF*(CA+4.*CF)/(3.*B0**2)
-
-    !!! soft parameters incl. mtpole (depend on sqrts: initialize with sqrts ~ 2*M1S)
+    !!! global hard parameters incl. hard alphas used in all form factors
+    RESCALE_H = h_in
+    MU_HARD   = M1S * RESCALE_H
+    AS_HARD   = running_as (MU_HARD, az, mz, 2, NF)
+    call threshold%width%init (aemi, sw, mw, mb, vtb, gam_inv)
+    GAM_M1S = threshold%width%compute (M1S)
+    call compute_global_auxiliary_numbers ()
+    !!! soft parameters incl. mtpole
+    !!! (depend on sqrts: initialize with sqrts ~ 2*M1S)
     NUSTAR_FIXED = - one
     NUSTAR_DYNAMIC = NUSTAR_FIXED  < zero
     RESCALE_F = f_in
-    GAM = zero
     call update_global_sqrts_dependent_variables (2. * M1S)
     mtpole_init = MTPOLE
     mpole_out = mtpole_init
-    !!! compute the total top width from t->bW decay plus optional invisible width
-    if (threshold%settings%nlo) then
-       GAM = top_width_sm_qcd_nlo_jk (one / aemi, sw, MTPOLE, mw, mb, AS_HARD) + gam_inv
-    else
-       GAM = top_width_sm_lo (one / aemi, sw, Vtb, MTPOLE, mw, mb) + gam_inv
-    end if
-    call msg_debug (D_THRESHOLD, "GAM", GAM)
     gam_out = GAM
-
     threshold%settings%initialized_parameters = .true.
   contains
     <<ttv formfactors: init parameters: subroutines>>
@@ -11274,8 +11299,37 @@ where the variables are from.
     call msg_debug (D_THRESHOLD, "scan_sqrts_min", scan_sqrts_min)
     call msg_debug (D_THRESHOLD, "scan_sqrts_max", scan_sqrts_max)
     call msg_debug (D_THRESHOLD, "scan_sqrts_stepsize", scan_sqrts_stepsize)
+    call msg_debug (D_THRESHOLD, "AS_HARD", AS_HARD)
   end subroutine show_input
 
+@
+<<ttv formfactors: procedures>>=
+  subroutine compute_global_auxiliary_numbers ()
+    !!! auxiliary numbers needed later
+    !!! current coefficients Ai(S,L,J), cf. arXiv:hep-ph/0609151, Eqs. (63)-(64)
+    !!! 3S1 coefficients (s-wave, vector current)
+    B0 = coeff_b0(NF) * (4.*pi)
+    B1 = coeff_b1(NF) * (4.*pi)**2
+    aa2(1) = (CF*(CA*CF*(9.*CA - 100.*CF) - &
+              B0*(26.*CA**2 + 19.*CA*CF - 32.*CF**2)))/(26.*B0**2 *CA)
+    aa3(1) = CF**2/( B0**2 *(6.*B0 - 13.*CA)*(B0 - 2.*CA)) * &
+              (CA**2 *(9.*CA - 100.*CF) + B0*CA*(74.*CF - CA*16.) - &
+              6.*B0**2 *(2.*CF - CA))
+    aa4(1) = (24.*CF**2 * (11.*CA - 3.*B0)*(5.*CA + 8.*CF)) / &
+              (13.*CA*(6.*B0 - 13.*CA)**2)
+    aa5(1) =  (CF**2 * (CA*(15.-28) + B0*5.))/(6.*(B0-2.*CA)**2)
+    aa8(1) = zero
+    aa0(1) = -((8.*CF*(CA + CF)*(CA + 2.*CF))/(3.*B0**2))
+    !!! 3P1 coefficients (p-wave, axial vector current)
+    aa2(2) = -1./3. * (CF*(CA+2.*CF)/B0 - CF**2/(4.*B0) )
+    aa3(2) =  zero
+    aa4(2) =  zero
+    aa5(2) =  1./3. * CF**2/(4.*(B0-2.*CA))
+    aa8(2) = -1./3. * CF**2/(B0-CA)
+    aa0(2) = -1./3. * 8.*CA*CF*(CA+4.*CF)/(3.*B0**2)
+  end subroutine compute_global_auxiliary_numbers
+
+@ %def compute_global_auxiliary_numbers
 @
 <<ttv formfactors: public>>=
   public :: init_threshold_grids
@@ -11440,7 +11494,7 @@ where the variables are from.
 <<ttv formfactors: procedures>>=
   pure function parameters_string () result (str)
     character(len(parameters_ref)) :: str
-    str = char(M1S) // " " // char(GAM) // " " // char(NRQCD_ORDER) &
+    str = char(M1S) // " " // char(GAM_M1S) // " " // char(NRQCD_ORDER) &
            // " " // char(RESCALE_H) &
            // " " // char(RESCALE_F) &
            //  " " // char(sqrts_min) &
@@ -11477,6 +11531,8 @@ where the variables are from.
        AS_USOFT = AS_USOFT * f
     end if
     MTPOLE = m1s_to_mpole (sqrts)
+    GAM = threshold%width%compute (MTPOLE)
+    call msg_debug (D_THRESHOLD, "GAM", GAM)
     call msg_debug (D_THRESHOLD, "nu_soft", nu_soft)
     call msg_debug (D_THRESHOLD, "MTPOLE", MTPOLE)
     call msg_debug (D_THRESHOLD, "AS_SOFT", AS_SOFT)
@@ -11541,7 +11597,7 @@ where the variables are from.
   pure function v_matching (sqrts, gamma) result (v)
     real(default) :: v
     real(default), intent(in) :: sqrts, gamma
-    v = abs (sqrts_to_v (sqrts, gamma))
+    v = abs (sqrts_to_v_1S (sqrts, gamma))
   end function v_matching
 
 @
@@ -11839,7 +11895,7 @@ grid).
     end if
     !!! TOPPIK output includes tree level ~ 1, a_soft @ LL in current coefficient!
     if (SWITCHOFF_RESUMMED) then
-       f = f_switch_off (v_matching (sqrts, GAM))
+       f = f_switch_off (v_matching (sqrts, GAM_M1S))
        alphas_hard = AS_HARD * f
     else
        alphas_hard = AS_HARD
@@ -12042,6 +12098,14 @@ grid).
     m = m1s_to_mpole (sqrts)
     v = sqrt ((sqrts - two * m + imago * gamma) / m)
   end function sqrts_to_v
+
+@
+<<ttv formfactors: procedures>>=
+  pure function sqrts_to_v_1S (sqrts, gamma) result (v)
+    complex(default) :: v
+    real(default), intent(in) :: sqrts, gamma
+    v = sqrt ((sqrts - two * M1S + imago * gamma) / M1S)
+  end function sqrts_to_v_1S
 
 @
 <<ttv formfactors: procedures>>=
@@ -12527,7 +12591,7 @@ end module ttv_formfactors_uti
     write (u, "(A)") "Check low energy behavior"
     mpole_fixed = .true.
   <<(re)start grid>>
-    call assert_equal (u, f_switch_off (v_matching (ps%sqrts, GAM)), one, "f_switch_off (v_matching (ps%sqrts, GAM))")
+    call assert_equal (u, f_switch_off (v_matching (ps%sqrts, GAM_M1S)), one, "f_switch_off (v_matching (ps%sqrts, GAM_M1S))")
     call formfactor%disable ()
     call assert_equal (u, &
          abs(formfactor%compute (ps, 1, 1)), &
@@ -12547,8 +12611,8 @@ end module ttv_formfactors_uti
   <<(re)start grid>>
     ! For simplicity we test on-shell back-to-back tops
     call ps%init (m1s**2, m1s**2, sqrts**2, mpole)
-    call assert_equal (u, f_switch_off (v_matching (ps%sqrts, GAM)), tiny_10, &
-         "f_switch_off (v_matching (ps%sqrts, GAM))")
+    call assert_equal (u, f_switch_off (v_matching (ps%sqrts, GAM_M1S)), tiny_10, &
+         "f_switch_off (v_matching (ps%sqrts, GAM_M1S))")
     call assert (u, &
          abs (formfactor%compute (ps, 1, EXPANDED_HARD)) > &
          abs (formfactor%compute (ps, 1, RESUMMED)), &
