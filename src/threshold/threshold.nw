@@ -10705,7 +10705,6 @@ end module ttv_formfactors
   public :: settings_t
 <<ttv formfactors: types>>=
   type :: settings_t
-     logical :: ext_vinput
      ! look what is set by initialized_parameters, bundle them in a class and rename to initialized
      logical :: initialized_parameters
      ! this belongs to init_threshold_phase_space_grid in phase_space_grid_t
@@ -10801,7 +10800,6 @@ end module ttv_formfactors
          settings%helicity_approximation%extra
     write (u, '(A,L1)') "settings%helicity_approximation%ultra = ", &
          settings%helicity_approximation%ultra
-    write (u, '(A,L1)') "settings%ext_vinput = ", settings%ext_vinput
     write (u, '(A,L1)') "settings%initialized_parameters = ", &
          settings%initialized_parameters
     write (u, '(A,L1)') "settings%initialized_ps = ", &
@@ -10995,7 +10993,7 @@ where the variables are from.
   type(nr_spline_t) :: ff_p_spline
   real(default) :: v1, v2
 
-  integer :: POINTS_SQ, POINTS_P, POINTS_P0, n_p_p0dep, n_q
+  integer :: POINTS_SQ, POINTS_P, POINTS_P0, n_q
   real(default), dimension(:), allocatable :: sq_grid, p_grid, p0_grid, q_grid
   complex(default), dimension(:,:,:,:), allocatable :: ff_grid
   complex(single), dimension(:,:,:,:,:), allocatable :: Vmatrix
@@ -12129,91 +12127,6 @@ grid).
     if (n_sing > 0 ) q_grid(n_q+1:n_q+n_sing) = sing_vals(1:n_sing)
     call nr_sort (q_grid)
   end subroutine compute_support_points
-
-@
-<<ttv formfactors: procedures>>=
-  subroutine import_Vmatrices ()
-    complex(single), dimension(:), allocatable :: mat_1d
-    logical :: ex
-    integer :: u, st, i_line, i_loop, vec_type
-    character(len=1) :: flag
-    real(single) :: re, im
-    type(string_t) :: Vpath, Vfile
-    Vpath = PREFIX // "/share/whizard/SM_tt_threshold_data/SM_tt_threshold_Vmatrices/"
-    do vec_type = 1, 2
-       ! TODO: (bcn 2015-07-31) I suppose this should be removed at some point?!
-       if (vec_type==2) return
-       do i_loop = 0, NRQCD_ORDER
-          select case (10*vec_type+i_loop)
-             case (10)
-               Vfile = Vpath // "Vmatrix_s-wave_LO.dat"
-             case (11)
-               Vfile = Vpath // "Vmatrix_s-wave_NLO.dat"
-             case (20)
-               Vfile = Vpath // "Vmatrix_p-wave_LO.dat"
-             case (21)
-               Vfile = Vpath // "Vmatrix_p-wave_NLO.dat"
-             case default
-               call msg_fatal ("import Vmatrix: no input file for i_loop = "  &
-                                 // char(i_loop) // " and vec_type = " // char(vec_type))
-          end select
-          inquire (file=char(Vfile), exist=ex)
-          call msg_message ("Trying to load " // char(Vfile))
-          if (.not.ex) then
-             call msg_message ("Input data missing. You may choose to:")
-             call msg_message (" (d)ownload files from whizard.hepforge.org (180/590 MB packed/unpacked);")
-             call msg_message (" (c)ompute data on the fly (may take 1-3 hours to initialize).")
-             call msg_message (" Please enter d/c:")
-             read (input_unit, *) flag
-             select case (flag)
-               case ("d")
-                 call msg_message ("===> Please run the download script:")
-                 call msg_message (PREFIX // "/share/whizard/SM_tt_threshold_data/download_data.sh")
-                 call msg_message ("and restart WHIZARD.")
-                 call msg_terminate ()
-               case ("c")
-                 threshold%settings%ext_vinput = .false.
-                 return
-               case default
-                 call msg_fatal ("unknown option " // flag)
-             end select
-          end if
-          i_line = 1
-          u = free_unit ()
-          open (u, file=char(Vfile), status='old', action='read', iostat=st)
-          if (st /= 0) call msg_fatal ("open " // char(Vfile) // ": iostat = " // char(st))
-          PARSE: do
-             if (i_line == 1) then
-                read (u, *, iostat=st) POINTS_P0, n_p_p0dep, n_q
-                if (st /= 0) exit PARSE
-                if (.not. allocated (q_grid)) allocate (q_grid(n_q))
-                allocate (mat_1d(POINTS_P0*n_p_p0dep*n_q))
-             else if (i_line <= n_q+1) then
-                read (u, *, iostat=st) q_grid(i_line-1)
-                if (st /= 0)  exit PARSE
-             else
-                read (u, *, iostat=st) re, im
-                if (st /= 0)  exit PARSE
-                mat_1d(i_line-n_q-1) = cmplx (re, im, kind=single)
-             end if
-             i_line = i_line + 1
-          end do PARSE
-          if (st > 0)  call msg_fatal ("import " // char(Vfile) // ": read line " &
-                          // char(i_line) // ": iostat = " // char(st))
-          close (u, iostat=st)
-          if (st > 0)  call msg_fatal ("close " // char(Vfile) // ": iostat = " // char(st))
-          if (i_line-n_q-2 /= size(mat_1d)) &
-               call msg_fatal ("import Vmatrix: inconsistent input file " // char(Vfile))
-          if (.not. allocated (Vmatrix)) then
-             allocate (Vmatrix(0:NRQCD_ORDER,2,POINTS_P0,n_p_p0dep,n_q))
-          else if (any ([POINTS_P0,n_p_p0dep,n_q] /= shape (Vmatrix(0,1,:,:,:)))) then
-             call msg_fatal ("import Vmatrix: incompatible shape in file " // char(Vfile))
-          end if
-          Vmatrix(i_loop,vec_type,:,:,:) = reshape (mat_1d, [POINTS_P0, n_p_p0dep, n_q])
-          deallocate (mat_1d)
-       end do
-    end do
-  end subroutine import_Vmatrices
 
 @
 <<ttv formfactors: procedures>>=
