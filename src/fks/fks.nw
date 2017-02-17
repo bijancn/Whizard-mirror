@@ -753,6 +753,7 @@ emitter-radiation pairs. This is coped with using the linked list
 <<fks regions: types>>=
   type :: flv_structure_t
     integer, dimension(:), allocatable :: flst
+    integer, dimension(:), allocatable :: tag
     integer :: nlegs = 0
     integer :: n_in = 0
     logical, dimension(:), allocatable :: massive
@@ -809,7 +810,7 @@ $(i,j)$ is accepted as valid.
          else
             flv_test = flv%insert_particle_fsr (i, j, flv_orig(k))
          end if
-         valid = flv_ref == flv_test
+         valid = flv_ref .equiv. flv_test
          call flv_test%final ()
          if (valid) return
       end do
@@ -821,11 +822,14 @@ $(i,j)$ is accepted as valid.
 @ This function checks whether two flavor arrays are the same up to a
 permutation of the final-state particles
 <<fks regions: procedures>>=
-  function flv_structure_equivalent (flv1, flv2) result(equiv)
+  function flv_structure_equivalent (flv1, flv2, with_tag) result(equiv)
     logical :: equiv
     type(flv_structure_t), intent(in) :: flv1, flv2
+    logical, intent(in) :: with_tag
     integer :: i, j, n
     logical, dimension(:), allocatable :: present, checked
+    logical :: condition
+    type(flavor_permutation_t) :: perm
     n = size (flv1%flst)
     equiv = .true.
     if (n /= size (flv2%flst)) then
@@ -835,31 +839,52 @@ permutation of the final-state particles
        call msg_fatal &
             ('flv_structure_equivalent: flavor arrays do not have equal n_in')
     else
-       allocate (present(n))
-       allocate (checked(n))
-       present = .false.; checked = .false.
-       do i = 1, flv1%n_in
-          if (flv1%flst(i) /= flv2%flst(i)) then
-             equiv = .false.
-             return
-          end if
-       end do
-       do i = flv1%n_in + 1 , n
-          do j = flv1%n_in + 1 ,n
-             if (flv1%flst(i) == flv2%flst(j) .and. .not. checked(j)) then
-                present(i) = .true.
-                checked(j) = .true.
-                exit
-             end if
-          end do
-       end do
-       do i = flv1%n_in + 1 , n
-          if (.not.present(i)) equiv = .false.
-       end do
+       call perm%init (flv1, flv2, flv1%n_in, flv1%nlegs)
+       equiv = perm%test (flv1, flv2, with_tag)
+       call perm%final ()
+       !allocate (present(n))
+       !allocate (checked(n))
+       !present = .false.; checked = .false.
+       !do i = 1, flv1%n_in
+       !   if (flv1%flst(i) /= flv2%flst(i)) then
+       !      equiv = .false.
+       !      return
+       !   end if
+       !end do
+       !do i = flv1%n_in + 1 , n
+       !   do j = flv1%n_in + 1 ,n
+       !      condition = flv1%flst(i) == flv2%flst(j)
+       !      if (with_tag) condition = condition .and. (flv1%tag(i) == flv2%tag(j))
+       !      if (condition .and. .not. checked(j)) then
+       !         present(i) = .true.
+       !         checked(j) = .true.
+       !         exit
+       !      end if
+       !   end do
+       !end do
+       !do i = flv1%n_in + 1 , n
+       !   if (.not. present(i)) equiv = .false.
+       !end do
     end if
   end function flv_structure_equivalent
 
 @ %def flv_structure_equivalent
+@
+<<fks regions: procedures>>=
+  function flv_structure_equivalent_no_tag (flv1, flv2) result(equiv)
+    logical :: equiv
+    type(flv_structure_t), intent(in) :: flv1, flv2
+    equiv = flv_structure_equivalent (flv1, flv2, .false.)
+  end function flv_structure_equivalent_no_tag
+
+  function flv_structure_equivalent_with_tag (flv1, flv2) result(equiv)
+    logical :: equiv
+    type(flv_structure_t), intent(in) :: flv1, flv2
+    equiv = flv_structure_equivalent (flv1, flv2, .true.)
+  end function flv_structure_equivalent_with_tag
+
+
+@ %def flv_structure_equivalent_no_tag, flv_structure_equivalent_with_tag
 @
 <<fks regions: procedures>>=
   pure subroutine flv_structure_assign_flv (flv_out, flv_in)
@@ -870,6 +895,10 @@ permutation of the final-state particles
     if (allocated (flv_in%flst)) then
        allocate (flv_out%flst (size (flv_in%flst)))
        flv_out%flst = flv_in%flst
+    end if
+    if (allocated (flv_in%tag)) then
+       allocate (flv_out%tag (size (flv_in%tag)))
+       flv_out%tag = flv_in%tag
     end if
     if (allocated (flv_in%massive)) then
        allocate (flv_out%massive (size (flv_in%massive)))
@@ -887,9 +916,12 @@ permutation of the final-state particles
   pure subroutine flv_structure_assign_integer (flv_out, iarray)
     type(flv_structure_t), intent(out) :: flv_out
     integer, intent(in), dimension(:) :: iarray
+    integer :: i
     flv_out%nlegs = size (iarray)
     allocate (flv_out%flst (flv_out%nlegs))
+    allocate (flv_out%tag (flv_out%nlegs))
     flv_out%flst = iarray
+    flv_out%tag = [(i, i = 1, flv_out%nlegs)]
   end subroutine flv_structure_assign_integer
 
 @ %def flv_structure_assign_integer
@@ -904,16 +936,20 @@ permutation of the final-state particles
     integer, intent(in) :: index
     integer :: n1, n2
     n1 = size (flv%flst); n2 = n1 - 1
-    allocate (flv_new%flst (n2))
+    allocate (flv_new%flst (n2), flv_new%tag (n2))
     flv_new%nlegs = n2
     flv_new%n_in = flv%n_in
     if (index == 1) then
-      flv_new%flst(1 : n2) = flv%flst(2 : n1)
+       flv_new%flst(1 : n2) = flv%flst(2 : n1)
+       flv_new%tag(1 : n2) = flv%tag(2 : n1)
     else if (index == n1) then
-      flv_new%flst(1 : n2) = flv%flst(1 : n2)
+       flv_new%flst(1 : n2) = flv%flst(1 : n2)
+       flv_new%tag(1 : n2) = flv%tag(1 : n2)
     else
-      flv_new%flst(1 : index - 1) = flv%flst(1 : index - 1)
-      flv_new%flst(index : n2) = flv%flst(index + 1 : n1)
+       flv_new%flst(1 : index - 1) = flv%flst(1 : index - 1)
+       flv_new%flst(index : n2) = flv%flst(index + 1 : n1)
+       flv_new%tag(1 : index - 1) = flv%tag(1 : index - 1)
+       flv_new%tag(index : n2) = flv%tag(index + 1 : n1)
     end if
   end function flv_structure_remove_particle
 
@@ -961,44 +997,42 @@ particle at position i1.
     integer, intent(in) :: i1, i2, particle
     type(flv_structure_t) :: flv_tmp
     integer :: n1, n2
+    integer :: new_tag
     n1 = size (flv%flst); n2 = n1 - 1
-    allocate (flv_new%flst (n2))
+    allocate (flv_new%flst (n2), flv_new%tag (n2))
     flv_new%nlegs = n2
     flv_new%n_in = flv%n_in
+    new_tag = maxval(flv%tag) + 1
     if (i1 < i2) then
-      flv_tmp = flv%remove_particle (i1)
-      flv_tmp = flv_tmp%remove_particle (i2 - 1)
+       flv_tmp = flv%remove_particle (i1)
+       flv_tmp = flv_tmp%remove_particle (i2 - 1)
     else if(i2 < i1) then
-      flv_tmp = flv%remove_particle(i2)
-      flv_tmp = flv_tmp%remove_particle(i1 - 1)
+       flv_tmp = flv%remove_particle(i2)
+       flv_tmp = flv_tmp%remove_particle(i1 - 1)
     else
-      call msg_fatal ("flv_structure_insert_particle: Indices are identical!")
+       call msg_fatal ("flv_structure_insert_particle: Indices are identical!")
     end if
     if (i1 == 1) then
-      flv_new%flst(1) = particle
-      flv_new%flst(2 : n2) = flv_tmp%flst(1 : n2 - 1)
+       flv_new%flst(1) = particle
+       flv_new%flst(2 : n2) = flv_tmp%flst(1 : n2 - 1)
+       flv_new%tag(1) = new_tag
+       flv_new%tag(2 : n2) = flv_tmp%tag(1 : n2 - 1)
     else if (i1 == n1 .or. i1 == n2) then
-      flv_new%flst(1 : n2 - 1) = flv_tmp%flst(1 : n2 - 1)
-      flv_new%flst(n2) = particle
+       flv_new%flst(1 : n2 - 1) = flv_tmp%flst(1 : n2 - 1)
+       flv_new%flst(n2) = particle
+       flv_new%tag(1 : n2 - 1) = flv_tmp%tag(1 : n2 - 1)
+       flv_new%tag(n2) = new_tag
     else
-      flv_new%flst(1 : i1 - 1) = flv_tmp%flst(1 : i1 - 1)
-      flv_new%flst(i1) = particle
-      flv_new%flst(i1 + 1 : n2) = flv_tmp%flst(i1 : n2 - 1)
+       flv_new%flst(1 : i1 - 1) = flv_tmp%flst(1 : i1 - 1)
+       flv_new%flst(i1) = particle
+       flv_new%flst(i1 + 1 : n2) = flv_tmp%flst(i1 : n2 - 1)
+       flv_new%tag(1 : i1 - 1) = flv_tmp%tag(1 : i1 - 1)
+       flv_new%tag(i1) = new_tag
+       flv_new%tag(i1 + 1 : n2) = flv_tmp%tag(i1 : n2 - 1)
     end if
   end function flv_structure_insert_particle
 
 @ %def flv_structure_insert_particle
-@ Returns the number of particles in a flavor array
-<<fks regions: flv structure: TBP>>=
-  procedure :: get_nlegs => flv_structure_get_nlegs
-<<fks regions: procedures>>=
-  function flv_structure_get_nlegs (flv) result(n)
-    class(flv_structure_t), intent(in) :: flv
-    integer :: n
-    n = size (flv%flst)
-  end function flv_structure_get_nlegs
-
-@ %def flv_structure_get_nlegs
 @ Counts the number of occurances of a particle in a
 flavor array
 <<fks regions: flv structure: TBP>>=
@@ -1020,10 +1054,11 @@ flavor array
     class(flv_structure_t), intent(inout) :: flv
     integer, intent(in), dimension(:) :: aval
     integer, intent(in) :: n_in
-    integer :: n
+    integer :: i, n
     n = size (aval)
-    allocate (flv%flst (n))
-    flv%flst(1 : n) = aval(1 : n)
+    allocate (flv%flst (n), flv%tag (n))
+    flv%flst = aval
+    flv%tag = [(i, i = 1, n)]
     flv%nlegs = n
     flv%n_in = n_in
   end subroutine flv_structure_init
@@ -1075,7 +1110,7 @@ structure if the particle at position \texttt{emitter} is removed
     integer n_legs
     integer :: f1, f2
     n_legs = size(flv%flst)
-    allocate (flv_uborn%flst (n_legs - 1))
+    allocate (flv_uborn%flst (n_legs - 1), flv_uborn%tag (n_legs - 1))
     if (emitter > flv%n_in) then
        f1 = flv%flst(n_legs); f2 = flv%flst(n_legs - 1)
        if (f1 == 21) then
@@ -1085,7 +1120,9 @@ structure if the particle at position \texttt{emitter} is removed
           !!! Emission type is a gluon splitting into two quarks
           flv_uborn = flv%insert_particle(n_legs - 1, n_legs, 21)
        else
-          call msg_fatal ("Create underlying Born: Unsupported splitting type.")
+          call msg_error ("Create underlying Born: Unsupported splitting type.")
+          print *, 'flavors: ', flv%flst
+          call msg_fatal ("FKS - FAIL")
        end if
     else if (emitter > 0) then
        f1 = flv%flst(n_legs); f2 = flv%flst(emitter)
@@ -1116,7 +1153,7 @@ structure if the particle at position \texttt{emitter} is removed
        call flavor%init (flv%flst(i), model)
        flv%massive(i) = flavor%get_mass () > 0
        flv%colored(i) = &
-          is_quark (flv%flst(i)) .or. is_gluon (flv%flst(i))
+            is_quark (flv%flst(i)) .or. is_gluon (flv%flst(i))
     end do
   end subroutine flv_structure_init_mass_and_color
 
@@ -1134,30 +1171,13 @@ structure if the particle at position \texttt{emitter} is removed
 
 @ %def flv_structure_get_last_two
 @
-<<fks regions: procedures>>=
-  function flv_structure_search (flv1, flv2) result (index)
-    integer :: index
-    type(flv_structure_t), intent(in), dimension(:) :: flv1
-    type(flv_structure_t), intent(in) :: flv2
-    logical :: found
-    found = .false.
-    do index = 1, size (flv1)
-       if (flv1(index) == flv2) then
-          found = .true.
-          exit
-       end if
-    end do
-    if (.not. found) index = 0
-  end function flv_structure_search
-
-@ %def flv_structure_search
-@
 <<fks regions: flv structure: TBP>>=
   procedure :: final => flv_structure_final
 <<fks regions: procedures>>=
   subroutine flv_structure_final (flv)
     class(flv_structure_t), intent(inout) :: flv
     if (allocated (flv%flst)) deallocate (flv%flst)
+    if (allocated (flv%tag)) deallocate (flv%tag)
     if (allocated (flv%massive)) deallocate (flv%massive)
     if (allocated (flv%colored)) deallocate (flv%colored)
   end subroutine flv_structure_final
@@ -1186,6 +1206,7 @@ structure if the particle at position \texttt{emitter} is removed
     integer :: i, j, j_min, i_perm
     integer, dimension(:,:), allocatable :: perm_list_tmp
     type(flv_structure_t) :: flv_copy
+    !!! Nagfor-ICE happens here
     flv_copy = flv_in
     allocate (perm_list_tmp (factorial (n_last - n_first - 1), 2))
     j_min = n_first + 1
@@ -1280,7 +1301,7 @@ structure if the particle at position \texttt{emitter} is removed
     logical, intent(in), optional :: invert
     integer :: i, i1, i2
     integer :: p1, p2, incr
-    integer :: flv_tmp
+    integer :: flv_tmp, tag_tmp
     logical :: inv
     inv = .false.; if (present(invert)) inv = invert
     flv_out = flv_in
@@ -1297,8 +1318,11 @@ structure if the particle at position \texttt{emitter} is removed
        i1 = perm%perms(i,1)
        i2 = perm%perms(i,2)
        flv_tmp = flv_out%flst(i1)
+       tag_tmp = flv_out%tag(i1)
        flv_out%flst(i1) = flv_out%flst(i2)
        flv_out%flst(i2) = flv_tmp
+       flv_out%tag(i1) = flv_out%tag(i2)
+       flv_out%tag(i2) = tag_tmp
     end do
   end function flavor_permutation_apply_flavor
 
@@ -1349,6 +1373,23 @@ structure if the particle at position \texttt{emitter} is removed
   end function flavor_permutation_apply_ftuple
 
 @ %def flavor_permutation_apply_ftuple
+@
+<<fks regions: flavor permutation: TBP>>=
+  procedure :: test => flavor_permutation_test
+<<fks regions: procedures>>=
+  function flavor_permutation_test (perm, flv1, flv2, with_tag) result (valid)
+    logical :: valid
+    class(flavor_permutation_t), intent(in) :: perm
+    type(flv_structure_t), intent(in) :: flv1, flv2
+    logical, intent(in) :: with_tag
+    type(flv_structure_t) :: flv_test
+    flv_test = perm%apply (flv2, invert = .true.)
+    valid = all (flv_test%flst == flv1%flst)
+    if (with_tag) valid = valid .and. all (flv_test%tag == flv1%tag)
+    call flv_test%final ()
+  end function flavor_permutation_test
+
+@ %def flavor_permutation_test
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with
 an $\alpha_r$- and resonance-index, with a real flavor structure and
@@ -1419,7 +1460,7 @@ also be supplied by a symmetry factor, explained below.
     allocate (sregion%ftuples (sregion%nregions))
     sregion%ftuples = ftuples
     do i = 1, size(flv_born)
-       if (flv_born (i) == sregion%flst_uborn) then
+       if (flv_born (i) .equiv. sregion%flst_uborn) then
           sregion%uborn_index = i
           exit
        end if
@@ -1582,7 +1623,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     real(default) :: E_rad, E_em
     if (region%double_fsr) then
        E_em = energy (p(region%emitter))
-       E_rad = energy (p(region%flst_real%get_nlegs()))
+       E_rad = energy (p(region%flst_real%nlegs))
        val = two * E_em / (E_em + E_rad)
     else
        val = one
@@ -1919,8 +1960,12 @@ $\sum_\alpha S_\alpha = 1$.
 @ %def fks_mapping_resonances_t
 @
 <<fks regions: interfaces>>=
-  interface operator(==)
-    module procedure flv_structure_equivalent
+  interface operator(.equiv.)
+    module procedure flv_structure_equivalent_no_tag
+  end interface
+
+  interface operator(.equivtag.)
+    module procedure flv_structure_equivalent_with_tag
   end interface
 
   interface assignment(=)
@@ -2884,10 +2929,21 @@ of the present one is increased.
           else
              !!! Check for equivalent flavor structures
              do i_reg_prev = 1, i_reg - 1
+                print *, 'emitters: ', emitter(i), emitter(i_reg_prev)
                 if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) > reg_data%n_in) then
                    valid_fs_splitting = check_fs_splitting (flv_alr(i)%get_last_two(n_legs), &
                           flv_alr_registered(i_reg_prev)%get_last_two(n_legs))
-                   if (flv_alr(i) == flv_alr_registered(i_reg_prev) .and. valid_fs_splitting) then
+                   print *, 'flavors: '
+                   print *, flv_alr(i)%flst
+                   print *, flv_alr_registered(i_reg_prev)%flst
+                   print *, 'tags: '
+                   print *, flv_alr(i)%tag
+                   print *, flv_alr_registered(i_reg_prev)%tag
+                   print *, 'equiv: ', flv_alr(i) .equiv. flv_alr_registered(i_reg_prev)
+                   print *, 'equivtag: ', flv_alr(i) .equivtag. flv_alr_registered(i_reg_prev)
+                   print *, 'valid fs splitting: ', valid_fs_splitting
+                   if ((flv_alr(i) .equivtag. flv_alr_registered(i_reg_prev)) &
+                        .and. valid_fs_splitting) then
                       mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
@@ -2895,7 +2951,7 @@ of the present one is increased.
                       exit
                    end if
                 else if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) <= reg_data%n_in) then
-                   if (flv_alr(i) == flv_alr_registered(i_reg_prev)) then
+                   if (flv_alr(i) .equiv. flv_alr_registered(i_reg_prev)) then
                       mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
@@ -2971,14 +3027,12 @@ of the present one is increased.
       type(flavor_permutation_t), intent(in) :: perm
       type(flv_structure_t), intent(in) :: flv_perm, flv_orig
       integer, intent(in) :: i_reg
-      type(flv_structure_t) :: flv_test
-      flv_test = perm%apply (flv_orig, invert = .true.)
-      if (.not. (all (flv_test%flst == flv_perm%flst))) then
+      if (.not. perm%test (flv_perm, flv_orig, .false.)) then
          print *, 'Fail at: ', i_reg
          print *, 'Original flavor structure: ', flv_orig%flst
          call perm%write ()
-         print *, 'Permuted flavor: ', flv_perm%flst
-         print *, 'Should be: ', flv_test%flst
+         !print *, 'Permuted flavor: ', flv_perm%flst
+         !print *, 'Should be: ', flv_test%flst
          call msg_fatal ("Permutation does not reproduce original flavor!")
       end if
     end subroutine check_permutation
@@ -2990,7 +3044,7 @@ of the present one is increased.
        integer :: i, j
        do j = 1, n_regions
           do i = 1, reg_data%n_flv_born
-             if (reg_data%flv_born (i) == flv_uborn (j)) then
+             if (reg_data%flv_born (i) .equiv. flv_uborn (j)) then
                 call perm_list%reset ()
                 call perm_list%init (reg_data%flv_born(i), flv_uborn(j), &
                      reg_data%n_in, reg_data%n_legs_born)
@@ -3001,7 +3055,7 @@ of the present one is increased.
           end do
           call ftuples(index(j))%to_array (ftuple_array, equivalences, .true.)
           do i = 1, size (reg_data%flv_real)
-             if (reg_data%flv_real(i) == flv_alr_registered(j)) then
+             if (reg_data%flv_real(i) .equiv. flv_alr_registered(j)) then
                 call perm_list%reset ()
                 call perm_list%init (flv_alr_registered(j), reg_data%flv_real(i), &
                      reg_data%n_in, reg_data%n_legs_real)
@@ -3028,7 +3082,7 @@ of the present one is increased.
                regions(i)%real_index = 1
                current_flv_real = flv_alr_registered(1)
                current_uborn_index = regions(i)%uborn_index
-            else if (flv_alr_registered(i) == current_flv_real &
+            else if ((flv_alr_registered(i) .equiv. current_flv_real) &
                    .and. regions(i)%uborn_index == current_uborn_index) then
                regions(i)%real_index = i_real
             else
@@ -3803,17 +3857,22 @@ position.
     type(flv_structure_t) :: flv2
     integer :: n
     n = size (flv1%flst)
-    allocate (flv2%flst (n))
+    allocate (flv2%flst (n), flv2%tag (n))
     flv2%nlegs = n
     flv2%n_in = n_in
     if (i_em > n_in) then
-       flv2%flst(1 : 2) = flv1%flst(1 : 2)
+       flv2%flst(1 : n_in) = flv1%flst(1 : n_in)
        flv2%flst(n - 1) = flv1%flst(i_em)
        flv2%flst(n) = flv1%flst(i_rad)
+       flv2%tag(1 : n_in) = flv1%tag(1 : n_in)
+       flv2%tag(n - 1) = flv1%tag(i_em)
+       flv2%tag(n) = flv1%tag(i_rad)
        call fill_remaining_flavors (n_in, .true.)
     else
-       flv2%flst(1 : 2) = flv1%flst(1 : 2)
+       flv2%flst(1 : n_in) = flv1%flst(1 : n_in)
        flv2%flst(n) = flv1%flst(i_rad)
+       flv2%tag(1 : n_in) = flv1%tag(1 : n_in)
+       flv2%tag(n) = flv1%tag(i_rad)
        call fill_remaining_flavors (n_in, .false.)
     end if
   contains
@@ -3833,6 +3892,7 @@ position.
          end if
          if (check) then
             flv2%flst(j) = flv1%flst(i)
+            flv2%tag(j) = flv1%tag(i)
             j = j + 1
          end if
       end do
