@@ -839,8 +839,13 @@ permutation of the final-state particles
        call msg_fatal &
             ('flv_structure_equivalent: flavor arrays do not have equal n_in')
     else
-       call perm%init (flv1, flv2, flv1%n_in, flv1%nlegs)
-       equiv = perm%test (flv1, flv2, with_tag)
+       !print *, 'Check for equivalence: '
+       !print *, 'with_tag: ', with_tag
+       call perm%init (flv1, flv2, flv1%n_in, flv1%nlegs, with_tag)
+       !print *, 'perms: '
+       !call perm%write ()
+       equiv = perm%test (flv2, flv1, with_tag)
+       !print *, 'equiv: ', equiv
        call perm%final ()
        !allocate (present(n))
        !allocate (checked(n))
@@ -1050,15 +1055,20 @@ flavor array
 <<fks regions: flv structure: TBP>>=
   procedure :: init => flv_structure_init
 <<fks regions: procedures>>=
-  subroutine flv_structure_init (flv, aval, n_in)
+  subroutine flv_structure_init (flv, aval, n_in, tags)
     class(flv_structure_t), intent(inout) :: flv
     integer, intent(in), dimension(:) :: aval
     integer, intent(in) :: n_in
+    integer, intent(in), dimension(:), optional :: tags
     integer :: i, n
     n = size (aval)
     allocate (flv%flst (n), flv%tag (n))
     flv%flst = aval
-    flv%tag = [(i, i = 1, n)]
+    if (present (tags)) then
+       flv%tag = tags
+    else
+       flv%tag = [(i, i = 1, n)]
+    end if
     flv%nlegs = n
     flv%n_in = n_in
   end subroutine flv_structure_init
@@ -1198,30 +1208,52 @@ structure if the particle at position \texttt{emitter} is removed
 <<fks regions: flavor permutation: TBP>>=
   procedure :: init => flavor_permutation_init
 <<fks regions: procedures>>=
-  subroutine flavor_permutation_init (perm, flv_in, flv_ref, n_first, n_last)
+  subroutine flavor_permutation_init (perm, flv_in, flv_ref, n_first, n_last, with_tag)
     class(flavor_permutation_t), intent(out) :: perm
     type(flv_structure_t), intent(in) :: flv_in, flv_ref
     integer, intent(in) :: n_first, n_last
+    logical, intent(in) :: with_tag
     integer :: flv1, flv2, tmp
+    integer :: tag1, tag2
     integer :: i, j, j_min, i_perm
     integer, dimension(:,:), allocatable :: perm_list_tmp
     type(flv_structure_t) :: flv_copy
+    logical :: condition
+    logical, dimension(:), allocatable :: already_correct
     !!! Nagfor-ICE happens here
     flv_copy = flv_in
     allocate (perm_list_tmp (factorial (n_last - n_first - 1), 2))
+    allocate (already_correct (flv_in%nlegs))
+    already_correct = flv_in%flst == flv_ref%flst
+    if (with_tag) &
+         already_correct = already_correct .and. (flv_in%tag == flv_ref%tag)
+    !print *, 'already correct: ', already_correct
     j_min = n_first + 1
     i_perm = 0
+    !print *, 'flv_ref: ', flv_ref%flst
     do i = n_first + 1, n_last
        flv1 = flv_ref%flst(i)
+       tag1 = flv_ref%tag(i)
        do j = j_min, n_last
+          if (already_correct(i) .or. already_correct(j)) cycle
           flv2 = flv_copy%flst(j)
-          if (flv1 == flv2 .and. i /= j) then
+          tag2 = flv_copy%tag(j)
+          !print *, 'i, j: ', i, j, 'flv: ', flv1, tag1, flv2, tag2
+          condition = (flv1 == flv2) .and. i /= j
+          if (with_tag) condition = condition .and. (tag1 == tag2)
+          if (condition) then
+             !print *, 'found: ', i, j
+             !print *, 'flv_copy: ', flv_copy%flst
+             !print *, flv1, flv2, tag1, tag2
              i_perm = i_perm + 1
              tmp = flv_copy%flst(i)
              flv_copy%flst(i) = flv2
              flv_copy%flst(j) = tmp
-             perm_list_tmp (i_perm, 1) = j
-             perm_list_tmp (i_perm, 2) = i
+             tmp = flv_copy%tag(i)
+             flv_copy%tag(i) = tag2
+             flv_copy%tag(j) = tmp
+             perm_list_tmp (i_perm, 1) = i
+             perm_list_tmp (i_perm, 2) = j
              exit
           end if
        end do
@@ -1959,6 +1991,9 @@ $\sum_\alpha S_\alpha = 1$.
 
 @ %def fks_mapping_resonances_t
 @
+<<fks regions: public>>=
+  public :: operator(.equiv.)
+  public :: operator(.equivtag.)
 <<fks regions: interfaces>>=
   interface operator(.equiv.)
     module procedure flv_structure_equivalent_no_tag
@@ -2929,20 +2964,21 @@ of the present one is increased.
           else
              !!! Check for equivalent flavor structures
              do i_reg_prev = 1, i_reg - 1
-                print *, 'emitters: ', emitter(i), emitter(i_reg_prev)
+                !print *, 'emitters: ', emitter(i), emitter(i_reg_prev)
                 if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) > reg_data%n_in) then
                    valid_fs_splitting = check_fs_splitting (flv_alr(i)%get_last_two(n_legs), &
-                          flv_alr_registered(i_reg_prev)%get_last_two(n_legs))
-                   print *, 'flavors: '
-                   print *, flv_alr(i)%flst
-                   print *, flv_alr_registered(i_reg_prev)%flst
-                   print *, 'tags: '
-                   print *, flv_alr(i)%tag
-                   print *, flv_alr_registered(i_reg_prev)%tag
-                   print *, 'equiv: ', flv_alr(i) .equiv. flv_alr_registered(i_reg_prev)
-                   print *, 'equivtag: ', flv_alr(i) .equivtag. flv_alr_registered(i_reg_prev)
+                          flv_alr_registered(i_reg_prev)%get_last_two(n_legs), &
+                          flv_alr(i)%tag(n_legs - 1), flv_alr_registered(i_reg_prev)%tag(n_legs - 1))
+                   !print *, 'flavors: '
+                   !print *, flv_alr(i)%flst
+                   !print *, flv_alr_registered(i_reg_prev)%flst
+                   !print *, 'tags: '
+                   !print *, flv_alr(i)%tag
+                   !print *, flv_alr_registered(i_reg_prev)%tag
+                   !print *, 'equiv: ', flv_alr(i) .equiv. flv_alr_registered(i_reg_prev)
+                   !print *, 'equivtag: ', flv_alr(i) .equivtag. flv_alr_registered(i_reg_prev)
                    print *, 'valid fs splitting: ', valid_fs_splitting
-                   if ((flv_alr(i) .equivtag. flv_alr_registered(i_reg_prev)) &
+                   if ((flv_alr(i) .equiv. flv_alr_registered(i_reg_prev)) &
                         .and. valid_fs_splitting) then
                       mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
@@ -3047,7 +3083,7 @@ of the present one is increased.
              if (reg_data%flv_born (i) .equiv. flv_uborn (j)) then
                 call perm_list%reset ()
                 call perm_list%init (reg_data%flv_born(i), flv_uborn(j), &
-                     reg_data%n_in, reg_data%n_legs_born)
+                     reg_data%n_in, reg_data%n_legs_born, .false.)
                 flv_uborn(j) = perm_list%apply (flv_uborn(j))
                 flv_alr_registered(j) = perm_list%apply (flv_alr_registered(j))
                 flst_emitter(j) = perm_list%apply (flst_emitter(j))
@@ -3058,7 +3094,7 @@ of the present one is increased.
              if (reg_data%flv_real(i) .equiv. flv_alr_registered(j)) then
                 call perm_list%reset ()
                 call perm_list%init (flv_alr_registered(j), reg_data%flv_real(i), &
-                     reg_data%n_in, reg_data%n_legs_real)
+                     reg_data%n_in, reg_data%n_legs_real, .false.)
                 if (debug_active (D_SUBTRACTION)) call check_permutation &
                      (perm_list, reg_data%flv_real(i), flv_alr_registered(j), j)
                 ftuple_array = perm_list%apply (ftuple_array)
@@ -3104,13 +3140,14 @@ of the present one is increased.
       print *, ''
     end subroutine write_perm_list
 
-    function check_fs_splitting (flv1, flv2) result (valid)
+    function check_fs_splitting (flv1, flv2, tag1, tag2) result (valid)
       logical :: valid
       integer, intent(in), dimension(2) :: flv1, flv2
+      integer, intent(in) :: tag1, tag2
       if (flv1(1) + flv1(2) == 0) then
          valid = abs(flv1(1)) == abs(flv2(1)) .and. abs(flv1(2)) == abs(flv2(2))
       else
-         valid = flv1(1) == flv2(1) .and. flv1(2) == flv2(2)
+         valid = flv1(1) == flv2(1) .and. flv1(2) == flv2(2) .and. tag1 == tag2
       end if
     end function check_fs_splitting
   end subroutine region_data_init_singular_regions
