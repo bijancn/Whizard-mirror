@@ -7397,9 +7397,76 @@ the corresponding jacobians.
       sqme_tot = sqme_tot * rsub%real_kinematics%jac_rand(i_phs)
     end associate
 
-    call debug_output ()
+    if (debug_active (D_SUBTRACTION) .and. .not. debug2_active (D_SUBTRACTIOn)) then
+       call register_debug_sqme ()
+    else if (debug2_active (D_SUBTRACTION)) then
+       call write_computation_status ()
+    end if
+    !call debug_output ()
 
   contains
+
+    subroutine register_debug_sqme ()
+      real(default), dimension(:), allocatable, save :: sqme_rad_store
+      logical :: soft, collinear
+      real(default), parameter :: soft_threshold = 0.1_default
+      real(default), parameter :: coll_threshold = 0.1_default
+      real(default) :: this_sqme_rad, s_alpha, E_gluon
+      !!! TODO (cw-2017-02-18): Need to be able to set this (?)
+      logical :: write_histo = .true.
+      if (.not. allocated (sqme_rad_store)) then
+         allocate (sqme_rad_store (rsub%reg_data%n_regions))
+         sqme_rad_store = zero
+      end if
+      if (rsub%radiation_active) then
+         sqme_rad_store(alr) = sqme_rad
+      else
+         associate (p_real => rsub%real_kinematics%p_real_cms)
+            E_gluon = p_real%get_energy (i_phs, rsub%reg_data%n_legs_real)
+            s_alpha = rsub%reg_data%get_svalue (p_real%get_momenta(i_phs), alr, emitter, i_res)
+         end associate
+         soft = E_gluon < soft_threshold
+         collinear = abs (s_alpha - one) < coll_threshold
+         this_sqme_rad = sqme_rad_store(alr)
+         if (soft) then
+            !!! Do not write sqme_rad twice
+            if (write_histo .and. .not. rsub%radiation_active) &
+                 call write_point_to_file (E_gluon, this_sqme_rad, sqme_soft)
+            !!! TODO (cw-2017-02-18): Why > sqme_rad and not > some_small_number?
+            !!! This way, we do not find regions where sqme_rad = 2 * sqme_soft
+            if (abs (this_sqme_rad - sqme_soft) > this_sqme_rad .and. &
+                 sqme_soft > tiny_10 .and. this_sqme_rad > tiny_10) then
+               call msg_print_color ("Soft MEs do not match", COL_RED)
+               print *, 'alr: ', alr, 'sqme_rad: ', this_sqme_rad, 'sqme_soft: ', sqme_soft
+            else
+               call msg_print_color (char ("sqme_soft OK in region " // str (alr)), COL_GREEN)
+            end if
+         end if
+         if (collinear) then
+            if (abs (this_sqme_rad - sqme_coll) > this_sqme_rad .and. &
+                 sqme_coll > tiny_10 .and. this_sqme_rad > tiny_10) then
+               call msg_print_color ("Collinear MEs do not match", COL_RED)
+               print *, 'alr: ', alr, 'sqme_rad: ', this_sqme_rad, 'sqme_coll: ', sqme_coll
+            else
+               call msg_print_color (char ("sqme_coll OK in region " // str (alr)), COL_GREEN)
+            end if
+         end if
+         if (soft .and. collinear) then
+            if (abs (this_sqme_rad - sqme_cs) > this_sqme_rad .and. &
+                 sqme_cs > tiny_10 .and. this_sqme_rad > tiny_10) then
+               call msg_print_color ("Soft-collinear MEs do not match", COL_RED)
+            else
+               call msg_print_color (char ("sqme_cs OK in region " // str (alr)), COL_GREEN)
+            end if
+         end if
+         !!! TODO (cw-2017-02-18): Find correct condition to deallocate
+         !if (alr == rsub%reg_data%n_regions .and. rsub%subtraction_active) then
+         !   !!! Last alr of subtraction component. Time to print and clean up
+         !   print *, 'Deallocate!'
+         !   deallocate (sqme_rad_store)
+         !end if
+      end if
+    end subroutine register_debug_sqme
 
     subroutine debug_output ()
        logical :: print_all, soft, collinear
@@ -7444,31 +7511,32 @@ the corresponding jacobians.
     end subroutine debug_output
 
     subroutine write_computation_status (passed, total, region_type)
-       integer, intent(in), optional :: passed, total
-       character(*), intent(in), optional :: region_type
-       integer :: i_born
-       integer :: u
-       real(default) :: xi
-       u = given_output_unit (); if (u < 0) return
-       i_born = rsub%reg_data%regions(alr)%uborn_index
-       xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
-       write (u,'(A,I2)') 'rsub%purpose: ', rsub%purpose
-       write (u,'(A,I3)') 'alr: ', alr
-       write (u,'(A,I3)') 'emitter: ', emitter
-       write (u,'(A,I3)') 'i_phs: ', i_phs
-       write (u,'(A,F6.4)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
-       write (u,'(A,F6.4,2X,A,F6.4)') 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
-       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_born)
-       write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
-       write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
-       write (u,'(A,ES16.9)')  'sqme_coll: ', sqme_coll
-       write (u,'(A,ES16.9)')  'sqme_coll-soft: ', sqme_cs
-       write (u,'(A,ES16.9)')  'sqme_remn: ', sqme_remn
-       write (u,'(A,ES16.9)')  'sqme_tot: ', sqme_tot
-       if (present (passed) .and. present (total) .and. &
-            present (region_type)) &
-          write (u,'(A)') char (str (passed) // " of " // str (total) // &
-               " " // region_type // " points passed in total")
+      integer, intent(in), optional :: passed, total
+      character(*), intent(in), optional :: region_type
+      integer :: i_born
+      integer :: u
+      real(default) :: xi
+      call msg_debug (D_SUBTRACTION, "real_subtraction_evaluate_region_fsr")
+      u = given_output_unit (); if (u < 0) return
+      i_born = rsub%reg_data%regions(alr)%uborn_index
+      xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
+      write (u,'(A,I2)') 'rsub%purpose: ', rsub%purpose
+      write (u,'(A,I3)') 'alr: ', alr
+      write (u,'(A,I3)') 'emitter: ', emitter
+      write (u,'(A,I3)') 'i_phs: ', i_phs
+      write (u,'(A,F6.4)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
+      write (u,'(A,F6.4,2X,A,F6.4)') 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
+      write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_born)
+      write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
+      write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
+      write (u,'(A,ES16.9)')  'sqme_coll: ', sqme_coll
+      write (u,'(A,ES16.9)')  'sqme_coll-soft: ', sqme_cs
+      write (u,'(A,ES16.9)')  'sqme_remn: ', sqme_remn
+      write (u,'(A,ES16.9)')  'sqme_tot: ', sqme_tot
+      if (present (passed) .and. present (total) .and. &
+           present (region_type)) &
+         write (u,'(A)') char (str (passed) // " of " // str (total) // &
+              " " // region_type // " points passed in total")
     end subroutine write_computation_status
 
     subroutine write_point_to_file (E_gluon, sqme_rad, sqme_soft)
