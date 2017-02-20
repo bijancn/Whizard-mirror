@@ -53,7 +53,7 @@ module auto_components
   use diagnostics
   use model_data
   use pdg_arrays
-  use flavors, only: flavor_t
+  use physics_defs, only: PHOTON, GLUON, Z_BOSON, W_BOSON
 
 <<Standard module head>>
 
@@ -312,7 +312,7 @@ check fails.
 <<Auto components: types>>=
   type, extends (split_constraint_t) :: constraint_insert
      private
-     type(pdg_list_t) :: pl_match
+     type(pdg_list_t) :: pl_match, pl_excluded_gauge_splittings
    contains
      procedure :: check_before_insert => constraint_insert_check_before_insert
   end type constraint_insert
@@ -321,10 +321,13 @@ check fails.
 <<Auto components: public>>=
   public :: constrain_insert
 <<Auto components: procedures>>=
-  function constrain_insert (pl_match) result (c)
+  function constrain_insert (pl_match, pl_excluded_gauge_splittings) result (c)
     type(pdg_list_t), intent(in) :: pl_match
+    type(pdg_list_t), intent(in), optional :: pl_excluded_gauge_splittings
     type(constraint_insert) :: c
     c%pl_match = pl_match
+    if (present (pl_excluded_gauge_splittings)) &
+    c%pl_excluded_gauge_splittings = pl_excluded_gauge_splittings
   end function constrain_insert
 
   subroutine constraint_insert_check_before_insert (c, table, pa, pl, passed)
@@ -333,7 +336,13 @@ check fails.
     type(pdg_array_t), intent(in) :: pa
     type(pdg_list_t), intent(inout) :: pl
     logical, intent(out) :: passed
-    call pl%match_replace (c%pl_match, passed)
+    if (is_massless_vector(pa%get()) &
+         .and. c%pl_excluded_gauge_splittings%get_size () /= 0) then
+       call pl%match_replace (c%pl_excluded_gauge_splittings, passed)
+       passed = .not. passed
+    else
+       call pl%match_replace (c%pl_match, passed)
+    end if
   end subroutine constraint_insert_check_before_insert
 
 @ %def constrain_insert
@@ -548,6 +557,8 @@ Filters vertices which do not match the desired NLO pattern.
     private
     logical :: qed = .false.
     logical :: qcd = .true.
+    logical :: ew = .false.
+    integer :: n_nlo_correction_types
   contains
   <<Auto components: constraint coupling: TBP>>
   end type constraint_coupling_t
@@ -557,10 +568,12 @@ Filters vertices which do not match the desired NLO pattern.
 <<Auto components: public>>=
   public :: constrain_couplings
 <<Auto components: procedures>>=
-  function constrain_couplings (qcd, qed) result (c)
+  function constrain_couplings (qcd, qed, n_nlo_correction_types) result (c)
     type(constraint_coupling_t) :: c
     logical, intent(in) :: qcd, qed
+    integer, intent(in) :: n_nlo_correction_types
     c%qcd = qcd; c%qed = qed
+    c%n_nlo_correction_types = n_nlo_correction_types
   end function constrain_couplings
 
 @ %def constrain_couplings
@@ -574,30 +587,22 @@ Filters vertices which do not match the desired NLO pattern.
     type(pdg_array_t), intent(in) :: pa
     type(pdg_list_t), intent(inout) :: pl
     logical, intent(out) :: passed
-    type(flavor_t) :: flv1, flv2, flv3
-    call flv1%init (pa%get(1), table%model)
-    call flv2%init (pl%a(1)%get(1), table%model)
-    call flv3%init (pl%a(2)%get(1), table%model)
-    if (c%qcd .and. .not. c%qed) then
-       passed = vertex_is_qcd ([flv1, flv2, flv3])
-    else if (.not. c%qcd .and. c%qed) then
-       passed = .not. vertex_is_qcd ([flv1, flv2, flv3])
-    else if (c%qcd .and. c%qed) then
-       passed = .true.
-    end if
-  contains
-    function vertex_is_qcd (flv) result (is_qcd)
-      logical :: is_qcd
-      type(flavor_t), intent(in), dimension(3) :: flv
-      integer :: i
-      is_qcd = .true.
-      do i = 1, 3
-         if (flv(i)%get_color_type () == 1) then
-            is_qcd = .false.
-            exit
-         end if
-      end do
-    end function vertex_is_qcd
+    type(pdg_list_t) :: pl_vertex
+    type(pdg_array_t) :: pdg_gluon, pdg_photon, pdg_W_Z, pdg_gauge_bosons
+    integer :: i
+    call pl_vertex%init (pl%get_size () + 1)
+    call pl_vertex%set (1, pa)
+    do i = 1, pl%get_size ()
+       call pl_vertex%set (i + 1, pl%get(i))
+    end do
+    pdg_gluon = GLUON; pdg_photon = PHOTON
+    pdg_W_Z = [W_BOSON,-W_BOSON, Z_BOSON]
+    if (c%qcd) pdg_gauge_bosons = pdg_gauge_bosons // pdg_gluon
+    if (c%qed) pdg_gauge_bosons = pdg_gauge_bosons // pdg_photon
+    if (c%ew) pdg_gauge_bosons = pdg_gauge_bosons // pdg_W_Z
+    passed = .false.
+    if (pl_vertex .match. pdg_gauge_bosons) passed = .true.
+    if (.not. c%ew .and. (pl_vertex .match. pdg_W_Z)) passed = .false.
   end subroutine constraint_coupling_check_before_insert
 
 @ %def constraint_coupling_check_before_insert
@@ -1782,6 +1787,7 @@ module radiation_generator
   use flavors
   use model_data
   use auto_components
+  use string_utils, only: split_string
 
   implicit none
   private
@@ -1986,18 +1992,24 @@ caller when this is a function.
     logical :: val
     type(string_t), dimension(:), allocatable :: prt_string
     integer, dimension(:,:), allocatable :: i_particle
-    integer :: n_u, n_ubar, n_gl
+    integer :: n_u, n_ubar, n_gl, n_e, n_ep, n_A
     integer :: i, j
     call queue%reset ()
-    allocate (i_particle (queue%n_lists, 3))
+    allocate (i_particle (queue%n_lists, 6))
     do i = 1, queue%n_lists
        call queue%get (prt_string)
        n_u = count_particle (prt_string, 2)
        n_ubar = count_particle (prt_string, -2)
        n_gl = count_particle (prt_string, 21)
+       n_e = count_particle (prt_string, 11)
+       n_ep = count_particle (prt_string, -11)
+       n_A = count_particle (prt_string, 22)
        i_particle (i, 1) = n_u
        i_particle (i, 2) = n_ubar
        i_particle (i, 3) = n_gl
+       i_particle (i, 4) = n_e
+       i_particle (i, 5) = n_ep
+       i_particle (i, 6) = n_A
     end do
     val = .false.
     do i = 1, queue%n_lists
@@ -2021,6 +2033,12 @@ caller when this is a function.
          prt_ref = "ubar"
       case (21)
          prt_ref = "gl"
+      case (11)
+         prt_ref = "e-"
+      case (-11)
+         prt_ref = "e+"
+      case (22)
+         prt_ref = "A"
       end select
       do i = 1, size (prt_string)
          if (prt_string(i) == prt_ref) n = n+1
@@ -2288,8 +2306,11 @@ initialization phase (more precisely: at the moment only in the
     logical :: qed_enabled = .false.
     logical :: is_gluon = .false.
     logical :: fs_gluon = .false.
+    logical :: is_photon = .false.
+    logical :: fs_photon = .false.
     logical :: only_final_state = .true.
     type(pdg_list_t) :: pl_in, pl_out
+    type(pdg_list_t) :: pl_excluded_gauge_splittings
     type(split_constraints_t) :: constraints
     integer :: n_tot
     integer :: n_in, n_out
@@ -2313,16 +2334,20 @@ initialization phase (more precisely: at the moment only in the
   procedure :: init_pdg_array => radiation_generator_init_pdg_array
 <<radiation generator: procedures>>=
   subroutine radiation_generator_init_pdg_list &
-       (generator, pl_in, pl_out, qcd, qed)
+       (generator, pl_in, pl_out, pl_excluded_gauge_splittings, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_list_t), intent(in) :: pl_in, pl_out
+    type(pdg_list_t), intent(in) :: pl_excluded_gauge_splittings
     logical, intent(in), optional :: qcd, qed
     if (present (qcd))  generator%qcd_enabled = qcd
     if (present (qed))  generator%qed_enabled = qed
     generator%pl_in = pl_in
     generator%pl_out = pl_out
+    generator%pl_excluded_gauge_splittings = pl_excluded_gauge_splittings
     generator%is_gluon = pl_in%search_for_particle (GLUON)
     generator%fs_gluon = pl_out%search_for_particle (GLUON)
+    generator%is_photon = pl_in%search_for_particle (PHOTON)
+    generator%fs_photon = pl_out%search_for_particle (PHOTON)
     !!!generator%only_final_state = .not. (&
     !!!   generator%qcd_enabled .and. pl_in%contains_colored_particles ())
     generator%mass_sum = 0._default
@@ -2330,11 +2355,13 @@ initialization phase (more precisely: at the moment only in the
   end subroutine radiation_generator_init_pdg_list
 
   subroutine radiation_generator_init_pdg_array &
-       (generator, pdg_in, pdg_out, qcd, qed)
+       (generator, pdg_in, pdg_out, pdg_excluded_gauge_splittings, qcd, qed)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_array_t), intent(in), dimension(:) :: pdg_in, pdg_out
+    type(pdg_array_t), intent(in), dimension(:) :: pdg_excluded_gauge_splittings
     logical, intent(in), optional :: qcd, qed
     type(pdg_list_t) :: pl_in, pl_out
+    type(pdg_list_t) :: pl_excluded_gauge_splittings
     integer :: i
     call pl_in%init(size (pdg_in))
     call pl_out%init(size (pdg_out))
@@ -2344,7 +2371,12 @@ initialization phase (more precisely: at the moment only in the
     do i = 1, size (pdg_out)
        call pl_out%set (i, pdg_out(i))
     end do
-    call generator%init (pl_in, pl_out, qcd, qed)
+    call pl_excluded_gauge_splittings%init(size (pdg_excluded_gauge_splittings))
+    do i = 1, size (pdg_excluded_gauge_splittings)
+       call pl_excluded_gauge_splittings%set &
+            (i, pdg_excluded_gauge_splittings(i))
+    end do
+    call generator%init (pl_in, pl_out, pl_excluded_gauge_splittings, qcd, qed)
   end subroutine radiation_generator_init_pdg_array
 
 @ %def radiation_generator_init_pdg_list radiation_generator_init_pdg_array
@@ -2392,6 +2424,7 @@ initialization phase (more precisely: at the moment only in the
     type(pdg_list_t), intent(in) :: pl
     generator%pl_out = pl
     generator%fs_gluon = pl%search_for_particle (GLUON)
+    generator%fs_photon = pl%search_for_particle (PHOTON)
   end subroutine radiation_generator_reset_particle_content_pdg_list
 
   subroutine radiation_generator_reset_particle_content_pdg_array (generator, pdg)
@@ -2451,6 +2484,9 @@ initialization phase (more precisely: at the moment only in the
     integer :: last_index
     integer :: n_new_particles, n_skip
     integer, dimension(:), allocatable :: i_skip
+    integer :: n_nlo_correction_types
+
+    n_nlo_correction_types = count ([generator%qcd_enabled, generator%qed_enabled])
 
     allocate (i_skip (generator%n_tot))
     i_skip = -1
@@ -2463,21 +2499,22 @@ initialization phase (more precisely: at the moment only in the
       call constraints%set (n, constrain_n_tot (generator%n_tot))
       n = 2
       call constraints%set (n, constrain_couplings (generator%qcd_enabled, &
-           generator%qed_enabled))
+           generator%qed_enabled, n_nlo_correction_types))
       n = n + 1
       if (set_n_loop) then
          call constraints%set (n, constrain_n_loop(generator%n_loops))
          n = n + 1
       end if
       if (set_mass_sum) then
-        call constraints%set (n, constrain_mass_sum(generator%mass_sum))
-        n = n + 1
+         call constraints%set (n, constrain_mass_sum(generator%mass_sum))
+         n = n + 1
       end if
       if (set_required_particles) then
-         if (generator%fs_gluon) then
+         if (generator%fs_gluon .or. generator%fs_photon) then
             do i = 1, generator%n_out
                pdg_tmp = generator%pl_out%get(i)
-               if (pdg_tmp%search_for_particle (GLUON)) then
+               if (pdg_tmp%search_for_particle (GLUON) &
+                    .or. pdg_tmp%search_for_particle (PHOTON)) then
                   i_skip(i) = i
                end if
             end do
@@ -2497,36 +2534,43 @@ initialization phase (more precisely: at the moment only in the
          n = n + 1
       end if
       if (set_selected_particles) then
-        if (generator%only_final_state ) then
-           call pl_insert%init (generator%n_out + 1)
-           do i = 1, generator%n_out
-              call pl_insert%set(i, generator%pl_out%get(i))
-           end do
-           last_index = generator%n_out + 1
-        else
-           call generator%pl_in%create_antiparticles (pl_antiparticles, n_new_particles)
-           call pl_insert%init (generator%n_tot + n_new_particles + 1)
-           do i = 1, generator%n_in
-              call pl_insert%set(i, generator%pl_in%get(i))
-           end do
-           do i = 1, generator%n_out
-              j = i + generator%n_in
-              call pl_insert%set(j, generator%pl_out%get(i))
-           end do
-           do i = 1, n_new_particles
-              j = i + generator%n_in + generator%n_out
-              call pl_insert%set(j, pl_antiparticles%get(i))
-           end do
-           last_index = generator%n_tot + n_new_particles + 1
-        end if
-        pdg_gluon = GLUON; pdg_photon = PHOTON
-        if (generator%qcd_enabled) pdg_add = pdg_add // pdg_gluon
-        if (generator%qed_enabled) pdg_add = pdg_add // pdg_photon
-        call pl_insert%set (last_index, pdg_add)
-        call constraints%set (n, constrain_insert (pl_insert))
+         if (generator%only_final_state ) then
+            call pl_insert%init (generator%n_out + n_nlo_correction_types)
+            do i = 1, generator%n_out
+               call pl_insert%set(i, generator%pl_out%get(i))
+            end do
+            last_index = generator%n_out + 1
+         else
+            call generator%pl_in%create_antiparticles (pl_antiparticles, n_new_particles)
+            call pl_insert%init (generator%n_tot + n_new_particles &
+                 + n_nlo_correction_types)
+            do i = 1, generator%n_in
+               call pl_insert%set(i, generator%pl_in%get(i))
+            end do
+            do i = 1, generator%n_out
+               j = i + generator%n_in
+               call pl_insert%set(j, generator%pl_out%get(i))
+            end do
+            do i = 1, n_new_particles
+               j = i + generator%n_in + generator%n_out
+               call pl_insert%set(j, pl_antiparticles%get(i))
+            end do
+            last_index = generator%n_tot + n_new_particles + 1
+         end if
+         pdg_gluon = GLUON; pdg_photon = PHOTON
+         if (generator%qcd_enabled) then
+            pdg_add = pdg_gluon
+            call pl_insert%set (last_index, pdg_add)
+            last_index = last_index + 1
+         end if
+         if (generator%qed_enabled) then
+            pdg_add = pdg_photon
+            call pl_insert%set (last_index, pdg_add)
+         end if
+         call constraints%set (n, constrain_insert (pl_insert, &
+              generator%pl_excluded_gauge_splittings))
       end if
     end associate
-
   end subroutine radiation_generator_set_constraints
 
 @ %def radiation_generator_set_constraints
@@ -2546,8 +2590,8 @@ initialization phase (more precisely: at the moment only in the
     associate (if_table => generator%if_table)
        call if_table%radiate (generator%constraints)
 
-       do i = 1, generator%if_table%get_length ()
-          call generator%if_table%get_pdg_out (i, pdg_tmp)
+       do i = 1, if_table%get_length ()
+          call if_table%get_pdg_out (i, pdg_tmp)
           if (size (pdg_tmp) == generator%n_tot) then
              call pdg_reshuffle (pdg_out, pdg_tmp, reshuffle_list)
              call generator%reshuffle_list%append (reshuffle_list)
@@ -2803,7 +2847,7 @@ initialization phase (more precisely: at the moment only in the
        if (.not. any (prt_out1 == " ")) then
           call sort_prt (prt_out1, model)
           if (.not. generator%prt_queue%contains (prt_out1)) &
-             call generator%prt_queue%append (prt_out1)
+               call generator%prt_queue%append (prt_out1)
        end if
        call generator%reset_reshuffle_list ()
     end do
@@ -3019,10 +3063,16 @@ end module radiation_generator_uti
     integer, intent(in) :: u
     type(test_results_t), intent(inout) :: results
     call test(radiation_generator_1, "radiation_generator_1", &
-       "Test the generator of N+1-particle flavor structures", &
+       "Test the generator of N+1-particle flavor structures in QCD", &
        u, results)
     call test(radiation_generator_2, "radiation_generator_2", &
-       "Test multiple splittings", &
+       "Test multiple splittings in QCD", &
+       u, results)
+    call test(radiation_generator_3, "radiation_generator_3", &
+       "Test the generator of N+1-particle flavor structures in QED", &
+       u, results)
+    call test(radiation_generator_4, "radiation_generator_4", &
+       "Test multiple splittings in QED", &
        u, results)
   end subroutine radiation_generator_test
 
@@ -3040,7 +3090,8 @@ end module radiation_generator_uti
     type(model_t), pointer :: model => null ()
 
     write (u, "(A)") "* Test output: radiation_generator_1"
-    write (u, "(A)") "* Purpose: Create N+1-particle flavor structures from predefined N-particle flavor structures"
+    write (u, "(A)") "* Purpose: Create N+1-particle flavor structures &
+         &from predefined N-particle flavor structures"
     write (u, "(A)") "* One additional strong coupling, no additional electroweak coupling"
     write (u, "(A)")
     write (u, "(A)") "* Loading radiation model: SM.mdl"
@@ -3105,16 +3156,17 @@ end module radiation_generator_uti
     deallocate (pdg_out); deallocate (pdg_in)
 
   contains
-    subroutine test_process (generator, pdg_in, pdg_out, u, &
-       include_initial_state)
+    subroutine test_process (generator, pdg_in, pdg_out, u, include_initial_state)
       type(radiation_generator_t), intent(inout) :: generator
       type(pdg_array_t), dimension(:), intent(in) :: pdg_in, pdg_out
       integer, intent(in) :: u
       logical, intent(in), optional :: include_initial_state
       type(string_t), dimension(:), allocatable :: prt_strings_in
       type(string_t), dimension(:), allocatable :: prt_strings_out
+      type(pdg_array_t), dimension(8) :: pdg_excluded
       logical :: yorn
       yorn = .false.
+      pdg_excluded = [5, -5, 6, -6, 13, -13, 15, -15]
       if (present (include_initial_state)) yorn = include_initial_state
       write (u, "(A)") "* Leading order: "
       write (u, "(A)", advance = 'no') '* Incoming: '
@@ -3122,7 +3174,8 @@ end module radiation_generator_uti
       write (u, "(A)", advance = 'no') '* Outgoing: '
       call write_pdg_array (pdg_out, u)
 
-      call generator%init (pdg_in, pdg_out, qcd = .true., qed = .false.)
+      call generator%init (pdg_in, pdg_out, &
+           pdg_excluded_gauge_splittings = pdg_excluded, qcd = .true., qed = .false.)
       call generator%set_n (2, size(pdg_out), 0)
       if (yorn) call generator%set_initial_state_emissions ()
       call generator%set_constraints (.false., .false., .true., .true.)
@@ -3148,6 +3201,7 @@ end module radiation_generator_uti
     integer, intent(in) :: u
     type(radiation_generator_t) :: generator
     type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
+    type(pdg_array_t), dimension(:), allocatable :: pdg_excluded
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
     type(model_t), pointer :: model => null ()
@@ -3155,7 +3209,8 @@ end module radiation_generator_uti
     type(string_t), dimension(:), allocatable :: prt_last
 
     write (u, "(A)") "* Test output: radiation_generator_2"
-    write (u, "(A)") "* Purpose: Test the repeated application of a radiation generator splitting"
+    write (u, "(A)") "* Purpose: Test the repeated application of &
+         &a radiation generator splitting in QCD"
     write (u, "(A)") "* Only Final state emissions! "
     write (u, "(A)")
     write (u, "(A)") "* Loading radiation model: SM.mdl"
@@ -3171,6 +3226,10 @@ end module radiation_generator_uti
     pdg_in(1) = 11; pdg_in(2) = -11
     allocate (pdg_out(2))
     pdg_out(1) = 2; pdg_out(2) = -2
+    allocate (pdg_excluded (10))
+    !!! Workaround until generate_multiple
+    !!! can handle multiple fermion flavors:
+    pdg_excluded = [1, -1, 3, -3, 4, -4, 5, -5, 6, -6]
 
     write (u, "(A)") "* Leading order"
     write (u, "(A)", advance = 'no') "* Incoming: "
@@ -3178,7 +3237,8 @@ end module radiation_generator_uti
     write (u, "(A)", advance = 'no') "* Outgoing: "
     call write_pdg_array (pdg_out, u)
 
-    call generator%init (pdg_in, pdg_out, qcd = .true., qed = .false.)
+    call generator%init (pdg_in, pdg_out, &
+         pdg_excluded_gauge_splittings = pdg_excluded, qcd = .true., qed = .false.)
     call generator%set_n (2, 2, 0)
     call generator%set_constraints (.false., .false., .true., .true.)
 
@@ -3207,6 +3267,215 @@ end module radiation_generator_uti
   end subroutine radiation_generator_2
 
 @ %def radiation_generator_2
+@
+<<radiation generator: test declarations>>=
+  public :: radiation_generator_3
+<<radiation generator: tests>>=
+  subroutine radiation_generator_3 (u)
+    integer, intent(in) :: u
+    type(radiation_generator_t) :: generator
+    type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
+    type(os_data_t) :: os_data
+    type(model_list_t) :: model_list
+    type(model_t), pointer :: model => null ()
+
+    write (u, "(A)") "* Test output: radiation_generator_3"
+    write (u, "(A)") "* Purpose: Create N+1-particle flavor structures &
+         &from predefined N-particle flavor structures"
+    write (u, "(A)") "* One additional electroweak coupling, no additional strong coupling"
+    write (u, "(A)")
+    write (u, "(A)") "* Loading radiation model: SM.mdl"
+
+    call syntax_model_file_init ()
+    call os_data_init (os_data)
+    call model_list%read_model &
+       (var_str ("SM"), var_str ("SM.mdl"), &
+        os_data, model)
+    write (u, "(A)") "* Success"
+
+    allocate (pdg_in (2))
+    pdg_in(1) = 11; pdg_in(2) = -11
+
+    write (u, "(A)") "* Start checking processes"
+    call write_separator (u)
+
+    write (u, "(A)") "* Process 1: Electron-positron production"
+    allocate (pdg_out(2))
+    pdg_out(1) = 11; pdg_out(2) = -11
+    call test_process (generator, pdg_in, pdg_out, u)
+    deallocate (pdg_out)
+
+    write (u, "(A)") "* Process 2: Quark-antiquark production with additional photon"
+    allocate (pdg_out(3))
+    pdg_out(1) = 2; pdg_out(2) = -2; pdg_out(3) = 22
+    call test_process (generator, pdg_in, pdg_out, u)
+    deallocate (pdg_out)
+
+    write (u, "(A)") "* Process 3: Z + jets "
+    allocate (pdg_out(3))
+    pdg_out(1) = 2; pdg_out(2) = -2; pdg_out(3) = 23
+    call test_process (generator, pdg_in, pdg_out, u)
+    deallocate (pdg_out)
+
+    write (u, "(A)") "* Process 4: W + jets"
+    allocate (pdg_out(3))
+    pdg_out(1) = 1; pdg_out(2) = -2; pdg_out(3) = -24
+    call test_process (generator, pdg_in, pdg_out, u)
+    deallocate (pdg_out)
+
+    write (u, "(A)") "* Process 5: Top Decay"
+    allocate (pdg_out(4))
+    pdg_out(1) = 24; pdg_out(2) = -24
+    pdg_out(3) = 5; pdg_out(4) = -5
+    call test_process (generator, pdg_in, pdg_out, u)
+    deallocate (pdg_out)
+
+    write (u, "(A)") "* Process 6: Production of four quarks"
+    allocate (pdg_out(4))
+    pdg_out(1) = 2; pdg_out(2) = -2;
+    pdg_out(3) = 2; pdg_out(4) = -2
+    call test_process (generator, pdg_in, pdg_out, u)
+    deallocate (pdg_out)
+
+    write (u, "(A)") "* Process 7: Neutrino pair-production"
+    allocate (pdg_out(2))
+    pdg_out(1) = 12; pdg_out(2) = -12
+    call test_process (generator, pdg_in, pdg_out, u, .true.)
+    deallocate (pdg_out); deallocate (pdg_in)
+
+    write (u, "(A)") "* Process 8: Drell-Yan lepto-production"
+    allocate (pdg_in (2)); allocate (pdg_out (2))
+    pdg_in(1) = 2; pdg_in(2) = -2
+    pdg_out(1) = 11; pdg_out(2) = -11
+    call test_process (generator, pdg_in, pdg_out, u, .true.)
+    deallocate (pdg_out); deallocate (pdg_in)
+
+    write (u, "(A)") "* Process 9: WZ production at hadron-colliders"
+    allocate (pdg_in (2)); allocate (pdg_out (2))
+    pdg_in(1) = 1; pdg_in(2) = -2
+    pdg_out(1) = -24; pdg_out(2) = 23
+    call test_process (generator, pdg_in, pdg_out, u, .true.)
+    deallocate (pdg_out); deallocate (pdg_in)
+
+    write (u, "(A)") "* Process 10: Positron-neutrino production"
+    allocate (pdg_in (2)); allocate (pdg_out (2))
+    pdg_in(1) = -1; pdg_in(2) = 2
+    pdg_out(1) = -11; pdg_out(2) = 12
+    call test_process (generator, pdg_in, pdg_out, u)
+    deallocate (pdg_out); deallocate (pdg_in)
+
+  contains
+    subroutine test_process (generator, pdg_in, pdg_out, u, include_initial_state)
+      type(radiation_generator_t), intent(inout) :: generator
+      type(pdg_array_t), dimension(:), intent(in) :: pdg_in, pdg_out
+      integer, intent(in) :: u
+      logical, intent(in), optional :: include_initial_state
+      type(string_t), dimension(:), allocatable :: prt_strings_in
+      type(string_t), dimension(:), allocatable :: prt_strings_out
+      type(pdg_array_t), dimension(8) :: pdg_excluded
+      logical :: yorn
+      yorn = .false.
+      pdg_excluded = [5, -5, 6, -6, 13, -13, 15, -15]
+      if (present (include_initial_state)) yorn = include_initial_state
+      write (u, "(A)") "* Leading order: "
+      write (u, "(A)", advance = 'no') '* Incoming: '
+      call write_pdg_array (pdg_in, u)
+      write (u, "(A)", advance = 'no') '* Outgoing: '
+      call write_pdg_array (pdg_out, u)
+
+      call generator%init (pdg_in, pdg_out, &
+           pdg_excluded_gauge_splittings = pdg_excluded, qcd = .false., qed = .true.)
+      call generator%set_n (2, size(pdg_out), 0)
+      if (yorn) call generator%set_initial_state_emissions ()
+      call generator%set_constraints (.false., .false., .true., .true.)
+      call generator%setup_if_table (model)
+      call generator%generate (prt_strings_in, prt_strings_out)
+      write (u, "(A)") "* Additional radiation: "
+      write (u, "(A)") "* Incoming: "
+      call write_particle_string (prt_strings_in, u)
+      write (u, "(A)") "* Outgoing: "
+      call write_particle_string (prt_strings_out, u)
+      call write_separator(u)
+      call generator%reset_reshuffle_list ()
+    end subroutine test_process
+
+  end subroutine radiation_generator_3
+
+@ %def radiation_generator_3
+@
+<<radiation generator: test declarations>>=
+  public :: radiation_generator_4
+<<radiation generator: tests>>=
+  subroutine radiation_generator_4 (u)
+    integer, intent(in) :: u
+    type(radiation_generator_t) :: generator
+    type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
+    type(pdg_array_t), dimension(:), allocatable :: pdg_excluded
+    type(os_data_t) :: os_data
+    type(model_list_t) :: model_list
+    type(model_t), pointer :: model => null ()
+    integer, parameter :: max_multiplicity = 10
+    type(string_t), dimension(:), allocatable :: prt_last
+
+    write (u, "(A)") "* Test output: radiation_generator_4"
+    write (u, "(A)") "* Purpose: Test the repeated application of &
+         &a radiation generator splitting in QED"
+    write (u, "(A)") "* Only Final state emissions! "
+    write (u, "(A)")
+    write (u, "(A)") "* Loading radiation model: SM.mdl"
+
+    call syntax_model_file_init ()
+    call os_data_init (os_data)
+    call model_list%read_model &
+       (var_str ("SM"), var_str ("SM.mdl"), &
+        os_data, model)
+    write (u, "(A)") "* Success"
+
+    allocate (pdg_in (2))
+    pdg_in(1) = 2; pdg_in(2) = -2
+    allocate (pdg_out(2))
+    pdg_out(1) = 11; pdg_out(2) = -11
+    allocate ( pdg_excluded (16))
+    !!! Workaround until generate_multiple
+    !!! can handle multiple fermion flavors:
+    pdg_excluded = [1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 13, -13, 15, -15]
+
+    write (u, "(A)") "* Leading order"
+    write (u, "(A)", advance = 'no') "* Incoming: "
+    call write_pdg_array (pdg_in, u)
+    write (u, "(A)", advance = 'no') "* Outgoing: "
+    call write_pdg_array (pdg_out, u)
+
+    call generator%init (pdg_in, pdg_out, &
+         pdg_excluded_gauge_splittings = pdg_excluded, qcd = .false., qed = .true.)
+    call generator%set_n (2, 2, 0)
+    call generator%set_constraints (.false., .false., .true., .true.)
+
+    call write_separator (u)
+    write (u, "(A)") "Generate higher-multiplicity states"
+    write (u, "(A,I0)") "Desired multiplicity: ", max_multiplicity
+    call generator%generate_multiple (max_multiplicity, model)
+    call generator%prt_queue%write (u)
+    call write_separator (u)
+    write (u, "(A,I0)") "Number of higher-multiplicity states: ", generator%prt_queue%n_lists
+
+    write (u, "(A)") "Check that no particle state occurs twice or more"
+    if (.not. generator%prt_queue%check_for_same_prt_strings()) then
+       write (u, "(A)") "SUCCESS"
+    else
+       write (u, "(A)") "FAIL"
+    end if
+    call write_separator (u)
+    write (u, "(A,I0,A)") "Check that there are ", max_multiplicity, " particles in the last entry:"
+    call generator%prt_queue%get_last (prt_last)
+    if (size (prt_last) == max_multiplicity) then
+       write (u, "(A)") "SUCCESS"
+    else
+       write (u, "(A)") "FAIL"
+    end if
+  end subroutine radiation_generator_4
+
+@ %def radiation_generator_4
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
