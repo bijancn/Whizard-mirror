@@ -355,10 +355,17 @@ the [[ftuple]]-object.
     end if
     nreg = size(ftuples)
     do i = 1, nreg
-       ftuple_string = ftuple_string // var_str ("(") // &
-            str (ftuples(i)%ireg(1)) // var_str (",") // &
-            str (ftuples(i)%ireg(2)) // var_str (")")
-       if (ftuples(i)%i_res > 0) ftuple_string = ftuple_string // var_str ("*")
+       if (ftuples(i)%i_res == 0) then
+          ftuple_string = ftuple_string // var_str ("(") // &
+               str (ftuples(i)%ireg(1)) // var_str (",") // &
+               str (ftuples(i)%ireg(2)) // var_str (")")
+       else
+          ftuple_string = ftuple_string // var_str ("(") // &
+               str (ftuples(i)%ireg(1)) // var_str (",") // &
+               str (ftuples(i)%ireg(2)) // var_str (";") // &
+               str (ftuples(i)%i_res) // var_str (")")
+       end if
+       if (ftuples(i)%pseudo_isr) ftuple_string = ftuple_string // var_str ("*")
        if (i < nreg) ftuple_string = ftuple_string // var_str (",")
     end do
     if (latex) then
@@ -753,6 +760,7 @@ emitter-radiation pairs. This is coped with using the linked list
 <<fks regions: types>>=
   type :: flv_structure_t
     integer, dimension(:), allocatable :: flst
+    integer, dimension(:), allocatable :: tag
     integer :: nlegs = 0
     integer :: n_in = 0
     logical, dimension(:), allocatable :: massive
@@ -809,7 +817,7 @@ $(i,j)$ is accepted as valid.
          else
             flv_test = flv%insert_particle_fsr (i, j, flv_orig(k))
          end if
-         valid = flv_ref == flv_test
+         valid = flv_ref .equiv. flv_test
          call flv_test%final ()
          if (valid) return
       end do
@@ -821,11 +829,12 @@ $(i,j)$ is accepted as valid.
 @ This function checks whether two flavor arrays are the same up to a
 permutation of the final-state particles
 <<fks regions: procedures>>=
-  function flv_structure_equivalent (flv1, flv2) result(equiv)
+  function flv_structure_equivalent (flv1, flv2, with_tag) result(equiv)
     logical :: equiv
     type(flv_structure_t), intent(in) :: flv1, flv2
-    integer :: i, j, n
-    logical, dimension(:), allocatable :: present, checked
+    logical, intent(in) :: with_tag
+    type(flavor_permutation_t) :: perm
+    integer :: n
     n = size (flv1%flst)
     equiv = .true.
     if (n /= size (flv2%flst)) then
@@ -835,31 +844,29 @@ permutation of the final-state particles
        call msg_fatal &
             ('flv_structure_equivalent: flavor arrays do not have equal n_in')
     else
-       allocate (present(n))
-       allocate (checked(n))
-       present = .false.; checked = .false.
-       do i = 1, flv1%n_in
-          if (flv1%flst(i) /= flv2%flst(i)) then
-             equiv = .false.
-             return
-          end if
-       end do
-       do i = flv1%n_in + 1 , n
-          do j = flv1%n_in + 1 ,n
-             if (flv1%flst(i) == flv2%flst(j) .and. .not. checked(j)) then
-                present(i) = .true.
-                checked(j) = .true.
-                exit
-             end if
-          end do
-       end do
-       do i = flv1%n_in + 1 , n
-          if (.not.present(i)) equiv = .false.
-       end do
+       call perm%init (flv1, flv2, flv1%n_in, flv1%nlegs, with_tag)
+       equiv = perm%test (flv2, flv1, with_tag)
+       call perm%final ()
     end if
   end function flv_structure_equivalent
 
 @ %def flv_structure_equivalent
+@
+<<fks regions: procedures>>=
+  function flv_structure_equivalent_no_tag (flv1, flv2) result(equiv)
+    logical :: equiv
+    type(flv_structure_t), intent(in) :: flv1, flv2
+    equiv = flv_structure_equivalent (flv1, flv2, .false.)
+  end function flv_structure_equivalent_no_tag
+
+  function flv_structure_equivalent_with_tag (flv1, flv2) result(equiv)
+    logical :: equiv
+    type(flv_structure_t), intent(in) :: flv1, flv2
+    equiv = flv_structure_equivalent (flv1, flv2, .true.)
+  end function flv_structure_equivalent_with_tag
+
+
+@ %def flv_structure_equivalent_no_tag, flv_structure_equivalent_with_tag
 @
 <<fks regions: procedures>>=
   pure subroutine flv_structure_assign_flv (flv_out, flv_in)
@@ -870,6 +877,10 @@ permutation of the final-state particles
     if (allocated (flv_in%flst)) then
        allocate (flv_out%flst (size (flv_in%flst)))
        flv_out%flst = flv_in%flst
+    end if
+    if (allocated (flv_in%tag)) then
+       allocate (flv_out%tag (size (flv_in%tag)))
+       flv_out%tag = flv_in%tag
     end if
     if (allocated (flv_in%massive)) then
        allocate (flv_out%massive (size (flv_in%massive)))
@@ -887,9 +898,12 @@ permutation of the final-state particles
   pure subroutine flv_structure_assign_integer (flv_out, iarray)
     type(flv_structure_t), intent(out) :: flv_out
     integer, intent(in), dimension(:) :: iarray
+    integer :: i
     flv_out%nlegs = size (iarray)
     allocate (flv_out%flst (flv_out%nlegs))
+    allocate (flv_out%tag (flv_out%nlegs))
     flv_out%flst = iarray
+    flv_out%tag = [(i, i = 1, flv_out%nlegs)]
   end subroutine flv_structure_assign_integer
 
 @ %def flv_structure_assign_integer
@@ -904,16 +918,20 @@ permutation of the final-state particles
     integer, intent(in) :: index
     integer :: n1, n2
     n1 = size (flv%flst); n2 = n1 - 1
-    allocate (flv_new%flst (n2))
+    allocate (flv_new%flst (n2), flv_new%tag (n2))
     flv_new%nlegs = n2
     flv_new%n_in = flv%n_in
     if (index == 1) then
-      flv_new%flst(1 : n2) = flv%flst(2 : n1)
+       flv_new%flst(1 : n2) = flv%flst(2 : n1)
+       flv_new%tag(1 : n2) = flv%tag(2 : n1)
     else if (index == n1) then
-      flv_new%flst(1 : n2) = flv%flst(1 : n2)
+       flv_new%flst(1 : n2) = flv%flst(1 : n2)
+       flv_new%tag(1 : n2) = flv%tag(1 : n2)
     else
-      flv_new%flst(1 : index - 1) = flv%flst(1 : index - 1)
-      flv_new%flst(index : n2) = flv%flst(index + 1 : n1)
+       flv_new%flst(1 : index - 1) = flv%flst(1 : index - 1)
+       flv_new%flst(index : n2) = flv%flst(index + 1 : n1)
+       flv_new%tag(1 : index - 1) = flv%tag(1 : index - 1)
+       flv_new%tag(index : n2) = flv%tag(index + 1 : n1)
     end if
   end function flv_structure_remove_particle
 
@@ -961,44 +979,46 @@ particle at position i1.
     integer, intent(in) :: i1, i2, particle
     type(flv_structure_t) :: flv_tmp
     integer :: n1, n2
+    integer :: new_tag
     n1 = size (flv%flst); n2 = n1 - 1
-    allocate (flv_new%flst (n2))
+    allocate (flv_new%flst (n2), flv_new%tag (n2))
     flv_new%nlegs = n2
     flv_new%n_in = flv%n_in
-    if (i1 < i2) then
-      flv_tmp = flv%remove_particle (i1)
-      flv_tmp = flv_tmp%remove_particle (i2 - 1)
-    else if(i2 < i1) then
-      flv_tmp = flv%remove_particle(i2)
-      flv_tmp = flv_tmp%remove_particle(i1 - 1)
+    if (particle == GLUON) then
+       new_tag = 0
     else
-      call msg_fatal ("flv_structure_insert_particle: Indices are identical!")
+       new_tag = maxval(flv%tag) + 1
+    end if
+    if (i1 < i2) then
+       flv_tmp = flv%remove_particle (i1)
+       flv_tmp = flv_tmp%remove_particle (i2 - 1)
+    else if(i2 < i1) then
+       flv_tmp = flv%remove_particle(i2)
+       flv_tmp = flv_tmp%remove_particle(i1 - 1)
+    else
+       call msg_fatal ("flv_structure_insert_particle: Indices are identical!")
     end if
     if (i1 == 1) then
-      flv_new%flst(1) = particle
-      flv_new%flst(2 : n2) = flv_tmp%flst(1 : n2 - 1)
+       flv_new%flst(1) = particle
+       flv_new%flst(2 : n2) = flv_tmp%flst(1 : n2 - 1)
+       flv_new%tag(1) = new_tag
+       flv_new%tag(2 : n2) = flv_tmp%tag(1 : n2 - 1)
     else if (i1 == n1 .or. i1 == n2) then
-      flv_new%flst(1 : n2 - 1) = flv_tmp%flst(1 : n2 - 1)
-      flv_new%flst(n2) = particle
+       flv_new%flst(1 : n2 - 1) = flv_tmp%flst(1 : n2 - 1)
+       flv_new%flst(n2) = particle
+       flv_new%tag(1 : n2 - 1) = flv_tmp%tag(1 : n2 - 1)
+       flv_new%tag(n2) = new_tag
     else
-      flv_new%flst(1 : i1 - 1) = flv_tmp%flst(1 : i1 - 1)
-      flv_new%flst(i1) = particle
-      flv_new%flst(i1 + 1 : n2) = flv_tmp%flst(i1 : n2 - 1)
+       flv_new%flst(1 : i1 - 1) = flv_tmp%flst(1 : i1 - 1)
+       flv_new%flst(i1) = particle
+       flv_new%flst(i1 + 1 : n2) = flv_tmp%flst(i1 : n2 - 1)
+       flv_new%tag(1 : i1 - 1) = flv_tmp%tag(1 : i1 - 1)
+       flv_new%tag(i1) = new_tag
+       flv_new%tag(i1 + 1 : n2) = flv_tmp%tag(i1 : n2 - 1)
     end if
   end function flv_structure_insert_particle
 
 @ %def flv_structure_insert_particle
-@ Returns the number of particles in a flavor array
-<<fks regions: flv structure: TBP>>=
-  procedure :: get_nlegs => flv_structure_get_nlegs
-<<fks regions: procedures>>=
-  function flv_structure_get_nlegs (flv) result(n)
-    class(flv_structure_t), intent(in) :: flv
-    integer :: n
-    n = size (flv%flst)
-  end function flv_structure_get_nlegs
-
-@ %def flv_structure_get_nlegs
 @ Counts the number of occurances of a particle in a
 flavor array
 <<fks regions: flv structure: TBP>>=
@@ -1016,14 +1036,26 @@ flavor array
 <<fks regions: flv structure: TBP>>=
   procedure :: init => flv_structure_init
 <<fks regions: procedures>>=
-  subroutine flv_structure_init (flv, aval, n_in)
+  subroutine flv_structure_init (flv, aval, n_in, tags)
     class(flv_structure_t), intent(inout) :: flv
     integer, intent(in), dimension(:) :: aval
     integer, intent(in) :: n_in
-    integer :: n
+    integer, intent(in), dimension(:), optional :: tags
+    integer :: i, n
     n = size (aval)
-    allocate (flv%flst (n))
-    flv%flst(1 : n) = aval(1 : n)
+    allocate (flv%flst (n), flv%tag (n))
+    flv%flst = aval
+    if (present (tags)) then
+       flv%tag = tags
+    else
+       do i = 1, n
+          if (flv%flst(i) == GLUON) then
+             flv%tag(i) = 0
+          else
+             flv%tag(i) = i
+          end if
+       end do
+    end if
     flv%nlegs = n
     flv%n_in = n_in
   end subroutine flv_structure_init
@@ -1075,7 +1107,7 @@ structure if the particle at position \texttt{emitter} is removed
     integer n_legs
     integer :: f1, f2
     n_legs = size(flv%flst)
-    allocate (flv_uborn%flst (n_legs - 1))
+    allocate (flv_uborn%flst (n_legs - 1), flv_uborn%tag (n_legs - 1))
     if (emitter > flv%n_in) then
        f1 = flv%flst(n_legs); f2 = flv%flst(n_legs - 1)
        if (f1 == 21) then
@@ -1085,7 +1117,9 @@ structure if the particle at position \texttt{emitter} is removed
           !!! Emission type is a gluon splitting into two quarks
           flv_uborn = flv%insert_particle(n_legs - 1, n_legs, 21)
        else
-          call msg_fatal ("Create underlying Born: Unsupported splitting type.")
+          call msg_error ("Create underlying Born: Unsupported splitting type.")
+          call msg_error (char (str (flv%flst)))
+          call msg_fatal ("FKS - FAIL")
        end if
     else if (emitter > 0) then
        f1 = flv%flst(n_legs); f2 = flv%flst(emitter)
@@ -1116,7 +1150,7 @@ structure if the particle at position \texttt{emitter} is removed
        call flavor%init (flv%flst(i), model)
        flv%massive(i) = flavor%get_mass () > 0
        flv%colored(i) = &
-          is_quark (flv%flst(i)) .or. is_gluon (flv%flst(i))
+            is_quark (flv%flst(i)) .or. is_gluon (flv%flst(i))
     end do
   end subroutine flv_structure_init_mass_and_color
 
@@ -1134,30 +1168,13 @@ structure if the particle at position \texttt{emitter} is removed
 
 @ %def flv_structure_get_last_two
 @
-<<fks regions: procedures>>=
-  function flv_structure_search (flv1, flv2) result (index)
-    integer :: index
-    type(flv_structure_t), intent(in), dimension(:) :: flv1
-    type(flv_structure_t), intent(in) :: flv2
-    logical :: found
-    found = .false.
-    do index = 1, size (flv1)
-       if (flv1(index) == flv2) then
-          found = .true.
-          exit
-       end if
-    end do
-    if (.not. found) index = 0
-  end function flv_structure_search
-
-@ %def flv_structure_search
-@
 <<fks regions: flv structure: TBP>>=
   procedure :: final => flv_structure_final
 <<fks regions: procedures>>=
   subroutine flv_structure_final (flv)
     class(flv_structure_t), intent(inout) :: flv
     if (allocated (flv%flst)) deallocate (flv%flst)
+    if (allocated (flv%tag)) deallocate (flv%tag)
     if (allocated (flv%massive)) deallocate (flv%massive)
     if (allocated (flv%colored)) deallocate (flv%colored)
   end subroutine flv_structure_final
@@ -1178,29 +1195,45 @@ structure if the particle at position \texttt{emitter} is removed
 <<fks regions: flavor permutation: TBP>>=
   procedure :: init => flavor_permutation_init
 <<fks regions: procedures>>=
-  subroutine flavor_permutation_init (perm, flv_in, flv_ref, n_first, n_last)
+  subroutine flavor_permutation_init (perm, flv_in, flv_ref, n_first, n_last, with_tag)
     class(flavor_permutation_t), intent(out) :: perm
     type(flv_structure_t), intent(in) :: flv_in, flv_ref
     integer, intent(in) :: n_first, n_last
+    logical, intent(in) :: with_tag
     integer :: flv1, flv2, tmp
+    integer :: tag1, tag2
     integer :: i, j, j_min, i_perm
     integer, dimension(:,:), allocatable :: perm_list_tmp
     type(flv_structure_t) :: flv_copy
+    logical :: condition
+    logical, dimension(:), allocatable :: already_correct
     flv_copy = flv_in
     allocate (perm_list_tmp (factorial (n_last - n_first - 1), 2))
+    allocate (already_correct (flv_in%nlegs))
+    already_correct = flv_in%flst == flv_ref%flst
+    if (with_tag) &
+         already_correct = already_correct .and. (flv_in%tag == flv_ref%tag)
     j_min = n_first + 1
     i_perm = 0
     do i = n_first + 1, n_last
        flv1 = flv_ref%flst(i)
+       tag1 = flv_ref%tag(i)
        do j = j_min, n_last
+          if (already_correct(i) .or. already_correct(j)) cycle
           flv2 = flv_copy%flst(j)
-          if (flv1 == flv2 .and. i /= j) then
+          tag2 = flv_copy%tag(j)
+          condition = (flv1 == flv2) .and. i /= j
+          if (with_tag) condition = condition .and. (tag1 == tag2)
+          if (condition) then
              i_perm = i_perm + 1
              tmp = flv_copy%flst(i)
              flv_copy%flst(i) = flv2
              flv_copy%flst(j) = tmp
-             perm_list_tmp (i_perm, 1) = j
-             perm_list_tmp (i_perm, 2) = i
+             tmp = flv_copy%tag(i)
+             flv_copy%tag(i) = tag2
+             flv_copy%tag(j) = tmp
+             perm_list_tmp (i_perm, 1) = i
+             perm_list_tmp (i_perm, 2) = j
              exit
           end if
        end do
@@ -1280,7 +1313,7 @@ structure if the particle at position \texttt{emitter} is removed
     logical, intent(in), optional :: invert
     integer :: i, i1, i2
     integer :: p1, p2, incr
-    integer :: flv_tmp
+    integer :: flv_tmp, tag_tmp
     logical :: inv
     inv = .false.; if (present(invert)) inv = invert
     flv_out = flv_in
@@ -1297,8 +1330,11 @@ structure if the particle at position \texttt{emitter} is removed
        i1 = perm%perms(i,1)
        i2 = perm%perms(i,2)
        flv_tmp = flv_out%flst(i1)
+       tag_tmp = flv_out%tag(i1)
        flv_out%flst(i1) = flv_out%flst(i2)
        flv_out%flst(i2) = flv_tmp
+       flv_out%tag(i1) = flv_out%tag(i2)
+       flv_out%tag(i2) = tag_tmp
     end do
   end function flavor_permutation_apply_flavor
 
@@ -1349,6 +1385,23 @@ structure if the particle at position \texttt{emitter} is removed
   end function flavor_permutation_apply_ftuple
 
 @ %def flavor_permutation_apply_ftuple
+@
+<<fks regions: flavor permutation: TBP>>=
+  procedure :: test => flavor_permutation_test
+<<fks regions: procedures>>=
+  function flavor_permutation_test (perm, flv1, flv2, with_tag) result (valid)
+    logical :: valid
+    class(flavor_permutation_t), intent(in) :: perm
+    type(flv_structure_t), intent(in) :: flv1, flv2
+    logical, intent(in) :: with_tag
+    type(flv_structure_t) :: flv_test
+    flv_test = perm%apply (flv2, invert = .true.)
+    valid = all (flv_test%flst == flv1%flst)
+    if (with_tag) valid = valid .and. all (flv_test%tag == flv1%tag)
+    call flv_test%final ()
+  end function flavor_permutation_test
+
+@ %def flavor_permutation_test
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with
 an $\alpha_r$- and resonance-index, with a real flavor structure and
@@ -1419,7 +1472,7 @@ also be supplied by a symmetry factor, explained below.
     allocate (sregion%ftuples (sregion%nregions))
     sregion%ftuples = ftuples
     do i = 1, size(flv_born)
-       if (flv_born (i) == sregion%flst_uborn) then
+       if (flv_born (i) .equiv. sregion%flst_uborn) then
           sregion%uborn_index = i
           exit
        end if
@@ -1582,7 +1635,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     real(default) :: E_rad, E_em
     if (region%double_fsr) then
        E_em = energy (p(region%emitter))
-       E_rad = energy (p(region%flst_real%get_nlegs()))
+       E_rad = energy (p(region%flst_real%nlegs))
        val = two * E_em / (E_em + E_rad)
     else
        val = one
@@ -1918,9 +1971,16 @@ $\sum_\alpha S_\alpha = 1$.
 
 @ %def fks_mapping_resonances_t
 @
+<<fks regions: public>>=
+  public :: operator(.equiv.)
+  public :: operator(.equivtag.)
 <<fks regions: interfaces>>=
-  interface operator(==)
-    module procedure flv_structure_equivalent
+  interface operator(.equiv.)
+    module procedure flv_structure_equivalent_no_tag
+  end interface
+
+  interface operator(.equivtag.)
+    module procedure flv_structure_equivalent_with_tag
   end interface
 
   interface assignment(=)
@@ -2886,8 +2946,10 @@ of the present one is increased.
              do i_reg_prev = 1, i_reg - 1
                 if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) > reg_data%n_in) then
                    valid_fs_splitting = check_fs_splitting (flv_alr(i)%get_last_two(n_legs), &
-                          flv_alr_registered(i_reg_prev)%get_last_two(n_legs))
-                   if (flv_alr(i) == flv_alr_registered(i_reg_prev) .and. valid_fs_splitting) then
+                          flv_alr_registered(i_reg_prev)%get_last_two(n_legs), &
+                          flv_alr(i)%tag(n_legs - 1), flv_alr_registered(i_reg_prev)%tag(n_legs - 1))
+                   if ((flv_alr(i) .equiv. flv_alr_registered(i_reg_prev)) &
+                        .and. valid_fs_splitting) then
                       mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
@@ -2895,7 +2957,7 @@ of the present one is increased.
                       exit
                    end if
                 else if (emitter(i) == emitter(i_reg_prev) .and. emitter(i) <= reg_data%n_in) then
-                   if (flv_alr(i) == flv_alr_registered(i_reg_prev)) then
+                   if (flv_alr(i) .equiv. flv_alr_registered(i_reg_prev)) then
                       mult(i_reg_prev) = mult(i_reg_prev) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
@@ -2973,7 +3035,7 @@ of the present one is increased.
       integer, intent(in) :: i_reg
       type(flv_structure_t) :: flv_test
       flv_test = perm%apply (flv_orig, invert = .true.)
-      if (.not. (all (flv_test%flst == flv_perm%flst))) then
+      if (.not. all (flv_test%flst == flv_perm%flst)) then
          print *, 'Fail at: ', i_reg
          print *, 'Original flavor structure: ', flv_orig%flst
          call perm%write ()
@@ -2990,10 +3052,10 @@ of the present one is increased.
        integer :: i, j
        do j = 1, n_regions
           do i = 1, reg_data%n_flv_born
-             if (reg_data%flv_born (i) == flv_uborn (j)) then
+             if (reg_data%flv_born (i) .equiv. flv_uborn (j)) then
                 call perm_list%reset ()
                 call perm_list%init (reg_data%flv_born(i), flv_uborn(j), &
-                     reg_data%n_in, reg_data%n_legs_born)
+                     reg_data%n_in, reg_data%n_legs_born, .true.)
                 flv_uborn(j) = perm_list%apply (flv_uborn(j))
                 flv_alr_registered(j) = perm_list%apply (flv_alr_registered(j))
                 flst_emitter(j) = perm_list%apply (flst_emitter(j))
@@ -3001,10 +3063,10 @@ of the present one is increased.
           end do
           call ftuples(index(j))%to_array (ftuple_array, equivalences, .true.)
           do i = 1, size (reg_data%flv_real)
-             if (reg_data%flv_real(i) == flv_alr_registered(j)) then
+             if (reg_data%flv_real(i) .equiv. flv_alr_registered(j)) then
                 call perm_list%reset ()
                 call perm_list%init (flv_alr_registered(j), reg_data%flv_real(i), &
-                     reg_data%n_in, reg_data%n_legs_real)
+                     reg_data%n_in, reg_data%n_legs_real, .false.)
                 if (debug_active (D_SUBTRACTION)) call check_permutation &
                      (perm_list, reg_data%flv_real(i), flv_alr_registered(j), j)
                 ftuple_array = perm_list%apply (ftuple_array)
@@ -3028,7 +3090,7 @@ of the present one is increased.
                regions(i)%real_index = 1
                current_flv_real = flv_alr_registered(1)
                current_uborn_index = regions(i)%uborn_index
-            else if (flv_alr_registered(i) == current_flv_real &
+            else if ((flv_alr_registered(i) .equiv. current_flv_real) &
                    .and. regions(i)%uborn_index == current_uborn_index) then
                regions(i)%real_index = i_real
             else
@@ -3050,13 +3112,14 @@ of the present one is increased.
       print *, ''
     end subroutine write_perm_list
 
-    function check_fs_splitting (flv1, flv2) result (valid)
+    function check_fs_splitting (flv1, flv2, tag1, tag2) result (valid)
       logical :: valid
       integer, intent(in), dimension(2) :: flv1, flv2
+      integer, intent(in) :: tag1, tag2
       if (flv1(1) + flv1(2) == 0) then
          valid = abs(flv1(1)) == abs(flv2(1)) .and. abs(flv1(2)) == abs(flv2(2))
       else
-         valid = flv1(1) == flv2(1) .and. flv1(2) == flv2(2)
+         valid = flv1(1) == flv2(1) .and. flv1(2) == flv2(2) .and. tag1 == tag2
       end if
     end function check_fs_splitting
   end subroutine region_data_init_singular_regions
@@ -3577,14 +3640,16 @@ writes it to a file.
      class(region_data_t), intent(in) :: reg_data
      integer, intent(in), optional :: unit
      integer :: j
-     integer :: maxnregions
+     integer :: maxnregions, i_reg_max
      type(string_t) :: flst_title, ftuple_title
      integer :: n_res, u
      u = given_output_unit (unit); if (u < 0) return
-     maxnregions = 1
+     maxnregions = 1; i_reg_max = 1
      do j = 1, reg_data%n_regions
-        if (size (reg_data%regions(j)%ftuples) > maxnregions) &
-             maxnregions = reg_data%regions(j)%nregions
+        if (size (reg_data%regions(j)%ftuples) > maxnregions) then
+           maxnregions = reg_data%regions(j)%nregions
+           i_reg_max = j
+        end if
      end do
      flst_title = '(A' // flst_title_format(reg_data%n_legs_real) // ')'
      ftuple_title = '(A' // ftuple_title_format() // ')'
@@ -3646,9 +3711,18 @@ writes it to a file.
 
     function ftuple_title_format () result (frmt)
        type(string_t) :: frmt
-       character(len=3) :: frmt_char
-       write (frmt_char, '(I3)') 5 * maxnregions + 1
-       frmt = var_str (frmt_char)
+       integer :: n_ftuple_char
+       !!! An ftuple (x,x) consists of five characters. In the string, they
+       !!! are separated by maxregions - 1 commas. In total these are
+       !!! 5 * maxnregions + maxnregions - 1 = 6 * maxnregions - 1 characters.
+       !!! The {} brackets at add two additional characters.
+       n_ftuple_char = 6 * maxnregions + 1
+       !!! If there are resonances, each ftuple with a resonance adds a ";x"
+       !!! to the ftuple
+       n_ftuple_char = n_ftuple_char + 2 * count (reg_data%regions(i_reg_max)%ftuples%i_res > 0)
+       !!! Pseudo-ISR regions are denoted with a * at the end
+       n_ftuple_char = n_ftuple_char + count (reg_data%regions(i_reg_max)%ftuples%pseudo_isr)
+       frmt = str (n_ftuple_char)
     end function ftuple_title_format
 
   end subroutine region_data_write
@@ -3803,17 +3877,22 @@ position.
     type(flv_structure_t) :: flv2
     integer :: n
     n = size (flv1%flst)
-    allocate (flv2%flst (n))
+    allocate (flv2%flst (n), flv2%tag (n))
     flv2%nlegs = n
     flv2%n_in = n_in
     if (i_em > n_in) then
-       flv2%flst(1 : 2) = flv1%flst(1 : 2)
+       flv2%flst(1 : n_in) = flv1%flst(1 : n_in)
        flv2%flst(n - 1) = flv1%flst(i_em)
        flv2%flst(n) = flv1%flst(i_rad)
+       flv2%tag(1 : n_in) = flv1%tag(1 : n_in)
+       flv2%tag(n - 1) = flv1%tag(i_em)
+       flv2%tag(n) = flv1%tag(i_rad)
        call fill_remaining_flavors (n_in, .true.)
     else
-       flv2%flst(1 : 2) = flv1%flst(1 : 2)
+       flv2%flst(1 : n_in) = flv1%flst(1 : n_in)
        flv2%flst(n) = flv1%flst(i_rad)
+       flv2%tag(1 : n_in) = flv1%tag(1 : n_in)
+       flv2%tag(n) = flv1%tag(i_rad)
        call fill_remaining_flavors (n_in, .false.)
     end if
   contains
@@ -3833,6 +3912,7 @@ position.
          end if
          if (check) then
             flv2%flst(j) = flv1%flst(i)
+            flv2%tag(j) = flv1%tag(i)
             j = j + 1
          end if
       end do
@@ -4680,15 +4760,22 @@ end module fks_regions_uti
     call test(fks_regions_1, "fks_regions_1", &
          "Test flavor structure utilities", u, results)
     call test(fks_regions_2, "fks_regions_2", &
-         "Test the creation of singular regions for final-state radiation", &
+         "Test singular regions for final-state radiation for n = 2", &
          u, results)
     call test(fks_regions_3, "fks_regions_3", &
-         "Test the creation of singular regions for initial-state radiation", &
+         "Test singular regions for final-state radiation for n = 3", &
          u, results)
     call test(fks_regions_4, "fks_regions_4", &
-         "Check Latex output", u, results)
+         "Test singular regions for final-state radiation for n = 4", &
+         u, results)
     call test(fks_regions_5, "fks_regions_5", &
-         "Check permutations", u, results)
+         "Test singular regions for final-state radiation for n = 5", &
+         u, results)
+    call test(fks_regions_6, "fks_regions_6", &
+         "Test singular regions for initial-state radiation", &
+         u, results)
+    call test(fks_regions_7, "fks_regions_7", &
+         "Check Latex output", u, results)
   end subroutine fks_regions_test
 
 @ %def fks_regions_test
@@ -4855,9 +4942,7 @@ end module fks_regions_uti
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     type(region_data_t) :: reg_data
     write (u, "(A)") "* Test output: fks_regions_2"
-    write (u, "(A)") "* Create singular regions for multi-jet events with n_jet <= 5"
-    write (u, "(A)") "* with jet = u:U:d:D:s:S:c:C:b:B:gl"
-    write (u, "(A)")
+    write (u, "(A)") "* Create singular regions for processes with up to four singular regions"
     write (u, "(A)") "* ee -> qq"
     write (u, "(A)")
 
@@ -4870,12 +4955,47 @@ end module fks_regions_uti
     flv_born (:, 1) = [11, -11, 2, -2]
     flv_real (:, 1) = [11, -11, 2, -2, 21]
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
-
-    call write_separator (u)
 
     deallocate (flv_born, flv_real)
     call reg_data%final ()
+    call write_separator (u)
+
+    write (u, "(A)") "* ee -> tt"
+    write (u, "(A)")
+    write (u, "(A)") "* This process has four singular regions because they are not equivalent."
+
+    n_flv_born = 1; n_flv_real = 1
+    n_legs_born = 6; n_legs_real = 7
+    n_in = 2
+
+    allocate (flv_born (n_legs_born, n_flv_born))
+    allocate (flv_real (n_legs_real, n_flv_real))
+    flv_born (:, 1) = [11, -11, 6, -6, 6, -6]
+    flv_real (:, 1) = [11, -11, 6, -6, 6, -6, 21]
+    call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+    call reg_data%check_consistency (.false., u)
+    call reg_data%write (u)
+
+    deallocate (flv_born, flv_real)
+    call reg_data%final ()
+  end subroutine fks_regions_2
+
+@ %def fks_regions_2
+@
+<<fks regions: test declarations>>=
+  public :: fks_regions_3
+<<fks regions: tests>>=
+  subroutine fks_regions_3 (u)
+    integer, intent(in) :: u
+    integer :: n_flv_born, n_flv_real
+    integer :: n_legs_born, n_legs_real
+    integer :: n_in
+    integer, dimension(:,:), allocatable :: flv_born, flv_real
+    type(region_data_t) :: reg_data
+    write (u, "(A)") "* Test output: fks_regions_3"
+    write (u, "(A)") "* Create singular regions for processes with three final-state particles"
 
     write (u, "(A)") "* ee -> qqg"
     write (u, "(A)")
@@ -4897,6 +5017,7 @@ end module fks_regions_uti
     call reg_data%final ()
 
     write (u, "(A)") "* ee -> jet jet jet"
+    write (u, "(A)") "* with jet = u:U:d:D:s:S:c:C:b:B:gl"
     write (u, "(A)")
     n_flv_born = 5; n_flv_real = 22
     n_legs_born = 5; n_legs_real = 6
@@ -4939,7 +5060,24 @@ end module fks_regions_uti
     deallocate (flv_born, flv_real)
     call reg_data%final ()
 
+  end subroutine fks_regions_3
+
+@ %def fks_regions_3
+@
+<<fks regions: test declarations>>=
+  public :: fks_regions_4
+<<fks regions: tests>>=
+  subroutine fks_regions_4 (u)
+    integer, intent(in) :: u
+    integer :: n_flv_born, n_flv_real
+    integer :: n_legs_born, n_legs_real
+    integer :: n_in
+    integer, dimension(:,:), allocatable :: flv_born, flv_real
+    type(region_data_t) :: reg_data
+    write (u, "(A)") "* Test output: fks_regions_4"
+    write (u, "(A)") "* Create singular regions for processes with three final-state particles"
     write (u, "(A)") "* ee -> 4 jet"
+    write (u, "(A)") "* with jet = u:U:d:D:s:S:c:C:b:B:gl"
     write (u, "(A)")
     n_flv_born = 22; n_flv_real = 22
     n_legs_born = 6; n_legs_real = 7
@@ -4999,7 +5137,24 @@ end module fks_regions_uti
     deallocate (flv_born, flv_real)
     call reg_data%final ()
 
+  end subroutine fks_regions_4
+
+@ %def fks_regions_4
+@
+<<fks regions: test declarations>>=
+  public :: fks_regions_5
+<<fks regions: tests>>=
+  subroutine fks_regions_5 (u)
+    integer, intent(in) :: u
+    integer :: n_flv_born, n_flv_real
+    integer :: n_legs_born, n_legs_real
+    integer :: n_in
+    integer, dimension(:,:), allocatable :: flv_born, flv_real
+    type(region_data_t) :: reg_data
+    write (u, "(A)") "* Test output: fks_regions_5"
+    write (u, "(A)") "* Create singular regions for processes with three final-state particles"
     write (u, "(A)") "* ee -> 5 jet"
+    write (u, "(A)") "* with jet = u:U:d:D:s:S:c:C:b:B:gl"
     write (u, "(A)")
     n_flv_born = 22; n_flv_real = 67
     n_legs_born = 7; n_legs_real = 8
@@ -5106,14 +5261,14 @@ end module fks_regions_uti
     deallocate (flv_born, flv_real)
     call reg_data%final ()
 
-  end subroutine fks_regions_2
+  end subroutine fks_regions_5
 
-@ %def fks_regions_2
+@ %def fks_regions_5
 @
 <<fks regions: test declarations>>=
-  public :: fks_regions_3
+  public :: fks_regions_6
 <<fks regions: tests>>=
-  subroutine fks_regions_3 (u)
+  subroutine fks_regions_6 (u)
     integer, intent(in) :: u
     integer :: n_flv_born, n_flv_real
     integer :: n_legs_born, n_legs_real
@@ -5122,7 +5277,7 @@ end module fks_regions_uti
     type(region_data_t) :: reg_data
     integer :: i, j
     integer, dimension(10) :: flavors
-    write (u, "(A)") "* Test output: fks_regions_3"
+    write (u, "(A)") "* Test output: fks_regions_6"
     write (u, "(A)") "* Create table of singular regions for Drell Yan"
     write (u, "(A)")
 
@@ -5185,21 +5340,21 @@ end module fks_regions_uti
     call reg_data%check_consistency (.false., u)
     call reg_data%write (u)
 
-  end subroutine fks_regions_3
+  end subroutine fks_regions_6
 
-@ %def fks_regions_3
+@ %def fks_regions_6
 @
 <<fks regions: test declarations>>=
-  public :: fks_regions_4
+  public :: fks_regions_7
 <<fks regions: tests>>=
-  subroutine fks_regions_4 (u)
+  subroutine fks_regions_7 (u)
     integer, intent(in) :: u
     integer :: n_flv_born, n_flv_real
     integer :: n_legs_born, n_legs_real
     integer :: n_in
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     type(region_data_t) :: reg_data
-    write (u, "(A)") "* Test output: fks_regions_4"
+    write (u, "(A)") "* Test output: fks_regions_7"
     write (u, "(A)") "* Create table of singular regions for ee -> qq"
     write (u, "(A)")
 
@@ -5214,42 +5369,10 @@ end module fks_regions_uti
     call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
     call reg_data%write_latex (u)
 
-  end subroutine fks_regions_4
+  end subroutine fks_regions_7
 
-@ %def fks_regions_4
+@ %def fks_regions_7
 @
-<<fks regions: test declarations>>=
-  public :: fks_regions_5
-<<fks regions: tests>>=
-  subroutine fks_regions_5 (u)
-    integer, intent(in) :: u
-    type(flv_structure_t) :: flv_original, flv_work
-    type(flavor_permutation_t) :: perm_list
-    type(ftuple_t) :: ftuple_orig, ftuple_work
-    integer :: n_in, n_legs
-    write (u, "(A)") "* Test output: fks_regions_5"
-    write (u, "(A)") "* Check permutations"
-    write (u, "(A)")
-
-    n_in = 2
-    n_legs = 8
-
-    call flv_original%init ([11,-11,-4,-4,-4,4,4,4], n_in)
-    call flv_work%init ([11,-11,-4,-4,4,4,-4,4], n_in)
-
-    call perm_list%init (flv_work, flv_original, n_in, n_legs)
-    ftuple_orig%ireg = [3,6]
-    write (u, '(A,1x,2I1)') "* Original ftuple: ", ftuple_orig%ireg
-    write (u, '(A)') "* Created permutation list"
-    call perm_list%write (u)
-    ftuple_work = perm_list%apply (ftuple_orig)
-    write (u, '(A,1x,2I1)') "* Permuted ftuple: ", ftuple_work%ireg
-
-  end subroutine fks_regions_5
-
-@ %def fks_regions_5
-@
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Virtual contribution to the cross section}
 <<[[virtual.f90]]>>=
@@ -7257,78 +7380,104 @@ the corresponding jacobians.
       sqme_tot = sqme_tot * rsub%real_kinematics%jac_rand(i_phs)
     end associate
 
-    call debug_output ()
+    if (debug_active (D_SUBTRACTION) .and. .not. debug2_active (D_SUBTRACTIOn)) then
+       call register_debug_sqme ()
+    else if (debug2_active (D_SUBTRACTION)) then
+       call write_computation_status ()
+    end if
 
   contains
 
-    subroutine debug_output ()
-       logical :: print_all, soft, collinear
-       type(vector4_t) :: p_gluon
-       integer, save :: n_soft = 0, passed_soft = 0, n_coll = 0, passed_coll = 0
-       logical :: write_histo = .true.
-       if (debug_active (D_SUBTRACTION)) then
-          print_all = debug_active (D_SUBTRACTION)
-          if (print_all) then
-             call msg_debug (D_SUBTRACTION, "real_subtraction_evaluate_region_fsr")
-             call write_computation_status ()
-          else
-             associate (p_real => rsub%real_kinematics%p_real_cms)
-                p_gluon = p_real%get_momentum (i_phs, p_real%get_n_momenta (i_phs))
-                soft = p_gluon%p(0) < 0.1_default
-             end associate
-             collinear = abs (rsub%real_kinematics%y (i_phs)- one) < 0.01_default
-             if (soft) then
-                if (write_histo)  call write_point_to_file (p_gluon%p(0), sqme_rad, sqme_soft)
-                n_soft = n_soft + 1
-                if (sqme_soft < zero)  call msg_warning ("Soft < 0")
-                if (abs (sqme_rad - sqme_soft) > sqme_rad .and. sqme_soft > tiny_10 &
-                   .and. sqme_rad > tiny_10) then
-                   call msg_warning ("Soft MEs do not match in this soft region")
-                   call write_computation_status (passed_soft, n_soft, "soft")
-                else
-                   passed_soft = passed_soft + 1
-                end if
-             end if
-             if (collinear) then
-                n_coll = n_coll + 1
-                if (abs (sqme_rad - sqme_coll) > sqme_rad .and. &
-                   sqme_coll > tiny_10 .and. sqme_rad > tiny_10) then
-                   call msg_warning ("Collinear MEs do not match in this collinear region")
-                   call write_computation_status (passed_coll, n_coll, "collinear")
-                else
-                   passed_coll = passed_coll + 1
-                end if
-             end if
-          end if
-       end if
-    end subroutine debug_output
+    subroutine register_debug_sqme ()
+      real(default), dimension(:), allocatable, save :: sqme_rad_store
+      logical :: soft, collinear
+      real(default), parameter :: soft_threshold = 0.1_default
+      real(default), parameter :: coll_threshold = 0.1_default
+      real(default) :: this_sqme_rad, s_alpha, E_gluon
+      logical, dimension(:), allocatable, save :: count_alr
+      !!! TODO (cw-2017-02-18): Need to be able to set this (?)
+      logical :: write_histo = .true.
+      if (.not. allocated (sqme_rad_store)) then
+         allocate (sqme_rad_store (rsub%reg_data%n_regions))
+         sqme_rad_store = zero
+      end if
+      if (rsub%radiation_active) then
+         sqme_rad_store(alr) = sqme_rad
+      else
+         if (.not. allocated (count_alr)) then
+            allocate (count_alr (rsub%reg_data%n_regions))
+            count_alr = .false.
+         end if
+         associate (p_real => rsub%real_kinematics%p_real_cms)
+            E_gluon = p_real%get_energy (i_phs, rsub%reg_data%n_legs_real)
+            s_alpha = rsub%reg_data%get_svalue (p_real%get_momenta(i_phs), alr, emitter, i_res)
+         end associate
+         soft = E_gluon < soft_threshold
+         collinear = abs (s_alpha - one) < coll_threshold
+         this_sqme_rad = sqme_rad_store(alr)
+         if (soft) then
+            !!! Do not write sqme_rad twice
+            if (write_histo .and. .not. rsub%radiation_active) &
+                 call write_point_to_file (E_gluon, this_sqme_rad, sqme_soft)
+            if (abs (this_sqme_rad - sqme_soft) > min (this_sqme_rad, sqme_soft) .and. &
+                 sqme_soft > tiny_10 .and. this_sqme_rad > tiny_10) then
+               call msg_print_color ("Soft MEs do not match", COL_RED)
+            else
+               call msg_print_color (char ("sqme_soft OK in region " // str (alr)), COL_GREEN)
+            end if
+         end if
+         if (collinear) then
+            if (abs (this_sqme_rad - sqme_coll) > min (this_sqme_rad, sqme_coll) .and. &
+                 sqme_coll > tiny_10 .and. this_sqme_rad > tiny_10) then
+               call msg_print_color ("Collinear MEs do not match", COL_RED)
+               print *, 'alr: ', alr, 'sqme_rad: ', this_sqme_rad, 'sqme_coll: ', sqme_coll
+            else
+               call msg_print_color (char ("sqme_coll OK in region " // str (alr)), COL_GREEN)
+            end if
+         end if
+         if (soft .and. collinear) then
+            if (abs (this_sqme_rad - sqme_cs) > min (this_sqme_rad, sqme_cs) .and. &
+                 sqme_cs > tiny_10 .and. this_sqme_rad > tiny_10) then
+               call msg_print_color ("Soft-collinear MEs do not match", COL_RED)
+            else
+               call msg_print_color (char ("sqme_cs OK in region " // str (alr)), COL_GREEN)
+            end if
+         end if
+         count_alr (alr) = .true.
+         if (all (count_alr)) then
+            deallocate (count_alr)
+            deallocate (sqme_rad_store)
+         end if
+      end if
+    end subroutine register_debug_sqme
 
     subroutine write_computation_status (passed, total, region_type)
-       integer, intent(in), optional :: passed, total
-       character(*), intent(in), optional :: region_type
-       integer :: i_born
-       integer :: u
-       real(default) :: xi
-       u = given_output_unit (); if (u < 0) return
-       i_born = rsub%reg_data%regions(alr)%uborn_index
-       xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
-       write (u,'(A,I2)') 'rsub%purpose: ', rsub%purpose
-       write (u,'(A,I3)') 'alr: ', alr
-       write (u,'(A,I3)') 'emitter: ', emitter
-       write (u,'(A,I3)') 'i_phs: ', i_phs
-       write (u,'(A,F6.4)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
-       write (u,'(A,F6.4,2X,A,F6.4)') 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
-       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_born)
-       write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
-       write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
-       write (u,'(A,ES16.9)')  'sqme_coll: ', sqme_coll
-       write (u,'(A,ES16.9)')  'sqme_coll-soft: ', sqme_cs
-       write (u,'(A,ES16.9)')  'sqme_remn: ', sqme_remn
-       write (u,'(A,ES16.9)')  'sqme_tot: ', sqme_tot
-       if (present (passed) .and. present (total) .and. &
-            present (region_type)) &
-          write (u,'(A)') char (str (passed) // " of " // str (total) // &
-               " " // region_type // " points passed in total")
+      integer, intent(in), optional :: passed, total
+      character(*), intent(in), optional :: region_type
+      integer :: i_born
+      integer :: u
+      real(default) :: xi
+      call msg_debug (D_SUBTRACTION, "real_subtraction_evaluate_region_fsr")
+      u = given_output_unit (); if (u < 0) return
+      i_born = rsub%reg_data%regions(alr)%uborn_index
+      xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
+      write (u,'(A,I2)') 'rsub%purpose: ', rsub%purpose
+      write (u,'(A,I3)') 'alr: ', alr
+      write (u,'(A,I3)') 'emitter: ', emitter
+      write (u,'(A,I3)') 'i_phs: ', i_phs
+      write (u,'(A,F6.4)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
+      write (u,'(A,F6.4,2X,A,F6.4)') 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
+      write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_born)
+      write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
+      write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
+      write (u,'(A,ES16.9)')  'sqme_coll: ', sqme_coll
+      write (u,'(A,ES16.9)')  'sqme_coll-soft: ', sqme_cs
+      write (u,'(A,ES16.9)')  'sqme_remn: ', sqme_remn
+      write (u,'(A,ES16.9)')  'sqme_tot: ', sqme_tot
+      if (present (passed) .and. present (total) .and. &
+           present (region_type)) &
+         write (u,'(A)') char (str (passed) // " of " // str (total) // &
+              " " // region_type // " points passed in total")
     end subroutine write_computation_status
 
     subroutine write_point_to_file (E_gluon, sqme_rad, sqme_soft)
