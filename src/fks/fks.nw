@@ -826,10 +826,8 @@ permutation of the final-state particles
     logical :: equiv
     type(flv_structure_t), intent(in) :: flv1, flv2
     logical, intent(in) :: with_tag
-    integer :: i, j, n
-    logical, dimension(:), allocatable :: present, checked
-    logical :: condition
     type(flavor_permutation_t) :: perm
+    integer :: n
     n = size (flv1%flst)
     equiv = .true.
     if (n /= size (flv2%flst)) then
@@ -839,37 +837,9 @@ permutation of the final-state particles
        call msg_fatal &
             ('flv_structure_equivalent: flavor arrays do not have equal n_in')
     else
-       !print *, 'Check for equivalence: '
-       !print *, 'with_tag: ', with_tag
        call perm%init (flv1, flv2, flv1%n_in, flv1%nlegs, with_tag)
-       !print *, 'perms: '
-       !call perm%write ()
        equiv = perm%test (flv2, flv1, with_tag)
-       !print *, 'equiv: ', equiv
        call perm%final ()
-       !allocate (present(n))
-       !allocate (checked(n))
-       !present = .false.; checked = .false.
-       !do i = 1, flv1%n_in
-       !   if (flv1%flst(i) /= flv2%flst(i)) then
-       !      equiv = .false.
-       !      return
-       !   end if
-       !end do
-       !do i = flv1%n_in + 1 , n
-       !   do j = flv1%n_in + 1 ,n
-       !      condition = flv1%flst(i) == flv2%flst(j)
-       !      if (with_tag) condition = condition .and. (flv1%tag(i) == flv2%tag(j))
-       !      if (condition .and. .not. checked(j)) then
-       !         present(i) = .true.
-       !         checked(j) = .true.
-       !         exit
-       !      end if
-       !   end do
-       !end do
-       !do i = flv1%n_in + 1 , n
-       !   if (.not. present(i)) equiv = .false.
-       !end do
     end if
   end function flv_structure_equivalent
 
@@ -1230,17 +1200,14 @@ structure if the particle at position \texttt{emitter} is removed
     type(flv_structure_t) :: flv_copy
     logical :: condition
     logical, dimension(:), allocatable :: already_correct
-    !!! Nagfor-ICE happens here
     flv_copy = flv_in
     allocate (perm_list_tmp (factorial (n_last - n_first - 1), 2))
     allocate (already_correct (flv_in%nlegs))
     already_correct = flv_in%flst == flv_ref%flst
     if (with_tag) &
          already_correct = already_correct .and. (flv_in%tag == flv_ref%tag)
-    !print *, 'already correct: ', already_correct
     j_min = n_first + 1
     i_perm = 0
-    !print *, 'flv_ref: ', flv_ref%flst
     do i = n_first + 1, n_last
        flv1 = flv_ref%flst(i)
        tag1 = flv_ref%tag(i)
@@ -1248,13 +1215,9 @@ structure if the particle at position \texttt{emitter} is removed
           if (already_correct(i) .or. already_correct(j)) cycle
           flv2 = flv_copy%flst(j)
           tag2 = flv_copy%tag(j)
-          !print *, 'i, j: ', i, j, 'flv: ', flv1, tag1, flv2, tag2
           condition = (flv1 == flv2) .and. i /= j
           if (with_tag) condition = condition .and. (tag1 == tag2)
           if (condition) then
-             !print *, 'found: ', i, j
-             !print *, 'flv_copy: ', flv_copy%flst
-             !print *, flv1, flv2, tag1, tag2
              i_perm = i_perm + 1
              tmp = flv_copy%flst(i)
              flv_copy%flst(i) = flv2
@@ -3063,12 +3026,14 @@ of the present one is increased.
       type(flavor_permutation_t), intent(in) :: perm
       type(flv_structure_t), intent(in) :: flv_perm, flv_orig
       integer, intent(in) :: i_reg
-      if (.not. perm%test (flv_perm, flv_orig, .false.)) then
+      type(flv_structure_t) :: flv_test
+      flv_test = perm%apply (flv_orig, invert = .true.)
+      if (.not. all (flv_test%flst == flv_perm%flst)) then
          print *, 'Fail at: ', i_reg
          print *, 'Original flavor structure: ', flv_orig%flst
          call perm%write ()
-         !print *, 'Permuted flavor: ', flv_perm%flst
-         !print *, 'Should be: ', flv_test%flst
+         print *, 'Permuted flavor: ', flv_perm%flst
+         print *, 'Should be: ', flv_test%flst
          call msg_fatal ("Permutation does not reproduce original flavor!")
       end if
     end subroutine check_permutation
@@ -7402,7 +7367,6 @@ the corresponding jacobians.
     else if (debug2_active (D_SUBTRACTION)) then
        call write_computation_status ()
     end if
-    !call debug_output ()
 
   contains
 
@@ -7412,6 +7376,7 @@ the corresponding jacobians.
       real(default), parameter :: soft_threshold = 0.1_default
       real(default), parameter :: coll_threshold = 0.1_default
       real(default) :: this_sqme_rad, s_alpha, E_gluon
+      logical, dimension(:), allocatable, save :: count_alr
       !!! TODO (cw-2017-02-18): Need to be able to set this (?)
       logical :: write_histo = .true.
       if (.not. allocated (sqme_rad_store)) then
@@ -7421,6 +7386,10 @@ the corresponding jacobians.
       if (rsub%radiation_active) then
          sqme_rad_store(alr) = sqme_rad
       else
+         if (.not. allocated (count_alr)) then
+            allocate (count_alr (rsub%reg_data%n_regions))
+            count_alr = .false.
+         end if
          associate (p_real => rsub%real_kinematics%p_real_cms)
             E_gluon = p_real%get_energy (i_phs, rsub%reg_data%n_legs_real)
             s_alpha = rsub%reg_data%get_svalue (p_real%get_momenta(i_phs), alr, emitter, i_res)
@@ -7432,18 +7401,15 @@ the corresponding jacobians.
             !!! Do not write sqme_rad twice
             if (write_histo .and. .not. rsub%radiation_active) &
                  call write_point_to_file (E_gluon, this_sqme_rad, sqme_soft)
-            !!! TODO (cw-2017-02-18): Why > sqme_rad and not > some_small_number?
-            !!! This way, we do not find regions where sqme_rad = 2 * sqme_soft
-            if (abs (this_sqme_rad - sqme_soft) > this_sqme_rad .and. &
+            if (abs (this_sqme_rad - sqme_soft) > min (this_sqme_rad, sqme_soft) .and. &
                  sqme_soft > tiny_10 .and. this_sqme_rad > tiny_10) then
                call msg_print_color ("Soft MEs do not match", COL_RED)
-               print *, 'alr: ', alr, 'sqme_rad: ', this_sqme_rad, 'sqme_soft: ', sqme_soft
             else
                call msg_print_color (char ("sqme_soft OK in region " // str (alr)), COL_GREEN)
             end if
          end if
          if (collinear) then
-            if (abs (this_sqme_rad - sqme_coll) > this_sqme_rad .and. &
+            if (abs (this_sqme_rad - sqme_coll) > min (this_sqme_rad, sqme_coll) .and. &
                  sqme_coll > tiny_10 .and. this_sqme_rad > tiny_10) then
                call msg_print_color ("Collinear MEs do not match", COL_RED)
                print *, 'alr: ', alr, 'sqme_rad: ', this_sqme_rad, 'sqme_coll: ', sqme_coll
@@ -7452,63 +7418,20 @@ the corresponding jacobians.
             end if
          end if
          if (soft .and. collinear) then
-            if (abs (this_sqme_rad - sqme_cs) > this_sqme_rad .and. &
+            if (abs (this_sqme_rad - sqme_cs) > min (this_sqme_rad, sqme_cs) .and. &
                  sqme_cs > tiny_10 .and. this_sqme_rad > tiny_10) then
                call msg_print_color ("Soft-collinear MEs do not match", COL_RED)
             else
                call msg_print_color (char ("sqme_cs OK in region " // str (alr)), COL_GREEN)
             end if
          end if
-         !!! TODO (cw-2017-02-18): Find correct condition to deallocate
-         !if (alr == rsub%reg_data%n_regions .and. rsub%subtraction_active) then
-         !   !!! Last alr of subtraction component. Time to print and clean up
-         !   print *, 'Deallocate!'
-         !   deallocate (sqme_rad_store)
-         !end if
+         count_alr (alr) = .true.
+         if (all (count_alr)) then
+            deallocate (count_alr)
+            deallocate (sqme_rad_store)
+         end if
       end if
     end subroutine register_debug_sqme
-
-    subroutine debug_output ()
-       logical :: print_all, soft, collinear
-       type(vector4_t) :: p_gluon
-       integer, save :: n_soft = 0, passed_soft = 0, n_coll = 0, passed_coll = 0
-       logical :: write_histo = .true.
-       if (debug_active (D_SUBTRACTION)) then
-          print_all = debug_active (D_SUBTRACTION)
-          if (print_all) then
-             call msg_debug (D_SUBTRACTION, "real_subtraction_evaluate_region_fsr")
-             call write_computation_status ()
-          else
-             associate (p_real => rsub%real_kinematics%p_real_cms)
-                p_gluon = p_real%get_momentum (i_phs, p_real%get_n_momenta (i_phs))
-                soft = p_gluon%p(0) < 0.1_default
-             end associate
-             collinear = abs (rsub%real_kinematics%y (i_phs)- one) < 0.01_default
-             if (soft) then
-                if (write_histo)  call write_point_to_file (p_gluon%p(0), sqme_rad, sqme_soft)
-                n_soft = n_soft + 1
-                if (sqme_soft < zero)  call msg_warning ("Soft < 0")
-                if (abs (sqme_rad - sqme_soft) > sqme_rad .and. sqme_soft > tiny_10 &
-                   .and. sqme_rad > tiny_10) then
-                   call msg_warning ("Soft MEs do not match in this soft region")
-                   call write_computation_status (passed_soft, n_soft, "soft")
-                else
-                   passed_soft = passed_soft + 1
-                end if
-             end if
-             if (collinear) then
-                n_coll = n_coll + 1
-                if (abs (sqme_rad - sqme_coll) > sqme_rad .and. &
-                   sqme_coll > tiny_10 .and. sqme_rad > tiny_10) then
-                   call msg_warning ("Collinear MEs do not match in this collinear region")
-                   call write_computation_status (passed_coll, n_coll, "collinear")
-                else
-                   passed_coll = passed_coll + 1
-                end if
-             end if
-          end if
-       end if
-    end subroutine debug_output
 
     subroutine write_computation_status (passed, total, region_type)
       integer, intent(in), optional :: passed, total
