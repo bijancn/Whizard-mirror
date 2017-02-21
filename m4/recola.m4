@@ -63,6 +63,7 @@ if test "$enable_recola" = "yes"; then
   else
      AC_MSG_CHECKING([for Recola])
      AC_MSG_RESULT([(disabled)])
+     enable_recola="no"
   fi
 else
    AC_MSG_CHECKING([for Recola])
